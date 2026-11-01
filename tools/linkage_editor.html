@@ -70,7 +70,7 @@
 </main>
 <script>
 // Keep in sync with evol_mech/genome/spec.py (tests/test_core.py checks this block).
-const SPEC = [{"name": "hip_width", "lo": 0.08, "hi": 0.3, "default": 0.16, "group": "geometry", "step": null}, {"name": "core_height", "lo": 0.05, "hi": 0.3, "default": 0.14, "group": "geometry", "step": null}, {"name": "battery_mah", "lo": 1000, "hi": 6000, "default": 2200, "group": "geometry", "step": 100}, {"name": "payload_x", "lo": -0.06, "hi": 0.06, "default": 0.0, "group": "geometry", "step": null}, {"name": "payload_zf", "lo": -0.45, "hi": 0.45, "default": -0.2, "group": "geometry", "step": null}, {"name": "fan_x", "lo": -0.12, "hi": 0.12, "default": 0.0, "group": "geometry", "step": null}, {"name": "fan_y", "lo": 0.06, "hi": 0.3, "default": 0.14, "group": "geometry", "step": null}, {"name": "fan_z", "lo": 0.0, "hi": 0.3, "default": 0.12, "group": "geometry", "step": null}, {"name": "foot_type", "lo": 0, "hi": 1, "default": 0, "group": "geometry", "step": 1}, {"name": "foot_radius", "lo": 0.008, "hi": 0.03, "default": 0.015, "group": "geometry", "step": null}, {"name": "foot_half_len", "lo": 0.005, "hi": 0.07, "default": 0.035, "group": "geometry", "step": null}, {"name": "crank_len", "lo": 0.015, "hi": 0.08, "default": 0.035, "group": "linkage", "step": null}, {"name": "coupler_len", "lo": 0.05, "hi": 0.26, "default": 0.11, "group": "linkage", "step": null}, {"name": "rocker_len", "lo": 0.05, "hi": 0.26, "default": 0.14, "group": "linkage", "step": null}, {"name": "pivot_b_dx", "lo": -0.15, "hi": 0.1, "default": -0.05, "group": "linkage", "step": null}, {"name": "pivot_b_dz", "lo": -0.05, "hi": 0.18, "default": 0.1, "group": "linkage", "step": null}, {"name": "foot_frac", "lo": 0.0, "hi": 1.0, "default": 0.45, "group": "linkage", "step": null}, {"name": "foot_height", "lo": 0.02, "hi": 0.32, "default": 0.16, "group": "linkage", "step": null}, {"name": "stepper_torque", "lo": 0.02, "hi": 0.6, "default": 0.2, "group": "drivetrain", "step": null}, {"name": "gear_ratio", "lo": 1.0, "hi": 8.0, "default": 3.0, "group": "drivetrain", "step": null}, {"name": "kp_yaw", "lo": 2.0, "hi": 30.0, "default": 8.0, "group": "drivetrain", "step": null}, {"name": "fan_diam_in", "lo": 2, "hi": 6, "default": 3, "group": "fan_spec", "step": 1}, {"name": "fan_blades", "lo": 2, "hi": 6, "default": 3, "group": "fan_spec", "step": 1}, {"name": "stator_d_mm", "lo": 12, "hi": 28, "default": 18, "group": "fan_spec", "step": 1}, {"name": "stator_h_mm", "lo": 4, "hi": 10, "default": 6, "group": "fan_spec", "step": 1}, {"name": "crank_speed_hz", "lo": -3.0, "hi": 3.0, "default": 1.0, "group": "gait", "step": null}, {"name": "crank_phase_r", "lo": 0.0, "hi": 6.283185307179586, "default": 3.141592653589793, "group": "gait", "step": null}, {"name": "yaw_amp", "lo": -0.5235987755982988, "hi": 0.5235987755982988, "default": 0.0, "group": "gait", "step": null}, {"name": "fan_base", "lo": 0.0, "hi": 1.0, "default": 0.2, "group": "fan_ctrl", "step": null}, {"name": "fan_kp_roll", "lo": -4.0, "hi": 4.0, "default": 0.5, "group": "fan_ctrl", "step": null}, {"name": "fan_kd_roll", "lo": -1.0, "hi": 1.0, "default": 0.05, "group": "fan_ctrl", "step": null}, {"name": "fan_pitch_bias", "lo": -1.0471975511965976, "hi": 1.0471975511965976, "default": 0.17453292519943295, "group": "fan_ctrl", "step": null}, {"name": "fan_kp_pitch", "lo": -4.0, "hi": 4.0, "default": 1.0, "group": "fan_ctrl", "step": null}, {"name": "fan_kd_pitch", "lo": -1.0, "hi": 1.0, "default": 0.1, "group": "fan_ctrl", "step": null}];
+const SPEC = [{"name": "hip_width", "lo": 0.08, "hi": 0.3, "default": 0.16, "group": "geometry", "step": null}, {"name": "core_height", "lo": 0.05, "hi": 0.3, "default": 0.14, "group": "geometry", "step": null}, {"name": "battery_mah", "lo": 1000, "hi": 6000, "default": 2200, "group": "geometry", "step": 100}, {"name": "payload_x", "lo": -0.06, "hi": 0.06, "default": 0.0, "group": "geometry", "step": null}, {"name": "payload_zf", "lo": -0.45, "hi": 0.45, "default": -0.2, "group": "geometry", "step": null}, {"name": "fan_x", "lo": -0.12, "hi": 0.12, "default": 0.0, "group": "geometry", "step": null}, {"name": "fan_y", "lo": 0.06, "hi": 0.3, "default": 0.14, "group": "geometry", "step": null}, {"name": "fan_z", "lo": 0.0, "hi": 0.35, "default": 0.19, "group": "geometry", "step": null}, {"name": "foot_type", "lo": 0, "hi": 1, "default": 0, "group": "geometry", "step": 1}, {"name": "foot_radius", "lo": 0.008, "hi": 0.03, "default": 0.015, "group": "geometry", "step": null}, {"name": "foot_half_len", "lo": 0.005, "hi": 0.07, "default": 0.035, "group": "geometry", "step": null}, {"name": "crank_len", "lo": 0.015, "hi": 0.08, "default": 0.035, "group": "linkage", "step": null}, {"name": "coupler_len", "lo": 0.05, "hi": 0.26, "default": 0.11, "group": "linkage", "step": null}, {"name": "rocker_len", "lo": 0.05, "hi": 0.26, "default": 0.14, "group": "linkage", "step": null}, {"name": "pivot_b_dx", "lo": -0.15, "hi": 0.1, "default": -0.05, "group": "linkage", "step": null}, {"name": "pivot_b_dz", "lo": -0.05, "hi": 0.18, "default": 0.1, "group": "linkage", "step": null}, {"name": "foot_frac", "lo": 0.0, "hi": 1.0, "default": 0.45, "group": "linkage", "step": null}, {"name": "foot_height", "lo": 0.02, "hi": 0.32, "default": 0.16, "group": "linkage", "step": null}, {"name": "stepper_torque", "lo": 0.02, "hi": 0.6, "default": 0.2, "group": "drivetrain", "step": null}, {"name": "gear_ratio", "lo": 1.0, "hi": 8.0, "default": 3.0, "group": "drivetrain", "step": null}, {"name": "kp_yaw", "lo": 2.0, "hi": 30.0, "default": 8.0, "group": "drivetrain", "step": null}, {"name": "fan_diam_in", "lo": 2, "hi": 6, "default": 3, "group": "fan_spec", "step": 1}, {"name": "fan_blades", "lo": 2, "hi": 6, "default": 3, "group": "fan_spec", "step": 1}, {"name": "stator_d_mm", "lo": 12, "hi": 28, "default": 18, "group": "fan_spec", "step": 1}, {"name": "stator_h_mm", "lo": 4, "hi": 10, "default": 6, "group": "fan_spec", "step": 1}, {"name": "crank_speed_hz", "lo": -3.0, "hi": 3.0, "default": 1.0, "group": "gait", "step": null}, {"name": "crank_phase_r", "lo": 0.0, "hi": 6.283185307179586, "default": 3.141592653589793, "group": "gait", "step": null}, {"name": "yaw_amp", "lo": -0.5235987755982988, "hi": 0.5235987755982988, "default": 0.0, "group": "gait", "step": null}, {"name": "fan_base", "lo": 0.0, "hi": 1.0, "default": 0.2, "group": "fan_ctrl", "step": null}, {"name": "fan_kp_roll", "lo": -4.0, "hi": 4.0, "default": 0.5, "group": "fan_ctrl", "step": null}, {"name": "fan_kd_roll", "lo": -1.0, "hi": 1.0, "default": 0.05, "group": "fan_ctrl", "step": null}, {"name": "fan_pitch_bias", "lo": -1.0471975511965976, "hi": 1.0471975511965976, "default": 0.17453292519943295, "group": "fan_ctrl", "step": null}, {"name": "fan_kp_pitch", "lo": -4.0, "hi": 4.0, "default": 1.0, "group": "fan_ctrl", "step": null}, {"name": "fan_kd_pitch", "lo": -1.0, "hi": 1.0, "default": 0.1, "group": "fan_ctrl", "step": null}];
 const byName = Object.fromEntries(SPEC.map(s => [s.name, s]));
 
 // UI grouping (independent of the spec's group field), with display units.
@@ -84,7 +84,7 @@ const UI_GROUPS = [
   ["Body and payload (masses are derived, see readouts)", [["hip_width", "hip width (leg spacing)", MM],
      ["core_height", "core height", MM], ["battery_mah", "4S battery capacity", ["mAh", 1, 0]],
      ["payload_x", "battery fore/aft", MM], ["payload_zf", "battery height", ["x core h", 1, 2]]]],
-  ["Fan placement", [["fan_x", "fore/aft on core", MM], ["fan_y", "half-spread", MM], ["fan_z", "above core centre", MM]]],
+  ["Fan placement", [["fan_x", "fore/aft on core", MM], ["fan_y", "half-spread", MM], ["fan_z", "above core bottom", MM]]],
   ["Fan hardware", [["fan_diam_in", "prop diameter", ["in", 1, 0]], ["fan_blades", "blades", ["", 1, 0]],
      ["stator_d_mm", "stator diameter", ["mm", 1, 0]], ["stator_h_mm", "stator height", ["mm", 1, 0]]]],
   ["Drivetrain", [["stepper_torque", "stepper holding torque", ["N·m", 1, 2]], ["gear_ratio", "gear ratio", ["x", 1, 1]], ["kp_yaw", "yaw pivot stiffness", ["N·m/rad", 1, 1]]]],
@@ -148,11 +148,11 @@ function isValid(p, samples = 72) {
 }
 // port of evol_mech/body/clearance.py: leg links vs yaw-swept core and swept fan spheres
 function interference(p, nTheta = 36, nYaw = 7, nPts = 6) {
-  const y = p.hip_width / 2, cz = HZ + p.core_height / 2, LR = 0.006, M = 0.003;
+  const y = p.hip_width / 2, LR = 0.006, M = 0.003;
   const YAW = document.getElementById("yaw").checked ? Math.PI / 6 : 0; if (!YAW) nYaw = 1;
   const z0 = HZ - LR - M, z1 = HZ + p.core_height + LR + M, halfX = 0.05 + LR + M, halfY = coreHalfY(p) + LR + M;
   const fanR = fanSpec(p).d / 2 + 0.008 + LR + M;
-  const fans = [[p.fan_x, p.fan_y, cz + p.fan_z], [p.fan_x, -p.fan_y, cz + p.fan_z]];
+  const fans = [[p.fan_x, p.fan_y, HZ + p.fan_z], [p.fan_x, -p.fan_y, HZ + p.fan_z]];
   const B = [p.pivot_b_dx, p.pivot_b_dz];
   for (let k = 0; k < nTheta; k++) {
     const s = solve(p, 2 * Math.PI * k / nTheta); if (!s) continue;
@@ -197,7 +197,7 @@ const hipHalfY = p => p.hip_width / 2 - 0.006 - 0.002;
 function structureSpec(p) {
   const post = Math.hypot(p.pivot_b_dx, p.pivot_b_dz);
   const hip = ST.shellKgM2 * boxArea(ST.hx, hipHalfY(p), HZ) + ST.hipHardware + 2 * ST.postKgM * post;
-  const arm = Math.hypot(p.fan_x, p.fan_y, p.fan_z);
+  const arm = Math.hypot(p.fan_x, p.fan_y, p.fan_z - p.core_height / 2);
   const core = ST.shellKgM2 * boxArea(ST.coreHalf, coreHalfY(p), p.core_height / 2) + 2 * ST.armKgM * arm;
   const battery = ST.battBase + ST.battPerMah * p.battery_mah;
   return {hip, core, battery, payload: battery + ST.electronics, half: batteryHalf(p), coreHY: coreHalfY(p)};
@@ -208,7 +208,7 @@ const HZ = 0.035;                              // hip half-height; pivot B sits 
 const hipTop = () => HZ;
 const coreZ = () => HZ + P.core_height / 2;
 const payloadZ = () => coreZ() + P.payload_zf * P.core_height;
-const fanZ = () => coreZ() + P.fan_z;
+const fanZ = () => hipTop() + P.fan_z;      // fan_z from the core bottom
 
 // ---------- canvases ----------
 const SCALE = 1100;
@@ -368,14 +368,14 @@ side.addEventListener("pointermove", e => {
   else if (drag === "P") { const s = solve(P, theta); if (s) { const dx = m[0] - s.D[0], dz = m[1] - s.D[1];
     P.foot_frac = clampP("foot_frac", (dx * s.u[0] + dz * s.u[1]) / P.coupler_len);
     P.foot_height = clampP("foot_height", Math.abs(dx * s.n[0] + dz * s.n[1])); } }
-  else if (drag === "fan") { P.fan_x = clampP("fan_x", m[0]); P.fan_z = clampP("fan_z", m[1] - coreZ()); }
+  else if (drag === "fan") { P.fan_x = clampP("fan_x", m[0]); P.fan_z = clampP("fan_z", m[1] - hipTop()); }
   else if (drag === "payload") { P.payload_x = clampP("payload_x", m[0]); P.payload_zf = clampP("payload_zf", (m[1] - coreZ()) / P.core_height); }
   roundAll(); syncInputs(); draw();
 });
 front.addEventListener("pointermove", e => {
   if (!drag || !drag.startsWith("F:")) return;
   const [px, py] = canvasXY(front, e), m = fM(px, py), what = drag.slice(2);
-  if (what === "fanL" || what === "fanR") { P.fan_y = clampP("fan_y", Math.abs(m[0])); P.fan_z = clampP("fan_z", m[1] - coreZ()); }
+  if (what === "fanL" || what === "fanR") { P.fan_y = clampP("fan_y", Math.abs(m[0])); P.fan_z = clampP("fan_z", m[1] - hipTop()); }
   else if (what === "hip") { P.hip_width = clampP("hip_width", 2 * (Math.abs(m[0]) - 0.01)); }
   else if (what === "payload") { P.payload_zf = clampP("payload_zf", (m[1] - coreZ()) / P.core_height); }
   roundAll(); syncInputs(); draw();

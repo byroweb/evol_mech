@@ -63,7 +63,7 @@ def structure_from_params(p: dict[str, float]) -> StructureSpec:
     post = math.hypot(p["pivot_b_dx"], p["pivot_b_dz"])
     hip = (SHELL_KG_PER_M2 * _box_area(HIP_HALF_X, hip_half_y(p), HIP_HALF_Z)
            + HIP_HARDWARE_KG + 2 * POST_KG_PER_M * post)
-    arm = math.sqrt(p["fan_x"] ** 2 + p["fan_y"] ** 2 + p["fan_z"] ** 2)
+    arm = math.sqrt(p["fan_x"] ** 2 + p["fan_y"] ** 2 + (p["fan_z"] - p["core_height"] / 2) ** 2)  # from core centre
     cy = core_half_y(p)
     core = (SHELL_KG_PER_M2 * _box_area(CORE_HALF_XY, cy, p["core_height"] / 2)
             + 2 * FAN_ARM_KG_PER_M * arm)

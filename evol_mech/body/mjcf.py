@@ -99,8 +99,9 @@ def _foot(side: str, p: dict[str, float], fx: float, fz: float) -> str:
 
 
 def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) -> str:
+    fz = p["fan_z"] - p["core_height"] / 2        # fan_z is measured from the core bottom
     return f"""
-        <body name="fan_{side}" pos="{p['fan_x']:.4f} {sign*p['fan_y']:.4f} {p['fan_z']:.4f}">
+        <body name="fan_{side}" pos="{p['fan_x']:.4f} {sign*p['fan_y']:.4f} {fz:.4f}">
           <joint name="fan_pitch_{side}" type="hinge" axis="0 1 0"
                  range="{-FAN_PITCH_RANGE:.4f} {FAN_PITCH_RANGE:.4f}" damping="0.02"/>
           <geom type="cylinder" size="{diam/2:.4f} 0.008" mass="{mass:.4f}"
