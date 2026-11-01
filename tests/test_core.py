@@ -91,7 +91,7 @@ def test_interference_check():
     from evol_mech.body.clearance import interference, is_buildable
     p = decode(DEFAULT_NORM)
     assert interference(p) is None and is_buildable(p)
-    low_fans = dict(p, fan_y=0.08, fan_z=0.0, fan_diam_in=5.0)
+    low_fans = dict(p, fan_gap=0.0, fan_z=0.0, fan_diam_in=5.0)
     assert interference(low_fans)[0] == "leg hits fan"
     narrow = dict(p, hip_width=0.08)
     assert interference(narrow)[0] == "leg hits core"

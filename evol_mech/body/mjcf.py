@@ -19,7 +19,7 @@ from .hardware import (fan_from_params, stepper_from_params,
                        FAN_PITCH_SERVO_KP, FAN_PITCH_SERVO_TORQUE)
 from . import linkage
 from .clearance import interference
-from .structure import (structure_from_params, hip_half_y, HIP_HALF_X, HIP_HALF_Z,
+from .structure import (structure_from_params, hip_half_y, fan_center_y, HIP_HALF_X, HIP_HALF_Z,
                         CORE_HALF_XY, LINK_RADIUS)
 
 SIM_DT = 0.002          # physics step
@@ -100,8 +100,9 @@ def _foot(side: str, p: dict[str, float], fx: float, fz: float) -> str:
 
 def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) -> str:
     fz = p["fan_z"] - p["core_height"] / 2        # fan_z is measured from the core bottom
+    fy = sign * fan_center_y(p)                   # fan_gap is prop edge to core side
     return f"""
-        <body name="fan_{side}" pos="{p['fan_x']:.4f} {sign*p['fan_y']:.4f} {fz:.4f}">
+        <body name="fan_{side}" pos="{p['fan_x']:.4f} {fy:.4f} {fz:.4f}">
           <joint name="fan_pitch_{side}" type="hinge" axis="0 1 0"
                  range="{-FAN_PITCH_RANGE:.4f} {FAN_PITCH_RANGE:.4f}" damping="0.02"/>
           <geom type="cylinder" size="{diam/2:.4f} 0.008" mass="{mass:.4f}"

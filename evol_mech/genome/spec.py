@@ -44,7 +44,7 @@ PARAMS: list[Param] = [
     Param("payload_x",      -0.06, 0.06, 0.00, "geometry"),   # fore/aft inside core
     Param("payload_zf",     -0.45, 0.45, -0.20, "geometry"),  # fraction of core height
     Param("fan_x",          -0.12, 0.12, 0.00, "geometry"),   # fore/aft on core
-    Param("fan_y",           0.06, 0.30, 0.14, "geometry"),   # half-spread
+    Param("fan_gap",         0.00, 0.15, 0.045, "geometry"),  # prop inboard edge to core side face
     Param("fan_z",           0.00, 0.35, 0.19, "geometry"),   # above the core BOTTOM (hip top)
     Param("foot_type",       0,    1,    0,    "geometry", 1),  # 0 = flat pad, 1 = ball end
     Param("foot_radius",     0.008, 0.030, 0.015, "geometry"), # pad thickness or ball radius

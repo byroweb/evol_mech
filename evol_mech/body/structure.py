@@ -59,11 +59,17 @@ def core_half_y(p: dict[str, float]) -> float:
     return max(CORE_HALF_XY, battery_half(p)[1] + BATTERY_CLEARANCE)
 
 
+def fan_center_y(p: dict[str, float]) -> float:
+    """Lateral fan centre: core side face + gap + prop radius, so widening the
+    core or the prop moves the fan outward instead of into something."""
+    return core_half_y(p) + p["fan_gap"] + p["fan_diam_in"] * 0.0254 / 2
+
+
 def structure_from_params(p: dict[str, float]) -> StructureSpec:
     post = math.hypot(p["pivot_b_dx"], p["pivot_b_dz"])
     hip = (SHELL_KG_PER_M2 * _box_area(HIP_HALF_X, hip_half_y(p), HIP_HALF_Z)
            + HIP_HARDWARE_KG + 2 * POST_KG_PER_M * post)
-    arm = math.sqrt(p["fan_x"] ** 2 + p["fan_y"] ** 2 + (p["fan_z"] - p["core_height"] / 2) ** 2)  # from core centre
+    arm = math.sqrt(p["fan_x"] ** 2 + fan_center_y(p) ** 2 + (p["fan_z"] - p["core_height"] / 2) ** 2)  # from core centre
     cy = core_half_y(p)
     core = (SHELL_KG_PER_M2 * _box_area(CORE_HALF_XY, cy, p["core_height"] / 2)
             + 2 * FAN_ARM_KG_PER_M * arm)
