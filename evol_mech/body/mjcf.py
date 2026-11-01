@@ -159,7 +159,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
             rgba="0.6 0.6 0.6 1"/>
       <body name="core" pos="0 0 {core_z:.4f}">
         {yaw_joint}
-        <geom name="core" type="box" size="{struct.core_half_x:.4f} {CORE_HALF_XY} {p['core_height']/2:.4f}" mass="{struct.core_kg:.4f}"
+        <geom name="core" type="box" size="{struct.core_half_x:.4f} {struct.core_half_y:.4f} {p['core_height']/2:.4f}" mass="{struct.core_kg:.4f}"
               rgba="0.7 0.3 0.3 0.6"/>
         <geom name="payload" type="box" pos="{p['payload_x']:.4f} 0 {payload_z:.4f}" size="{px:.4f} {py:.4f} {pz:.4f}"
               mass="{struct.payload_kg:.4f}" rgba="0.2 0.2 0.6 1" {NOCOL}/>

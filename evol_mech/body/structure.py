@@ -13,7 +13,9 @@ import math
 
 HIP_HALF_X = 0.05               # hip box (drivetrain housing), fore/aft half-size
 HIP_HALF_Z = 0.035              # hip box half-height; pivot B sits on a post above it
-CORE_HALF_XY = 0.05             # core box footprint half-size (x grows to fit the battery)
+CORE_HALF_XY = 0.05             # core box footprint half-size: x grows to fit the battery,
+                                # y shrinks with the hip so narrow hips still clear the legs
+CORE_SIDE_GAP = 0.012           # core side face to leg plane (link radius + check margin + 3 mm)
 BATTERY_CLEARANCE = 0.005
 LINK_RADIUS = 0.006
 LEG_SIDE_GAP = 0.002            # leg plane clearance outside the hip side face
@@ -42,6 +44,7 @@ class StructureSpec:
     hip_kg: float               # shell + hardware + both posts (excl. steppers)
     core_kg: float              # shell + both fan arms
     core_half_x: float          # core footprint fore/aft half-length (>= CORE_HALF_XY)
+    core_half_y: float          # core footprint half-width (<= CORE_HALF_XY, >= battery)
     battery_kg: float
     payload_kg: float           # battery + electronics
     payload_half: tuple[float, float, float]
@@ -68,7 +71,11 @@ def payload_z(p: dict[str, float]) -> float:
 
 
 def core_half_y(p: dict[str, float]) -> float:
-    return max(CORE_HALF_XY, battery_half(p)[1] + BATTERY_CLEARANCE)
+    """Core width follows the hip so the leg planes stay outside it, never
+    narrower than the battery needs; a battery too wide for the hip then fails
+    the clearance check instead of silently widening the core into the legs."""
+    return max(battery_half(p)[1] + BATTERY_CLEARANCE,
+               min(CORE_HALF_XY, p["hip_width"] / 2 - CORE_SIDE_GAP))
 
 
 def fan_center_y(p: dict[str, float]) -> float:
@@ -87,8 +94,8 @@ def structure_from_params(p: dict[str, float]) -> StructureSpec:
     hip = (SHELL_KG_PER_M2 * _box_area(HIP_HALF_X, hip_half_y(p), HIP_HALF_Z)
            + HIP_HARDWARE_KG + 2 * POST_KG_PER_M * post)
     arm = math.sqrt(p["fan_x"] ** 2 + fan_center_y(p) ** 2 + fan_z_core(p) ** 2)  # from core centre
-    cx = core_half_x(p)
-    core = (SHELL_KG_PER_M2 * _box_area(cx, core_half_y(p), p["core_height"] / 2)
+    cx, cy = core_half_x(p), core_half_y(p)
+    core = (SHELL_KG_PER_M2 * _box_area(cx, cy, p["core_height"] / 2)
             + 2 * FAN_ARM_KG_PER_M * arm)
     battery = BATTERY_KG_BASE + BATTERY_KG_PER_MAH * p["battery_mah"]
-    return StructureSpec(hip, core, cx, battery, battery + ELECTRONICS_KG, battery_half(p))
+    return StructureSpec(hip, core, cx, cy, battery, battery + ELECTRONICS_KG, battery_half(p))

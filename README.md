@@ -55,7 +55,8 @@ height below it, so the foot path is set by link lengths and that triangle. The
 core sits on the hip, rigidly by default or on a ±30° yaw pivot when the run
 config sets `"waist_yaw": true` (the yaw gains in the genome are inert
 otherwise). It holds a 4S battery, lying flat with its long axis fore/aft, so the
-core lengthens (never widens) with capacity; capacity and position are in
+core lengthens with capacity and is never wider than the hip allows, so
+narrow hips still clear the legs; capacity and position are in
 the genome. The fans are placed by the gap between the prop's inboard edge
 and the core side, so they move outward with prop size and core width, and
 their height is a fraction of the core height, so they never sit above it. Two pitch-vectored fans sit on the core. The foot

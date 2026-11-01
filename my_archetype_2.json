@@ -24,7 +24,7 @@
     "payload_x": 0,
     "payload_zf": -0.2,
     "fan_x": -0.104,
-    "fan_gap": 0.008,
+    "fan_gap": 0.03,
     "fan_zf": 0.5143,
     "foot_type": 1,
     "foot_radius": 0.015,

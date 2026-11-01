@@ -37,7 +37,7 @@ DEG = math.pi / 180.0
 
 PARAMS: list[Param] = [
     # ---- body geometry (metres) ----------------------------------------------
-    Param("hip_width",       0.08, 0.30, 0.16, "geometry"),   # between leg planes
+    Param("hip_width",       0.06, 0.30, 0.16, "geometry"),   # between leg planes
     Param("core_height",     0.05, 0.30, 0.14, "geometry"),
     # payload = 4S LiPo + electronics allowance, a dense block placed inside the core
     Param("battery_mah",     1000, 6000, 2200, "geometry", 100),

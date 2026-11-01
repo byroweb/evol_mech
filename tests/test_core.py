@@ -93,7 +93,7 @@ def test_interference_check():
     assert interference(p) is None and is_buildable(p)
     low_fans = dict(p, fan_gap=0.0, fan_zf=0.0, fan_diam_in=5.0)
     assert interference(low_fans)[0] == "leg hits fan"
-    narrow = dict(p, hip_width=0.08)
+    narrow = dict(p, hip_width=0.06, battery_mah=6000)   # pack wider than the hip allows
     assert interference(narrow)[0] == "leg hits core"
     with pytest.raises(InvalidBody):
         make_model(encode(narrow), "flat", np.random.default_rng(0))
@@ -183,3 +183,16 @@ def test_only_feet_may_touch_the_floor():
     from evol_mech.sim.rollout import _body_touching_floor
     feet = {gid("foot_l"), gid("foot_r")}
     assert _body_touching_floor(data, {g for g in range(model.ngeom) if g not in feet and g != floor}, floor)
+
+
+def test_narrow_hip_builds_with_core_following():
+    from evol_mech.body.structure import core_half_y, battery_half
+    from evol_mech.body.clearance import interference
+    p = decode(DEFAULT_NORM)
+    narrow = dict(p, hip_width=0.08)
+    assert core_half_y(narrow) < core_half_y(p) and core_half_y(narrow) >= battery_half(narrow)[1]
+    assert interference(narrow) is None
+    m, _ = make_model(encode(narrow), "flat", np.random.default_rng(0))
+    assert m.geom_size[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "core")][1] < 0.05
+    # a pack too wide for the hip is rejected rather than widening the core into the legs
+    assert interference(dict(narrow, hip_width=0.06, battery_mah=6000)) is not None
