@@ -29,6 +29,22 @@ Two simulators, two stages:
     .venv\Scripts\python tools\benchmark.py        # steps/sec per worker
     .venv\Scripts\python -m evol_mech.evolve.run configs\default.json
     .venv\Scripts\python tools\view.py runs\dev\best.json   # interactive viewer
+    .venv\Scripts\python tools\plot_linkage.py runs\dev\best.json -o leg.png
+
+## Designing an archetype by hand
+
+Open `tools/linkage_editor.html` in a browser (double-click; no server needed).
+Drag the linkage points A/B/C/D/P from the design sketch, watch the foot path,
+tag the body parts with your own names, and **Export JSON**. Then seed a run
+from it:
+
+    .venv\Scripts\python -m evol_mech.evolve.run configs\default.json --archetype path\to\my_archetype.json
+
+or set `"archetype": "configs/archetypes/my_archetype.json"` in the config.
+The initial population is sampled around the archetype, which is itself kept
+as individual 0 of generation 0. `configs/archetypes/default.json` is the
+built-in default body. Values outside the genome bounds are flagged in the
+editor and rejected on load.
 
 ## Design notes
 
