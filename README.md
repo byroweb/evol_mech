@@ -55,7 +55,10 @@ height below it, so the foot path is set by link lengths and that triangle. A ±
 the core, which holds a light shell plus a dense payload block (battery and
 electronics) whose position is in the genome. Two pitch-vectored fans sit on
 the core. Linkages that are not rotatable crank-rockers are rejected before
-simulation (`body/linkage.py`).
+simulation (`body/linkage.py`). Both fixed pivots A and B are mounted on the
+hip, never the core, so the waist angle does not change the foot locus;
+`pivot_b_dz` can place B above the hip box, which means a bracket rising past
+the waist on a real build.
 
 **Hardware models** (`body/hardware.py`). Fans: thrust from momentum theory
 with motor power proportional to stator volume, mass from the same spec,
