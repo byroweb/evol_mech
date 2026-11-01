@@ -164,8 +164,10 @@ function stepperSpec(p) {
 }
 
 // ---------- geometry shared by views ----------
-const HZ = 0.035;                              // hip half-height
-const coreZ = () => HZ + P.core_height / 2;
+const HZ = 0.035, PIVOT_MARGIN = 0.015;        // hip extends HZ below A and past pivot B
+const hipHX = () => Math.max(0.05, Math.abs(P.pivot_b_dx) + PIVOT_MARGIN);
+const hipTop = () => Math.max(HZ, P.pivot_b_dz + PIVOT_MARGIN);   // both pivots are hip-mounted
+const coreZ = () => hipTop() + P.core_height / 2;
 const payloadZ = () => coreZ() + P.payload_zf * P.core_height;
 const fanZ = () => coreZ() + P.fan_z;
 
@@ -199,8 +201,8 @@ function groundZ(path) { const zs = path.filter(Boolean).map(q => q[1]); return 
 function drawSide(valid, path) {
   const ctx = sctx; ctx.clearRect(0, 0, side.width, side.height); grid(ctx, side, sPx);
   const B = [P.pivot_b_dx, P.pivot_b_dz], fan = fanSpec(P);
-  rect(ctx, sPx, [-0.05, -HZ], [0.05, HZ], "#e5e7eb");
-  rect(ctx, sPx, [-0.05, HZ], [0.05, HZ + P.core_height], "#e5e7eb");
+  rect(ctx, sPx, [-hipHX(), -HZ], [hipHX(), hipTop()], "#e5e7eb");
+  rect(ctx, sPx, [-0.05, hipTop()], [0.05, hipTop() + P.core_height], "#fee2e2");
   rect(ctx, sPx, [P.payload_x - 0.03, payloadZ() - 0.015], [P.payload_x + 0.03, payloadZ() + 0.015], "#c7d2fe");
   rect(ctx, sPx, [P.fan_x - fan.d / 2, fanZ() - 0.008], [P.fan_x + fan.d / 2, fanZ() + 0.008], "#fde68a");
   seg(ctx, sPx, [0, coreZ()], [P.fan_x, fanZ()], "#bbb", 1);
@@ -236,8 +238,8 @@ function drawFront(path) {
     rect(ctx, fPx, [y - P.foot_radius, pz - P.foot_radius], [y + P.foot_radius, pz + P.foot_radius], "#333", "#111");
   }
   seg(ctx, fPx, [-1, zg], [1, zg], "#a16207", 2);
-  rect(ctx, fPx, [-hw, -HZ], [hw, HZ], "#e5e7eb");
-  rect(ctx, fPx, [-0.05, HZ], [0.05, HZ + P.core_height], "#e5e7eb");
+  rect(ctx, fPx, [-hw, -HZ], [hw, hipTop()], "#e5e7eb");
+  rect(ctx, fPx, [-0.05, hipTop()], [0.05, hipTop() + P.core_height], "#fee2e2");
   rect(ctx, fPx, [-0.035, payloadZ() - 0.015], [0.035, payloadZ() + 0.015], "#c7d2fe");
   for (const sign of [1, -1]) {
     seg(ctx, fPx, [0, coreZ()], [sign * P.fan_y, fanZ()], "#bbb", 1);
@@ -275,7 +277,7 @@ function updateMetrics(valid, path) {
   } else m.innerHTML = "";
   const fan = fanSpec(P), st_ = stepperSpec(P);
   const total = P.hip_struct_mass + 2 * st_.mass + P.core_shell_mass + P.payload_mass + 2 * fan.mass;
-  const standH = pts.length ? (-Math.min(...pts.map(q => q[1])) + P.foot_radius + HZ + P.core_height) : 0;
+  const standH = pts.length ? (-Math.min(...pts.map(q => q[1])) + P.foot_radius + hipTop() + P.core_height) : 0;
   document.getElementById("hw").innerHTML = [
     ["fan max thrust, each", fan.tmax, "N (" + (fan.tmax / 9.81 * 1000).toFixed(0) + " gf)"],
     ["fan motor power", fan.power, "W"], ["fan + motor + servo mass", fan.mass * 1000, "g"],
