@@ -89,7 +89,8 @@ be replaced by bench measurements.
 cranks where the feet are level and centred. Fans run a PD attitude loop:
 roll to differential throttle, pitch to fan pitch. Gains are in the genome.
 
-**Fitness** (`sim/rollout.py`). Walk: forward distance, minus lateral drift,
+**Fitness** (`sim/rollout.py`). Walk: forward distance scaled by the fraction
+of the task spent upright, minus lateral drift,
 fall penalty and fan energy. Stand: fraction of time upright under periodic
 shoves, minus drift (`drift_cost` per metre, default 1.0) and fan energy.
 `fan_energy_cost` (0.2 by default) prices fan use so that thrust-propelled

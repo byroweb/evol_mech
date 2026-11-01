@@ -142,7 +142,10 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     if unstable:
         fitness = UNSTABLE_FITNESS
     elif objective == "walk":
-        fitness = dx - 0.2 * abs(dy) - (0.5 if fell else 0.0) - fan_energy_cost * fan_energy
+        # distance only counts in proportion to the time spent upright, so a
+        # forward lunge that ends in a fall keeps only a sliver of its metres
+        upright_frac = time_upright / duration
+        fitness = dx * upright_frac - 0.2 * abs(dy) - (0.5 if fell else 0.0) - fan_energy_cost * fan_energy
     elif objective == "stand":
         # drift_cost per metre: sliding away under the fans is not standing
         fitness = (time_upright / duration) - float(task.get("drift_cost", 1.0)) * math.hypot(dx, dy) - fan_energy_cost * fan_energy
