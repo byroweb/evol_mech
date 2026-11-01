@@ -55,7 +55,7 @@ def test_fan_model_is_sane():
 @pytest.mark.parametrize("terrain", TERRAINS)
 def test_all_terrains_compile_and_step(terrain):
     model, _ = make_model(DEFAULT_NORM, terrain, np.random.default_rng(0))
-    assert model.nu == 7
+    assert model.nu == 6          # 2 cranks, 2 fan pitch, 2 fan thrust (yaw off by default)
     r = rollout(DEFAULT_NORM, {"name": "t", "terrain": terrain, "objective": "walk", "duration": 1.0})
     assert not r["unstable"]
     assert r["sim_steps"] > 0
@@ -69,7 +69,7 @@ def test_editor_spec_matches_python_spec():
     html = Path(__file__).resolve().parents[1].joinpath("tools", "linkage_editor.html").read_text(encoding="utf-8")
     block = re.search(r"const SPEC = (\[.*?\]);", html, re.S).group(1)
     editor = json.loads(block)
-    py = [dict(name=p.name, lo=p.lo, hi=p.hi, default=p.default, group=p.group) for p in PARAMS]
+    py = [dict(name=p.name, lo=p.lo, hi=p.hi, default=p.default, group=p.group, step=p.step) for p in PARAMS]
     assert editor == py, "run: python -c \"from evol_mech.genome.spec import PARAMS; ...\" and paste into the editor's SPEC"
 
 
@@ -96,3 +96,25 @@ def test_interference_check():
     assert interference(narrow)[0] == "leg hits core"
     with pytest.raises(InvalidBody):
         make_model(encode(narrow), "flat", np.random.default_rng(0))
+
+
+def test_catalogue_steps_and_derived_masses():
+    from evol_mech.body.structure import structure_from_params
+    rng = np.random.default_rng(1)
+    for _ in range(20):
+        p = decode(rng.random(N_PARAMS))
+        for k in ("fan_diam_in", "fan_blades", "stator_d_mm", "stator_h_mm"):
+            assert p[k] == round(p[k])
+        assert p["battery_mah"] % 100 == 0
+    p = decode(DEFAULT_NORM)
+    s = structure_from_params(p)
+    assert 0.1 < s.hip_kg < 0.5 and 0.1 < s.core_kg < 0.5 and 0.4 < s.payload_kg < 0.6
+    bigger = structure_from_params(dict(p, battery_mah=5000, core_height=0.3))
+    assert bigger.payload_kg > s.payload_kg and bigger.core_kg > s.core_kg
+
+
+def test_waist_yaw_switch():
+    g = encode(dict(decode(DEFAULT_NORM), hip_width=0.22))   # room for the core to yaw past the rockers
+    m_fixed, _ = make_model(g, "flat", np.random.default_rng(0))
+    m_yaw, _ = make_model(g, "flat", np.random.default_rng(0), waist_yaw=True)
+    assert m_yaw.nu == m_fixed.nu + 1 and m_yaw.njnt == m_fixed.njnt + 1

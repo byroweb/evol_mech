@@ -51,10 +51,18 @@ editor and rejected on load.
 **Body.** Hip (steppers inside) with two identical crank-rocker 4-bar legs in
 the sagittal plane (crank pivot A, crank tip D, rocker pivot B, joint C); the
 foot P is a flat pad rigid to the coupler CD, placed a fraction along CD and a
-height below it, so the foot path is set by link lengths and that triangle. A ±30° yaw pivot carries
-the core, which holds a light shell plus a dense payload block (battery and
-electronics) whose position is in the genome. Two pitch-vectored fans sit on
-the core. Linkages that are not rotatable crank-rockers are rejected before
+height below it, so the foot path is set by link lengths and that triangle. The
+core sits on the hip, rigidly by default or on a ±30° yaw pivot when the run
+config sets `"waist_yaw": true` (the yaw gains in the genome are inert
+otherwise). It holds a 4S battery whose capacity and position are in the
+genome, and two pitch-vectored fans.
+
+**Masses are derived, not evolved** (`body/structure.py`): hip and core shells
+weigh what printed boxes of their size weigh, bracket posts and fan arms by
+length, plus a 250 g electronics allowance and a battery mass that follows
+capacity. Fan and stepper masses come from their specs. Catalogue parts are
+snapped on decode: whole-inch props, whole blades, whole-mm stator sizes,
+100 mAh battery steps. Linkages that are not rotatable crank-rockers are rejected before
 simulation (`body/linkage.py`). Both fixed pivots A and B are mounted on the
 hip, never the core, so the waist angle does not change the foot locus. B sits
 on a post above the compact hip; `body/clearance.py` rejects any body whose leg

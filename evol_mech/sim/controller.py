@@ -57,7 +57,8 @@ class Controller:
         for s in ("l", "r"):
             err = q_ref - float(data.qpos[self.q_adr[s]])
             c[i[f"crank_{s}"]] = omega + STEPPER_TRACK_GAIN * err
-        c[i["core_yaw"]] = p["yaw_amp"] * math.sin(omega * t) if self.gait_enabled else 0.0
+        if i["core_yaw"] >= 0:   # waist yaw is optional (config "waist_yaw")
+            c[i["core_yaw"]] = p["yaw_amp"] * math.sin(omega * t) if self.gait_enabled else 0.0
 
         # --- fan layer: PD attitude loop -------------------------------------
         if self.fans_enabled:

@@ -33,12 +33,12 @@ TERRAIN_ZMAX = {"flat": 0.0, "cobblestone": 0.02, "potholes": 0.03, "gravel": 0.
 
 
 def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator,
-               park: bool = False):
+               park: bool = False, waist_yaw: bool = False):
     """Compile a model. Raises InvalidBody for un-buildable genomes."""
     p = decode(genome)
     asset, geom, hdata = terrain_mod.build(terrain_kind, rng)
     theta_l = linkage.parking_angle(p, p["crank_phase_r"]) if park else 0.0
-    xml = build_mjcf(p, asset, geom, TERRAIN_ZMAX.get(terrain_kind, 0.0), theta_l=theta_l)
+    xml = build_mjcf(p, asset, geom, TERRAIN_ZMAX.get(terrain_kind, 0.0), theta_l=theta_l, waist_yaw=waist_yaw)
     model = mujoco.MjModel.from_xml_string(xml)
     if hdata is not None:
         model.hfield_data[:] = hdata.ravel()
@@ -67,12 +67,12 @@ def _invalid_result(reason: str) -> dict:
 
 
 def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
-            fans_enabled: bool = True, fan_energy_cost: float = 0.02,
+            fans_enabled: bool = True, fan_energy_cost: float = 0.02, waist_yaw: bool = False,
             frame_cb=None, stop_on_fall: bool = True) -> dict:
     rng = np.random.default_rng(seed)
     objective = task["objective"]
     try:
-        model, p = make_model(genome, task["terrain"], rng, park=(objective == "stand"))
+        model, p = make_model(genome, task["terrain"], rng, park=(objective == "stand"), waist_yaw=waist_yaw)
     except InvalidBody as e:
         return _invalid_result(str(e))
     data = mujoco.MjData(model)
@@ -170,7 +170,8 @@ def evaluate(genome: np.ndarray, cfg: dict, seed: int) -> dict:
     for ti, task in enumerate(cfg["tasks"]):
         m = rollout(genome, task, seed=seed * 1000 + ti,
                     fans_enabled=cfg.get("fans_enabled", True),
-                    fan_energy_cost=cfg.get("fan_energy_cost", 0.02))
+                    fan_energy_cost=cfg.get("fan_energy_cost", 0.02),
+                    waist_yaw=cfg.get("waist_yaw", False))
         out["fitness"] += task.get("weight", 1.0) * m["fitness"]
         out["sim_steps"] += m["sim_steps"]
         out["wall_s"] += m["wall_s"]

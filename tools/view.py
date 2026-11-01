@@ -25,10 +25,11 @@ def main():
     ap.add_argument("--stand", action="store_true", help="hold cranks still")
     ap.add_argument("--no-fans", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--yaw", action="store_true", help="core on a yaw hinge (config waist_yaw)")
     args = ap.parse_args()
 
     genome = load_genome(args.best) if args.best else DEFAULT_NORM
-    model, p = make_model(genome, args.terrain, np.random.default_rng(args.seed), park=args.stand)
+    model, p = make_model(genome, args.terrain, np.random.default_rng(args.seed), park=args.stand, waist_yaw=args.yaw)
     data = mujoco.MjData(model)
     ctrl = Controller(model, p, fans_enabled=not args.no_fans, gait_enabled=not args.stand)
 

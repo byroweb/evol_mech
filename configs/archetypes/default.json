@@ -17,10 +17,8 @@
   },
   "phys": {
     "hip_width": 0.16,
-    "hip_struct_mass": 0.4,
     "core_height": 0.14,
-    "core_shell_mass": 0.2,
-    "payload_mass": 0.44999999999999996,
+    "battery_mah": 2200.0,
     "payload_x": 0.0,
     "payload_zf": -0.2,
     "fan_x": 0.0,
@@ -29,10 +27,10 @@
     "foot_radius": 0.015,
     "foot_half_len": 0.035,
     "crank_len": 0.035,
-    "coupler_len": 0.11000000000000001,
+    "coupler_len": 0.11,
     "rocker_len": 0.14,
     "pivot_b_dx": -0.05,
-    "pivot_b_dz": 0.10000000000000002,
+    "pivot_b_dz": 0.1,
     "foot_frac": 0.45,
     "foot_height": 0.16,
     "stepper_torque": 0.2,
@@ -43,13 +41,14 @@
     "stator_d_mm": 18.0,
     "stator_h_mm": 6.0,
     "crank_speed_hz": 1.0,
-    "crank_phase_r": 3.141592653589793,
+    "crank_phase_r": 3.141593,
     "yaw_amp": 0.0,
     "fan_base": 0.2,
     "fan_kp_roll": 0.5,
-    "fan_kd_roll": 0.050000000000000044,
-    "fan_pitch_bias": 0.17453292519943298,
+    "fan_kd_roll": 0.05,
+    "fan_pitch_bias": 0.174533,
     "fan_kp_pitch": 1.0,
-    "fan_kd_pitch": 0.10000000000000009
-  }
+    "fan_kd_pitch": 0.1
+  },
+  "waist_yaw": false
 }

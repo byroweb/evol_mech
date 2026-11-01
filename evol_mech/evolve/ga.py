@@ -32,7 +32,8 @@ def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, 
     rng = np.random.default_rng(cfg["seed"])
     n = cfg["population"]
     center = archetype_center(cfg.get("archetype"))
-    pop = np.stack([random_genome(rng, cfg.get("init_spread", 0.25), center=center) for _ in range(n)])
+    pop = np.stack([random_genome(rng, cfg.get("init_spread", 0.25), center=center,
+                                  waist_yaw=cfg.get("waist_yaw", False)) for _ in range(n)])
     pop[0] = center   # keep the archetype itself in generation 0
     best_genome, best_result, best_fit = None, None, -np.inf
 

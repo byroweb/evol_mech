@@ -19,13 +19,12 @@ from .hardware import (fan_from_params, stepper_from_params,
                        FAN_PITCH_SERVO_KP, FAN_PITCH_SERVO_TORQUE)
 from . import linkage
 from .clearance import interference
+from .structure import (structure_from_params, hip_half_y, HIP_HALF_X, HIP_HALF_Z,
+                        CORE_HALF_XY, LINK_RADIUS)
 
 SIM_DT = 0.002          # physics step
 YAW_RANGE = math.radians(30)
 FAN_PITCH_RANGE = math.radians(90)
-HIP_HALF_X = 0.05
-HIP_HALF_Z = 0.035      # hip box half-height; pivot B sits on a post above it
-LINK_RADIUS = 0.006
 NOCOL = 'contype="0" conaffinity="0"'
 
 ACTUATOR_NAMES = [
@@ -103,18 +102,25 @@ def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) 
 
 
 def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
-               terrain_zmax: float = 0.0, theta_l: float = 0.0) -> str:
-    """theta_l: initial left crank angle; the right crank is theta_l + crank_phase_r."""
+               terrain_zmax: float = 0.0, theta_l: float = 0.0, waist_yaw: bool = False) -> str:
+    """theta_l: initial left crank angle; the right crank is theta_l + crank_phase_r.
+    waist_yaw: put the core on a +-30 deg yaw hinge (else rigid to the hip)."""
     if not linkage.is_valid(p):
         raise InvalidBody("linkage is not a rotatable crank-rocker")
-    hit = interference(p)
+    hit = interference(p, YAW_RANGE if waist_yaw else 0.0)
     if hit is not None:
         raise InvalidBody(hit[0])
     fan = fan_from_params(p)
     step = stepper_from_params(p)
-    hip_mass = p["hip_struct_mass"] + 2 * step.mass_kg
-    hy = p["hip_width"] / 2 - LINK_RADIUS - 0.002   # legs run just outside the hip's side faces
+    struct = structure_from_params(p)
+    hip_mass = struct.hip_kg + 2 * step.mass_kg
+    hy = hip_half_y(p)                  # legs run just outside the hip's side faces
     core_z = HIP_HALF_Z + p["core_height"] / 2
+    px, py, pz = struct.payload_half
+    yaw_joint = (f'<joint name="core_yaw" type="hinge" axis="0 0 1" '
+                 f'range="{-YAW_RANGE:.4f} {YAW_RANGE:.4f}" damping="0.2"/>' if waist_yaw else "")
+    yaw_act = (f'<position name="core_yaw" joint="core_yaw" kp="{p["kp_yaw"]:.3f}" '
+               f'kv="{p["kp_yaw"]*0.05:.3f}" forcerange="-3 3"/>' if waist_yaw else "")
     payload_z = p["payload_zf"] * p["core_height"]
     theta_r = theta_l + p["crank_phase_r"]
     z0 = spawn_height(p, terrain_zmax, theta_l)
@@ -139,11 +145,11 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
       <geom name="hip" type="box" size="{HIP_HALF_X} {hy:.4f} {HIP_HALF_Z}" mass="{hip_mass:.4f}"
             rgba="0.6 0.6 0.6 1"/>
       <body name="core" pos="0 0 {core_z:.4f}">
-        <joint name="core_yaw" type="hinge" axis="0 0 1" range="{-YAW_RANGE:.4f} {YAW_RANGE:.4f}" damping="0.2"/>
-        <geom name="core" type="box" size="0.05 0.05 {p['core_height']/2:.4f}" mass="{p['core_shell_mass']:.4f}"
+        {yaw_joint}
+        <geom name="core" type="box" size="{struct.core_half_x:.4f} {CORE_HALF_XY} {p['core_height']/2:.4f}" mass="{struct.core_kg:.4f}"
               rgba="0.7 0.3 0.3 0.6"/>
-        <geom name="payload" type="box" pos="{p['payload_x']:.4f} 0 {payload_z:.4f}" size="0.03 0.035 0.015"
-              mass="{p['payload_mass']:.4f}" rgba="0.2 0.2 0.6 1" {NOCOL}/>
+        <geom name="payload" type="box" pos="{p['payload_x']:.4f} 0 {payload_z:.4f}" size="{px:.4f} {py:.4f} {pz:.4f}"
+              mass="{struct.payload_kg:.4f}" rgba="0.2 0.2 0.6 1" {NOCOL}/>
         {_fan('l', +1.0, p, fan.mass_kg, fan.diam_m)}
         {_fan('r', -1.0, p, fan.mass_kg, fan.diam_m)}
       </body>
@@ -162,7 +168,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
               forcerange="{-step.crank_torque_nm:.4f} {step.crank_torque_nm:.4f}"/>
     <velocity name="crank_r" joint="crank_r" kv="2.0"
               forcerange="{-step.crank_torque_nm:.4f} {step.crank_torque_nm:.4f}"/>
-    <position name="core_yaw" joint="core_yaw" kp="{p['kp_yaw']:.3f}" kv="{p['kp_yaw']*0.05:.3f}" forcerange="-3 3"/>
+    {yaw_act}
     <position name="fan_pitch_l" joint="fan_pitch_l" kp="{FAN_PITCH_SERVO_KP}" kv="0.1"
               forcerange="{-FAN_PITCH_SERVO_TORQUE} {FAN_PITCH_SERVO_TORQUE}"/>
     <position name="fan_pitch_r" joint="fan_pitch_r" kp="{FAN_PITCH_SERVO_KP}" kv="0.1"
