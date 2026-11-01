@@ -91,7 +91,7 @@ def test_interference_check():
     from evol_mech.body.clearance import interference, is_buildable
     p = decode(DEFAULT_NORM)
     assert interference(p) is None and is_buildable(p)
-    low_fans = dict(p, fan_gap=0.0, fan_z=0.0, fan_diam_in=5.0)
+    low_fans = dict(p, fan_gap=0.0, fan_zf=0.0, fan_diam_in=5.0)
     assert interference(low_fans)[0] == "leg hits fan"
     narrow = dict(p, hip_width=0.08)
     assert interference(narrow)[0] == "leg hits core"
@@ -115,7 +115,7 @@ def test_catalogue_steps_and_derived_masses():
 
 
 def test_waist_yaw_switch():
-    g = encode(dict(decode(DEFAULT_NORM), hip_width=0.22))   # room for the core to yaw past the rockers
+    g = encode(dict(decode(DEFAULT_NORM), hip_width=0.22, fan_gap=0.10))   # room for core and fans to yaw past the rockers
     m_fixed, _ = make_model(g, "flat", np.random.default_rng(0))
     m_yaw, _ = make_model(g, "flat", np.random.default_rng(0), waist_yaw=True)
     assert m_yaw.nu == m_fixed.nu + 1 and m_yaw.njnt == m_fixed.njnt + 1

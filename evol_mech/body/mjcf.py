@@ -19,7 +19,7 @@ from .hardware import (fan_from_params, stepper_from_params,
                        FAN_PITCH_SERVO_KP, FAN_PITCH_SERVO_TORQUE)
 from . import linkage
 from .clearance import interference
-from .structure import (structure_from_params, hip_half_y, fan_center_y, payload_z as _payload_z, HIP_HALF_X, HIP_HALF_Z,
+from .structure import (structure_from_params, hip_half_y, fan_center_y, fan_z_core, payload_z as _payload_z, HIP_HALF_X, HIP_HALF_Z,
                         CORE_HALF_XY, LINK_RADIUS)
 
 SIM_DT = 0.002          # physics step
@@ -99,7 +99,7 @@ def _foot(side: str, p: dict[str, float], fx: float, fz: float) -> str:
 
 
 def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) -> str:
-    fz = p["fan_z"] - p["core_height"] / 2        # fan_z is measured from the core bottom
+    fz = fan_z_core(p)                            # fan_zf: fraction of core height
     fy = sign * fan_center_y(p)                   # fan_gap is prop edge to core side
     return f"""
         <body name="fan_{side}" pos="{p['fan_x']:.4f} {fy:.4f} {fz:.4f}">

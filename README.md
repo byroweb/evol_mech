@@ -57,7 +57,8 @@ config sets `"waist_yaw": true` (the yaw gains in the genome are inert
 otherwise). It holds a 4S battery, lying flat with its long axis fore/aft, so the
 core lengthens (never widens) with capacity; capacity and position are in
 the genome. The fans are placed by the gap between the prop's inboard edge
-and the core side, so they move outward with prop size and core width. Two pitch-vectored fans sit on the core. The foot
+and the core side, so they move outward with prop size and core width, and
+their height is a fraction of the core height, so they never sit above it. Two pitch-vectored fans sit on the core. The foot
 is a gene: a flat pad along the coupler or a ball end (rotation-invariant
 contact).
 
