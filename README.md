@@ -66,6 +66,8 @@ contact).
 **Locking genes.** The run config's `"locked"` list (or `--lock a,b` on the
 command line) holds those genes at the archetype's value through initialisation,
 crossover and mutation, e.g. `--lock foot_type` to evolve around a chosen foot.
+`--lock-groups geometry,linkage,drivetrain,fan_spec` freezes the whole body and
+evolves only the gait and fan-controller genes.
 
 **Masses are derived, not evolved** (`body/structure.py`): hip and core shells
 weigh what printed boxes of their size weigh, bracket posts and fan arms by

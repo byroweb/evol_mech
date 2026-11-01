@@ -19,6 +19,7 @@ def main():
     ap.add_argument("--runs-dir", default="runs")
     ap.add_argument("--archetype", help="archetype JSON from tools/linkage_editor.html")
     ap.add_argument("--lock", help="comma-separated genes held at the archetype value (adds to config 'locked')")
+    ap.add_argument("--lock-groups", help="comma-separated gene groups to lock entirely, e.g. geometry,linkage,drivetrain,fan_spec")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -27,8 +28,18 @@ def main():
         v = getattr(args, k)
         if v is not None:
             cfg[k] = v
+    locked = set(cfg.get("locked", []))
     if args.lock:
-        cfg["locked"] = sorted(set(cfg.get("locked", [])) | set(args.lock.split(",")))
+        locked |= set(args.lock.split(","))
+    if args.lock_groups:
+        from ..genome.spec import PARAMS
+        groups = set(args.lock_groups.split(","))
+        unknown = groups - {p.group for p in PARAMS}
+        if unknown:
+            raise SystemExit(f"unknown gene groups {sorted(unknown)}")
+        locked |= {p.name for p in PARAMS if p.group in groups}
+    if locked:
+        cfg["locked"] = sorted(locked)
 
     store = RunStore(args.runs_dir, cfg["run_name"], cfg)
     print(f"run '{cfg['run_name']}' -> {store.dir}   pop={cfg['population']} "
