@@ -158,3 +158,28 @@ def test_payload_inside_core_and_floor_grid():
     for kind in ("flat", "cobblestone"):
         m, _ = make_model(DEFAULT_NORM, kind, np.random.default_rng(0))
         assert mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_MATERIAL, "grid") >= 0
+
+
+def test_only_feet_may_touch_the_floor():
+    from evol_mech.sim.rollout import rollout
+    m, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
+    gid = lambda n: mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, n)
+    floor, foot = gid("floor"), gid("foot_l")
+    links = [g for g in range(m.ngeom) if m.geom_contype[g] == 0]
+    assert links, "expected link/fan geoms with contype 0"
+    for g in range(m.ngeom):
+        if g == floor:
+            continue
+        hits_floor = bool(m.geom_contype[g] & m.geom_conaffinity[floor]) or bool(m.geom_contype[floor] & m.geom_conaffinity[g])
+        assert hits_floor, f"geom {g} could never touch the floor"
+    for g in links:   # links never collide with each other or the feet/body
+        assert not (m.geom_contype[g] & m.geom_conaffinity[foot]) and not (m.geom_contype[foot] & m.geom_conaffinity[g])
+    # tip the body onto its side: a shin/fan/core touches down and the rollout reports a fall
+    import mujoco as mj
+    model = m; data = mj.MjData(model); data.qpos[:] = 0; data.qpos[2] = 0.15
+    data.qpos[3:7] = [0.7071, 0.7071, 0, 0]   # 90 deg roll
+    for _ in range(400):
+        mj.mj_step(model, data)
+    from evol_mech.sim.rollout import _body_touching_floor
+    feet = {gid("foot_l"), gid("foot_r")}
+    assert _body_touching_floor(data, {g for g in range(model.ngeom) if g not in feet and g != floor}, floor)

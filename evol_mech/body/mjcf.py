@@ -25,7 +25,10 @@ from .structure import (structure_from_params, hip_half_y, fan_center_y, fan_z_c
 SIM_DT = 0.002          # physics step
 YAW_RANGE = math.radians(30)
 FAN_PITCH_RANGE = math.radians(90)
-NOCOL = 'contype="0" conaffinity="0"'
+# Links, fans, bracket and payload never collide with each other or the body
+# (contype 0), but the floor's contype carries bit 2 so it still hits them:
+# touching the ground with anything but a foot is a failure in the rollout.
+NOCOL = 'contype="0" conaffinity="2"'
 
 ACTUATOR_NAMES = [
     "crank_l", "crank_r",

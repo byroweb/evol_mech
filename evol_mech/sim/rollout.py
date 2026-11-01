@@ -50,8 +50,8 @@ def _fallen(z: float, roll: float, pitch: float, leg_len: float) -> bool:
 
 
 def _body_touching_floor(data: mujoco.MjData, body_geoms: set[int], floor_geom: int) -> bool:
-    """True if the hip or core (anything but feet) is in contact with the floor.
-    Sitting down must count as a fall, or evolution will learn to sit."""
+    """True if anything but a foot touches the floor. Shins, fans, hip and core
+    are not built for ground contact; sitting or kneeling counts as a fall."""
     for k in range(data.ncon):
         c = data.contact[k]
         if (c.geom1 == floor_geom and c.geom2 in body_geoms) or            (c.geom2 == floor_geom and c.geom1 in body_geoms):
@@ -81,7 +81,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     total_mass = float(model.body_subtreemass[hip_id])
     leg_len = nominal_leg_len(p)
     floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
-    body_geoms = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, n) for n in ("hip", "core")}
+    feet = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, n) for n in ("foot_l", "foot_r")}
+    body_geoms = {g for g in range(model.ngeom) if g not in feet and g != floor_geom}
 
     duration = float(task["duration"])
     n_ctrl = int(duration / CONTROL_DT)
