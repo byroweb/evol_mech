@@ -13,6 +13,7 @@ import time
 import numpy as np
 
 from ..genome import random_genome, mutate, crossover, N_PARAMS
+from ..genome.archetype import archetype_center
 from ..sim.rollout import evaluate
 from ..data.store import RunStore
 
@@ -30,7 +31,9 @@ def _tournament(fit: np.ndarray, rng: np.random.Generator, k: int) -> int:
 def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, dict]:
     rng = np.random.default_rng(cfg["seed"])
     n = cfg["population"]
-    pop = np.stack([random_genome(rng) for _ in range(n)])
+    center = archetype_center(cfg.get("archetype"))
+    pop = np.stack([random_genome(rng, cfg.get("init_spread", 0.25), center=center) for _ in range(n)])
+    pop[0] = center   # keep the archetype itself in generation 0
     best_genome, best_result, best_fit = None, None, -np.inf
 
     with Pool(processes=cfg["workers"]) as pool:

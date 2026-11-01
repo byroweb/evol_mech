@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mech Archetype Editor</title>
+<style>
+  :root { --bg:#fafafa; --fg:#222; --muted:#777; --line:#ddd; --accent:#2563eb; --bad:#dc2626; --ok:#16a34a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 14px/1.4 system-ui, sans-serif; color:var(--fg); background:var(--bg); }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  main { display:grid; grid-template-columns: 720px 1fr; gap:16px; padding:16px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  canvas { background:#fff; border:1px solid var(--line); border-radius:6px; touch-action:none; width:100%; max-width:720px; }
+  .panel { border:1px solid var(--line); border-radius:6px; background:#fff; padding:10px 12px; margin-bottom:12px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 8px; }
+  table { border-collapse:collapse; width:100%; }
+  td { padding:2px 6px; vertical-align:middle; }
+  td.k { color:var(--muted); white-space:nowrap; }
+  input[type=number] { width:88px; }
+  input[type=text] { width:100%; }
+  input.bad { border-color:var(--bad); background:#fef2f2; }
+  button, label.btn { padding:5px 10px; border:1px solid var(--line); border-radius:5px; background:#fff; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  #status { font-weight:600; }
+  #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
+  .metrics { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:4px 12px; }
+  .metrics div span { color:var(--muted); display:block; font-size:12px; }
+  .hint { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mech archetype editor</h1>
+  <input id="name" type="text" value="my_archetype" style="width:180px" title="archetype name">
+  <button id="btn-export" class="primary">Export JSON</button>
+  <label class="btn">Import JSON <input id="file" type="file" accept="application/json" hidden></label>
+  <button id="btn-reset">Reset to defaults</button>
+  <label><input id="animate" type="checkbox"> animate crank</label>
+  <span id="status"></span>
+</header>
+<main>
+  <div>
+    <canvas id="cv" width="720" height="720"></canvas>
+    <p class="hint">Side view, x forward, z up, hip origin at A. Drag <b>B</b> (rocker pivot), <b>D</b> (crank tip: sets crank length and preview angle),
+      <b>C</b> (sets coupler and rocker lengths), <b>P</b> (foot: fraction along CD and height below it). Blue is the foot path over one revolution.
+      Grey ghosts are other crank angles. Values outside the genome bounds turn red and will be rejected on import.</p>
+    <div class="panel"><h2>Foot path</h2><div class="metrics" id="metrics"></div></div>
+  </div>
+  <div>
+    <div class="panel"><h2>Part tags</h2>
+      <p class="hint">Short labels for each body part, saved with the archetype so sim bodies, exported URDF links and logs can carry your names.</p>
+      <table id="tags"></table>
+    </div>
+    <div id="params"></div>
+  </div>
+</main>
+<script>
+// Keep in sync with evol_mech/genome/spec.py (tests/test_core.py checks this block).
+const SPEC = [{"name": "hip_width", "lo": 0.08, "hi": 0.3, "default": 0.16, "group": "geometry"}, {"name": "hip_struct_mass", "lo": 0.1, "hi": 1.5, "default": 0.4, "group": "geometry"}, {"name": "core_height", "lo": 0.05, "hi": 0.3, "default": 0.14, "group": "geometry"}, {"name": "core_shell_mass", "lo": 0.05, "hi": 0.8, "default": 0.2, "group": "geometry"}, {"name": "payload_mass", "lo": 0.1, "hi": 1.5, "default": 0.45, "group": "geometry"}, {"name": "payload_x", "lo": -0.06, "hi": 0.06, "default": 0.0, "group": "geometry"}, {"name": "payload_zf", "lo": -0.45, "hi": 0.45, "default": -0.2, "group": "geometry"}, {"name": "fan_x", "lo": -0.12, "hi": 0.12, "default": 0.0, "group": "geometry"}, {"name": "fan_y", "lo": 0.06, "hi": 0.3, "default": 0.14, "group": "geometry"}, {"name": "fan_z", "lo": 0.0, "hi": 0.3, "default": 0.12, "group": "geometry"}, {"name": "foot_radius", "lo": 0.008, "hi": 0.03, "default": 0.015, "group": "geometry"}, {"name": "foot_half_len", "lo": 0.005, "hi": 0.07, "default": 0.035, "group": "geometry"}, {"name": "crank_len", "lo": 0.015, "hi": 0.08, "default": 0.035, "group": "linkage"}, {"name": "coupler_len", "lo": 0.05, "hi": 0.26, "default": 0.11, "group": "linkage"}, {"name": "rocker_len", "lo": 0.05, "hi": 0.26, "default": 0.14, "group": "linkage"}, {"name": "pivot_b_dx", "lo": -0.15, "hi": 0.1, "default": -0.05, "group": "linkage"}, {"name": "pivot_b_dz", "lo": -0.05, "hi": 0.18, "default": 0.1, "group": "linkage"}, {"name": "foot_frac", "lo": 0.0, "hi": 1.0, "default": 0.45, "group": "linkage"}, {"name": "foot_height", "lo": 0.02, "hi": 0.32, "default": 0.16, "group": "linkage"}, {"name": "stepper_torque", "lo": 0.02, "hi": 0.6, "default": 0.2, "group": "drivetrain"}, {"name": "gear_ratio", "lo": 1.0, "hi": 8.0, "default": 3.0, "group": "drivetrain"}, {"name": "kp_yaw", "lo": 2.0, "hi": 30.0, "default": 8.0, "group": "drivetrain"}, {"name": "fan_diam_in", "lo": 2.0, "hi": 5.0, "default": 3.0, "group": "fan_spec"}, {"name": "fan_blades", "lo": 2.0, "hi": 6.0, "default": 3.0, "group": "fan_spec"}, {"name": "stator_d_mm", "lo": 12.0, "hi": 25.0, "default": 18.0, "group": "fan_spec"}, {"name": "stator_h_mm", "lo": 4.0, "hi": 10.0, "default": 6.0, "group": "fan_spec"}, {"name": "crank_speed_hz", "lo": -3.0, "hi": 3.0, "default": 1.0, "group": "gait"}, {"name": "crank_phase_r", "lo": 0.0, "hi": 6.283185307179586, "default": 3.141592653589793, "group": "gait"}, {"name": "yaw_amp", "lo": -0.5235987755982988, "hi": 0.5235987755982988, "default": 0.0, "group": "gait"}, {"name": "fan_base", "lo": 0.0, "hi": 1.0, "default": 0.2, "group": "fan_ctrl"}, {"name": "fan_kp_roll", "lo": -4.0, "hi": 4.0, "default": 0.5, "group": "fan_ctrl"}, {"name": "fan_kd_roll", "lo": -1.0, "hi": 1.0, "default": 0.05, "group": "fan_ctrl"}, {"name": "fan_pitch_bias", "lo": -1.0471975511965976, "hi": 1.0471975511965976, "default": 0.17453292519943295, "group": "fan_ctrl"}, {"name": "fan_kp_pitch", "lo": -4.0, "hi": 4.0, "default": 1.0, "group": "fan_ctrl"}, {"name": "fan_kd_pitch", "lo": -1.0, "hi": 1.0, "default": 0.1, "group": "fan_ctrl"}];
+const PARTS = ["hip","core","payload","crank_l","crank_r","coupler_l","coupler_r","rocker_l","rocker_r","foot_l","foot_r","fan_l","fan_r"];
+const DEFAULT_TAGS = {hip:"hip / drivetrain housing", core:"core", payload:"battery + electronics",
+  crank_l:"leg input crank L", crank_r:"leg input crank R", coupler_l:"leg coupler L", coupler_r:"leg coupler R",
+  rocker_l:"leg rocker L", rocker_r:"leg rocker R", foot_l:"foot L", foot_r:"foot R", fan_l:"fan L", fan_r:"fan R"};
+const GROUP_TITLES = {geometry:"Body geometry", linkage:"Leg linkage (A B C D P)", drivetrain:"Drivetrain",
+  fan_spec:"Fan hardware", gait:"Gait", fan_ctrl:"Fan attitude controller"};
+const byName = Object.fromEntries(SPEC.map(s => [s.name, s]));
+
+// ---------- state ----------
+let P = {};            // physical params
+let TAGS = {};
+let theta = 0;         // preview crank angle
+function resetState() {
+  P = Object.fromEntries(SPEC.map(s => [s.name, s.default]));
+  TAGS = {...DEFAULT_TAGS};
+  theta = 0;
+}
+resetState();
+try { const saved = JSON.parse(localStorage.getItem("evol_mech_archetype") || "null");
+      if (saved && saved.phys) { Object.assign(P, saved.phys); Object.assign(TAGS, saved.tags || {});
+        if (saved.name) document.getElementById("name").value = saved.name; } } catch (e) {}
+
+// ---------- linkage solver: port of evol_mech/body/linkage.py ----------
+const sign1 = x => (x < 0 ? -1 : 1);
+function crankTip(r, th) { return [-r * Math.sin(th), -r * Math.cos(th)]; }
+function circleIntersect(c1, r1, c2, r2) {
+  const dx = c2[0] - c1[0], dz = c2[1] - c1[1], d = Math.hypot(dx, dz);
+  if (d < 1e-9 || d > r1 + r2 || d < Math.abs(r1 - r2)) return null;
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d), h2 = r1 * r1 - a * a;
+  if (h2 < 0) return null;
+  const h = Math.sqrt(h2), mx = c1[0] + a * dx / d, mz = c1[1] + a * dz / d;
+  return [[mx + h * dz / d, mz - h * dx / d], [mx - h * dz / d, mz + h * dx / d]];
+}
+function orient(B, C, D) { return sign1((C[0] - B[0]) * (D[1] - B[1]) - (C[1] - B[1]) * (D[0] - B[0])); }
+function reference(p) {
+  const B = [p.pivot_b_dx, p.pivot_b_dz], D = crankTip(p.crank_len, 0);
+  const pts = circleIntersect(D, p.coupler_len, B, p.rocker_len);
+  if (!pts) return null;
+  const C = pts[0][1] <= pts[1][1] ? pts[0] : pts[1];
+  const ux = (C[0] - D[0]) / p.coupler_len, uz = (C[1] - D[1]) / p.coupler_len;
+  const nx = uz, nz = -ux;
+  const side = -sign1(nx * (0 - D[0]) + nz * (0 - D[1]));
+  return [orient(B, C, D), side];
+}
+function solve(p, th) {
+  const ref = reference(p); if (!ref) return null;
+  const [branch, side] = ref, L = p.coupler_len;
+  const B = [p.pivot_b_dx, p.pivot_b_dz], D = crankTip(p.crank_len, th);
+  const pts = circleIntersect(D, L, B, p.rocker_len);
+  if (!pts) return null;
+  const same = pts.filter(c => orient(B, c, D) === branch);
+  const C = same.length ? same[0] : (pts[0][1] <= pts[1][1] ? pts[0] : pts[1]);
+  const ux = (C[0] - D[0]) / L, uz = (C[1] - D[1]) / L, nx = uz, nz = -ux;
+  const f = p.foot_frac * L, h = side * p.foot_height;
+  return {D, C, P: [D[0] + f * ux + h * nx, D[1] + f * uz + h * nz], u: [ux, uz], n: [nx, nz], side};
+}
+function isValid(p, samples = 72) {
+  const r = p.crank_len, L = p.coupler_len, q = p.rocker_len, g = Math.hypot(p.pivot_b_dx, p.pivot_b_dz);
+  const links = [r, L, q, g].sort((a, b) => a - b);
+  if (links[0] !== r) return false;
+  if (links[0] + links[3] > links[1] + links[2] - 1e-6) return false;
+  for (let k = 0; k < samples; k++) if (!solve(p, 2 * Math.PI * k / samples)) return false;
+  return true;
+}
+function footPath(p, samples = 180) {
+  const out = [];
+  for (let k = 0; k < samples; k++) { const s = solve(p, 2 * Math.PI * k / samples); out.push(s ? s.P : null); }
+  return out;
+}
+
+// ---------- canvas ----------
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const SCALE = 1500, OX = 360, OZ = 300;           // px per metre, origin
+const toPx = ([x, z]) => [OX + x * SCALE, OZ - z * SCALE];
+const toM = (px, py) => [(px - OX) / SCALE, (OZ - py) / SCALE];
+let drag = null;
+
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  // grid
+  ctx.strokeStyle = "#eef"; ctx.lineWidth = 1;
+  for (let m = -0.3; m <= 0.3; m += 0.05) {
+    const [x] = toPx([m, 0]); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cv.height); ctx.stroke();
+    const [, y] = toPx([0, m]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke();
+  }
+  const valid = isValid(P);
+  const path = footPath(P);
+  const B = [P.pivot_b_dx, P.pivot_b_dz];
+
+  // body outline: hip box, core, payload, fans (side view)
+  const hx = P.hip_width / 2 + 0.02, HZ = 0.035, coreZ = HZ + P.core_height / 2;
+  ctx.fillStyle = "#e5e7eb"; ctx.strokeStyle = "#9ca3af";
+  rect([-hx, -HZ], [hx, HZ]);
+  rect([-0.05, HZ], [0.05, HZ + P.core_height]);
+  ctx.fillStyle = "#c7d2fe"; rect([P.payload_x - 0.03, coreZ + P.payload_zf * P.core_height - 0.015],
+                                   [P.payload_x + 0.03, coreZ + P.payload_zf * P.core_height + 0.015]);
+  ctx.fillStyle = "#fde68a"; const fd = P.fan_diam_in * 0.0254 / 2;
+  rect([P.fan_x - fd, coreZ + P.fan_z - 0.008], [P.fan_x + fd, coreZ + P.fan_z + 0.008]);
+
+  // ghosts
+  for (let k = 0; k < 12; k++) {
+    const s = solve(P, 2 * Math.PI * k / 12); if (!s) continue;
+    drawPose(s, B, 0.18);
+  }
+  // ground at lowest foot
+  const zs = path.filter(Boolean).map(q => q[1]);
+  if (zs.length) { const zg = Math.min(...zs) - P.foot_radius; ctx.strokeStyle = "#a16207"; ctx.lineWidth = 2;
+    const [, y] = toPx([0, zg]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke(); }
+  // foot path
+  ctx.strokeStyle = valid ? "#2563eb" : "#dc2626"; ctx.lineWidth = 2.5; ctx.beginPath();
+  let started = false;
+  for (const q of path) { if (!q) { started = false; continue; } const [x, y] = toPx(q); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; }
+  if (path[0] && path[path.length - 1]) ctx.closePath();
+  ctx.stroke();
+  // current pose
+  const s = solve(P, theta);
+  if (s) drawPose(s, B, 1.0);
+  // handles
+  const handles = {A: [0, 0], B, D: s ? s.D : crankTip(P.crank_len, theta), C: s ? s.C : null, P: s ? s.P : null};
+  ctx.font = "bold 13px system-ui";
+  for (const [name, pt] of Object.entries(handles)) {
+    if (!pt) continue;
+    const [x, y] = toPx(pt);
+    ctx.fillStyle = name === "A" ? "#111" : "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#111"; ctx.fillText(name, x + 8, y - 8);
+  }
+  updateMetrics(valid, path, s);
+}
+function rect(a, b) { const [x0, y0] = toPx(a), [x1, y1] = toPx(b); ctx.beginPath(); ctx.rect(x0, y1, x1 - x0, y0 - y1); ctx.fill(); ctx.stroke(); }
+function seg(a, b, color, w, alpha) { ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = w;
+  const [x0, y0] = toPx(a), [x1, y1] = toPx(b); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; }
+function drawPose(s, B, alpha) {
+  seg([0, 0], B, "#555", 1, alpha * 0.8);                 // frame AB (dashed look skipped for simplicity)
+  seg([0, 0], s.D, "#dc2626", 3, alpha);                  // crank AD
+  seg(B, s.C, "#16a34a", 3, alpha);                       // rocker BC
+  seg(s.D, s.C, "#111", 2, alpha); seg(s.C, s.P, "#111", 2, alpha); seg(s.P, s.D, "#111", 2, alpha);  // coupler triangle
+  // foot pad: horizontal in the theta=0 pose, rotates with the coupler
+  const s0 = solve(P, 0); if (!s0) return;
+  const ang = Math.atan2(s.u[1], s.u[0]) - Math.atan2(s0.u[1], s0.u[0]);
+  const fx = Math.cos(ang) * P.foot_half_len, fz = Math.sin(ang) * P.foot_half_len;
+  seg([s.P[0] - fx, s.P[1] - fz], [s.P[0] + fx, s.P[1] + fz], "#111", 2 * P.foot_radius * SCALE / 2 + 3, alpha);
+}
+
+function updateMetrics(valid, path, s) {
+  const st = document.getElementById("status");
+  const outOfBounds = SPEC.filter(sp => P[sp.name] < sp.lo - 1e-9 || P[sp.name] > sp.hi + 1e-9).map(sp => sp.name);
+  st.className = valid && !outOfBounds.length ? "ok" : "bad";
+  st.textContent = !valid ? "linkage is NOT a rotatable crank-rocker" : outOfBounds.length ? "out of bounds: " + outOfBounds.join(", ") : "valid";
+  const pts = path.filter(Boolean);
+  const m = document.getElementById("metrics");
+  if (!pts.length) { m.innerHTML = ""; return; }
+  const xs = pts.map(q => q[0]), zs = pts.map(q => q[1]);
+  const zmin = Math.min(...zs), contact = pts.filter(q => q[1] < zmin + 0.005).length / pts.length;
+  const g = Math.hypot(P.pivot_b_dx, P.pivot_b_dz);
+  m.innerHTML = [
+    ["stride (x range)", (Math.max(...xs) - Math.min(...xs)) * 1000, "mm"],
+    ["lift (z range)", (Math.max(...zs) - zmin) * 1000, "mm"],
+    ["ground-contact share", contact * 100, "% of cycle (within 5 mm of lowest)"],
+    ["leg length A to lowest P", (-zmin + P.foot_radius) * 1000, "mm"],
+    ["crank AD", P.crank_len * 1000, "mm"], ["coupler CD", P.coupler_len * 1000, "mm"],
+    ["rocker BC", P.rocker_len * 1000, "mm"], ["frame AB", g * 1000, "mm"],
+    ["preview crank angle", theta * 180 / Math.PI, "deg"],
+  ].map(([k, v, u]) => `<div><span>${k}</span>${v.toFixed(1)} ${u}</div>`).join("");
+}
+
+// ---------- dragging ----------
+function handleAt(px, py) {
+  const s = solve(P, theta);
+  const pts = {B: [P.pivot_b_dx, P.pivot_b_dz], D: s ? s.D : crankTip(P.crank_len, theta), C: s && s.C, P: s && s.P};
+  for (const [n, pt] of Object.entries(pts)) { if (!pt) continue; const [x, y] = toPx(pt); if (Math.hypot(x - px, y - py) < 12) return n; }
+  return null;
+}
+function canvasXY(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; }
+cv.addEventListener("pointerdown", e => { const [x, y] = canvasXY(e); drag = handleAt(x, y); if (drag) cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointerup", () => { drag = null; persist(); });
+cv.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const [px, py] = canvasXY(e), m = toM(px, py);
+  if (drag === "B") { P.pivot_b_dx = m[0]; P.pivot_b_dz = m[1]; }
+  else if (drag === "D") { P.crank_len = Math.max(0.005, Math.hypot(m[0], m[1])); theta = Math.atan2(-m[0], -m[1]); }
+  else if (drag === "C") { const s = solve(P, theta); const D = s ? s.D : crankTip(P.crank_len, theta);
+    P.coupler_len = Math.hypot(m[0] - D[0], m[1] - D[1]); P.rocker_len = Math.hypot(m[0] - P.pivot_b_dx, m[1] - P.pivot_b_dz); }
+  else if (drag === "P") { const s = solve(P, theta); if (s) {
+    const dx = m[0] - s.D[0], dz = m[1] - s.D[1];
+    P.foot_frac = Math.min(1, Math.max(0, (dx * s.u[0] + dz * s.u[1]) / P.coupler_len));
+    P.foot_height = Math.max(0.005, Math.abs(dx * s.n[0] + dz * s.n[1])); } }
+  round3(); syncInputs(); draw();
+});
+function round3() { for (const k of ["pivot_b_dx", "pivot_b_dz", "crank_len", "coupler_len", "rocker_len", "foot_height"]) P[k] = Math.round(P[k] * 2000) / 2000; P.foot_frac = Math.round(P.foot_frac * 100) / 100; }
+
+// ---------- parameter inputs & tags ----------
+function buildInputs() {
+  const root = document.getElementById("params"); root.innerHTML = "";
+  for (const g of Object.keys(GROUP_TITLES)) {
+    const div = document.createElement("div"); div.className = "panel";
+    div.innerHTML = `<h2>${GROUP_TITLES[g]}</h2><table></table>`;
+    const tb = div.querySelector("table");
+    for (const sp of SPEC.filter(s => s.group === g)) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="k">${sp.name}</td><td><input type="number" step="any" data-p="${sp.name}"></td><td class="hint">${fmt(sp.lo)} to ${fmt(sp.hi)}</td>`;
+      tb.appendChild(tr);
+    }
+    root.appendChild(div);
+  }
+  root.querySelectorAll("input[data-p]").forEach(inp => inp.addEventListener("input", () => {
+    const v = parseFloat(inp.value); if (Number.isFinite(v)) { P[inp.dataset.p] = v; draw(); markBounds(); persist(); } }));
+  const tags = document.getElementById("tags"); tags.innerHTML = "";
+  for (const part of PARTS) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="k">${part}</td><td><input type="text" data-t="${part}"></td>`;
+    tags.appendChild(tr);
+  }
+  tags.querySelectorAll("input[data-t]").forEach(inp => inp.addEventListener("input", () => { TAGS[inp.dataset.t] = inp.value; persist(); }));
+}
+const fmt = v => Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(3).replace(/\.?0+$/, "");
+function syncInputs() {
+  document.querySelectorAll("input[data-p]").forEach(inp => { if (document.activeElement !== inp) inp.value = +P[inp.dataset.p].toFixed(4); });
+  document.querySelectorAll("input[data-t]").forEach(inp => { inp.value = TAGS[inp.dataset.t] || ""; });
+  markBounds();
+}
+function markBounds() {
+  document.querySelectorAll("input[data-p]").forEach(inp => { const sp = byName[inp.dataset.p];
+    inp.classList.toggle("bad", P[sp.name] < sp.lo - 1e-9 || P[sp.name] > sp.hi + 1e-9); });
+}
+
+// ---------- persistence, import, export ----------
+function archetype() { return {name: document.getElementById("name").value || "archetype", created: new Date().toISOString(),
+  tags: TAGS, phys: P}; }
+function persist() { try { localStorage.setItem("evol_mech_archetype", JSON.stringify(archetype())); } catch (e) {} }
+document.getElementById("btn-export").addEventListener("click", () => {
+  const a = archetype(), blob = new Blob([JSON.stringify(a, null, 2) + "\n"], {type: "application/json"});
+  const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = a.name.replace(/[^\w.-]+/g, "_") + ".json";
+  document.body.appendChild(link); link.click(); link.remove();
+});
+document.getElementById("file").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const d = JSON.parse(await f.text());
+    if (!d.phys) throw new Error("no 'phys' block");
+    const unknown = Object.keys(d.phys).filter(k => !byName[k]);
+    if (unknown.length) throw new Error("unknown parameters: " + unknown.join(", "));
+    resetState(); Object.assign(P, d.phys); Object.assign(TAGS, d.tags || {});
+    if (d.name) document.getElementById("name").value = d.name;
+    syncInputs(); draw(); persist();
+  } catch (err) { alert("Could not import: " + err.message); }
+  e.target.value = "";
+});
+document.getElementById("btn-reset").addEventListener("click", () => { resetState(); syncInputs(); draw(); persist(); });
+document.getElementById("name").addEventListener("input", persist);
+
+// ---------- animation ----------
+let last = 0;
+function tick(ts) {
+  if (document.getElementById("animate").checked) { theta += (ts - last) / 1000 * 2 * Math.PI * 0.4; if (theta > 2 * Math.PI) theta -= 2 * Math.PI; draw(); }
+  last = ts; requestAnimationFrame(tick);
+}
+buildInputs(); syncInputs(); draw(); requestAnimationFrame(tick);
+</script>
+</body>
+</html>

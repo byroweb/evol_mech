@@ -59,3 +59,28 @@ def test_all_terrains_compile_and_step(terrain):
     r = rollout(DEFAULT_NORM, {"name": "t", "terrain": terrain, "objective": "walk", "duration": 1.0})
     assert not r["unstable"]
     assert r["sim_steps"] > 0
+
+
+def test_editor_spec_matches_python_spec():
+    """tools/linkage_editor.html embeds a copy of PARAMS; keep them identical."""
+    import json, re
+    from pathlib import Path
+    from evol_mech.genome.spec import PARAMS
+    html = Path(__file__).resolve().parents[1].joinpath("tools", "linkage_editor.html").read_text(encoding="utf-8")
+    block = re.search(r"const SPEC = (\[.*?\]);", html, re.S).group(1)
+    editor = json.loads(block)
+    py = [dict(name=p.name, lo=p.lo, hi=p.hi, default=p.default, group=p.group) for p in PARAMS]
+    assert editor == py, "run: python -c \"from evol_mech.genome.spec import PARAMS; ...\" and paste into the editor's SPEC"
+
+
+def test_archetype_roundtrip(tmp_path):
+    import json
+    from evol_mech.genome import default_archetype, load_archetype, archetype_center, DEFAULT_NORM
+    a = default_archetype("t"); a["phys"]["crank_len"] = 0.04
+    f = tmp_path / "a.json"; f.write_text(json.dumps(a))
+    c = archetype_center(f)
+    assert c.shape == DEFAULT_NORM.shape
+    assert decode(c)["crank_len"] == pytest.approx(0.04)
+    a["phys"]["nope"] = 1.0; f.write_text(json.dumps(a))
+    with pytest.raises(ValueError):
+        load_archetype(f)

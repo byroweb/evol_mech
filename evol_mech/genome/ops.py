@@ -7,15 +7,17 @@ from .spec import DEFAULT_NORM, N_PARAMS, decode
 from ..body import linkage
 
 
-def random_genome(rng: np.random.Generator, spread: float = 0.25, max_tries: int = 100) -> np.ndarray:
-    """Default design plus Gaussian noise, clipped, rejection-sampled so the
-    linkage is buildable. Starting near a sane default beats uniform random,
-    which produces mostly un-standable bodies."""
+def random_genome(rng: np.random.Generator, spread: float = 0.25, max_tries: int = 100,
+                  center: np.ndarray | None = None) -> np.ndarray:
+    """A design (the built-in default or an archetype) plus Gaussian noise,
+    clipped, rejection-sampled so the linkage is buildable. Starting near a
+    sane design beats uniform random, which produces mostly un-standable bodies."""
+    c = DEFAULT_NORM if center is None else center
     for _ in range(max_tries):
-        g = np.clip(DEFAULT_NORM + rng.normal(0.0, spread, N_PARAMS), 0.0, 1.0)
+        g = np.clip(c + rng.normal(0.0, spread, N_PARAMS), 0.0, 1.0)
         if linkage.is_valid(decode(g)):
             return g
-    return DEFAULT_NORM.copy()
+    return c.copy()
 
 
 def mutate(g: np.ndarray, rng: np.random.Generator, sigma: float, rate: float) -> np.ndarray:

@@ -17,18 +17,20 @@ def main():
     ap.add_argument("--population", type=int)
     ap.add_argument("--workers", type=int)
     ap.add_argument("--runs-dir", default="runs")
+    ap.add_argument("--archetype", help="archetype JSON from tools/linkage_editor.html")
     args = ap.parse_args()
 
     with open(args.config) as f:
         cfg = json.load(f)
-    for k in ("run_name", "generations", "population", "workers"):
+    for k in ("run_name", "generations", "population", "workers", "archetype"):
         v = getattr(args, k)
         if v is not None:
             cfg[k] = v
 
     store = RunStore(args.runs_dir, cfg["run_name"], cfg)
     print(f"run '{cfg['run_name']}' -> {store.dir}   pop={cfg['population']} "
-          f"gens={cfg['generations']} workers={cfg['workers']}")
+          f"gens={cfg['generations']} workers={cfg['workers']}  "
+          f"archetype={cfg.get('archetype') or 'built-in default'}")
 
     def report(row, best_genome, best_result):
         print(f"gen {row['gen']:4d}  best {row['best']:7.3f}  mean {row['mean']:7.3f}  "
