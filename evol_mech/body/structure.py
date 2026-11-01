@@ -13,7 +13,7 @@ import math
 
 HIP_HALF_X = 0.05               # hip box (drivetrain housing), fore/aft half-size
 HIP_HALF_Z = 0.035              # hip box half-height; pivot B sits on a post above it
-CORE_HALF_XY = 0.05             # core box footprint half-size (y grows to fit the battery)
+CORE_HALF_XY = 0.05             # core box footprint half-size (x grows to fit the battery)
 BATTERY_CLEARANCE = 0.005
 LINK_RADIUS = 0.006
 LEG_SIDE_GAP = 0.002            # leg plane clearance outside the hip side face
@@ -26,7 +26,7 @@ ELECTRONICS_KG = 0.25           # flight controller, SBC, ESCs, drivers, wiring
 BATTERY_KG_BASE = 0.020
 BATTERY_KG_PER_MAH = 1.0e-4
 BATTERY_M3_PER_MAH = 4.9e-8     # 2200 mAh ~ 105 x 34 x 30 mm
-BATTERY_ASPECT = (3.5, 1.13, 1.0)   # long : mid : short; mounted long axis along y, flat
+BATTERY_ASPECT = (3.5, 1.13, 1.0)   # long : mid : short; mounted long axis along x (fore/aft), flat
 
 
 def hip_half_y(p: dict[str, float]) -> float:
@@ -41,18 +41,22 @@ def _box_area(hx: float, hy: float, hz: float) -> float:
 class StructureSpec:
     hip_kg: float               # shell + hardware + both posts (excl. steppers)
     core_kg: float              # shell + both fan arms
-    core_half_y: float          # core footprint half-width (>= CORE_HALF_XY)
+    core_half_x: float          # core footprint fore/aft half-length (>= CORE_HALF_XY)
     battery_kg: float
     payload_kg: float           # battery + electronics
     payload_half: tuple[float, float, float]
 
 
 def battery_half(p: dict[str, float]) -> tuple[float, float, float]:
-    """Half-sizes (x, y, z): long axis lateral (y), thinnest axis vertical."""
+    """Half-sizes (x, y, z): long axis fore/aft (x), thinnest axis vertical."""
     vol = BATTERY_M3_PER_MAH * p["battery_mah"]
     long_, mid, short = BATTERY_ASPECT
     unit = (vol / (8 * long_ * mid * short)) ** (1 / 3)
-    return mid * unit, long_ * unit, short * unit
+    return long_ * unit, mid * unit, short * unit
+
+
+def core_half_x(p: dict[str, float]) -> float:
+    return max(CORE_HALF_XY, battery_half(p)[0] + BATTERY_CLEARANCE)
 
 
 def core_half_y(p: dict[str, float]) -> float:
@@ -70,8 +74,8 @@ def structure_from_params(p: dict[str, float]) -> StructureSpec:
     hip = (SHELL_KG_PER_M2 * _box_area(HIP_HALF_X, hip_half_y(p), HIP_HALF_Z)
            + HIP_HARDWARE_KG + 2 * POST_KG_PER_M * post)
     arm = math.sqrt(p["fan_x"] ** 2 + fan_center_y(p) ** 2 + (p["fan_z"] - p["core_height"] / 2) ** 2)  # from core centre
-    cy = core_half_y(p)
-    core = (SHELL_KG_PER_M2 * _box_area(CORE_HALF_XY, cy, p["core_height"] / 2)
+    cx = core_half_x(p)
+    core = (SHELL_KG_PER_M2 * _box_area(cx, core_half_y(p), p["core_height"] / 2)
             + 2 * FAN_ARM_KG_PER_M * arm)
     battery = BATTERY_KG_BASE + BATTERY_KG_PER_MAH * p["battery_mah"]
-    return StructureSpec(hip, core, cy, battery, battery + ELECTRONICS_KG, battery_half(p))
+    return StructureSpec(hip, core, cx, battery, battery + ELECTRONICS_KG, battery_half(p))

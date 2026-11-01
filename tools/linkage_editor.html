@@ -150,7 +150,7 @@ function isValid(p, samples = 72) {
 function interference(p, nTheta = 36, nYaw = 7, nPts = 6) {
   const y = p.hip_width / 2, LR = 0.006, M = 0.003;
   const YAW = document.getElementById("yaw").checked ? Math.PI / 6 : 0; if (!YAW) nYaw = 1;
-  const z0 = HZ - LR - M, z1 = HZ + p.core_height + LR + M, halfX = 0.05 + LR + M, halfY = coreHalfY(p) + LR + M;
+  const z0 = HZ - LR - M, z1 = HZ + p.core_height + LR + M, halfX = coreHalfX(p) + LR + M, halfY = coreHalfY(p) + LR + M;
   const fanR = fanSpec(p).d / 2 + 0.008 + LR + M;
   const fy = fanCenterY(p);
   const fans = [[p.fan_x, fy, HZ + p.fan_z], [p.fan_x, -fy, HZ + p.fan_z]];
@@ -192,7 +192,8 @@ function stepperSpec(p) {
 const ST = {shellKgM2: 2.4, hipHardware: 0.06, postKgM: 0.08, armKgM: 0.06, electronics: 0.25,
             battBase: 0.020, battPerMah: 1.0e-4, battM3PerMah: 4.9e-8, aspect: [3.5, 1.13, 1.0], hx: 0.05, coreHalf: 0.05};
 const boxArea = (hx, hy, hz) => 8 * (hx * hy + hy * hz + hx * hz);
-function batteryHalf(p) { const [lg, mid, sh] = ST.aspect, unit = Math.cbrt(ST.battM3PerMah * p.battery_mah / (8 * lg * mid * sh)); return [mid * unit, lg * unit, sh * unit]; }  // long axis along y
+function batteryHalf(p) { const [lg, mid, sh] = ST.aspect, unit = Math.cbrt(ST.battM3PerMah * p.battery_mah / (8 * lg * mid * sh)); return [lg * unit, mid * unit, sh * unit]; }  // long axis along x (fore/aft)
+const coreHalfX = p => Math.max(ST.coreHalf, batteryHalf(p)[0] + 0.005);
 const coreHalfY = p => Math.max(ST.coreHalf, batteryHalf(p)[1] + 0.005);
 const hipHalfY = p => p.hip_width / 2 - 0.006 - 0.002;
 const fanCenterY = p => coreHalfY(p) + p.fan_gap + p.fan_diam_in * 0.0254 / 2;
@@ -200,7 +201,7 @@ function structureSpec(p) {
   const post = Math.hypot(p.pivot_b_dx, p.pivot_b_dz);
   const hip = ST.shellKgM2 * boxArea(ST.hx, hipHalfY(p), HZ) + ST.hipHardware + 2 * ST.postKgM * post;
   const arm = Math.hypot(p.fan_x, fanCenterY(p), p.fan_z - p.core_height / 2);
-  const core = ST.shellKgM2 * boxArea(ST.coreHalf, coreHalfY(p), p.core_height / 2) + 2 * ST.armKgM * arm;
+  const core = ST.shellKgM2 * boxArea(coreHalfX(p), coreHalfY(p), p.core_height / 2) + 2 * ST.armKgM * arm;
   const battery = ST.battBase + ST.battPerMah * p.battery_mah;
   return {hip, core, battery, payload: battery + ST.electronics, half: batteryHalf(p), coreHY: coreHalfY(p)};
 }
@@ -243,7 +244,7 @@ function drawSide(valid, path) {
   const ctx = sctx; ctx.clearRect(0, 0, side.width, side.height); grid(ctx, side, sPx);
   const B = [P.pivot_b_dx, P.pivot_b_dz], fan = fanSpec(P);
   rect(ctx, sPx, [-0.05, -HZ], [0.05, HZ], "#e5e7eb");
-  rect(ctx, sPx, [-0.05, hipTop()], [0.05, hipTop() + P.core_height], "#fee2e2");
+  rect(ctx, sPx, [-coreHalfX(P), hipTop()], [coreHalfX(P), hipTop() + P.core_height], "#fee2e2");
   const ph = structureSpec(P).half;
   rect(ctx, sPx, [P.payload_x - ph[0], payloadZ() - ph[2]], [P.payload_x + ph[0], payloadZ() + ph[2]], "#c7d2fe");
   rect(ctx, sPx, [P.fan_x - fan.d / 2, fanZ() - 0.008], [P.fan_x + fan.d / 2, fanZ() + 0.008], "#fde68a");

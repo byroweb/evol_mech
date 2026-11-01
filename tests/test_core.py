@@ -121,11 +121,11 @@ def test_waist_yaw_switch():
     assert m_yaw.nu == m_fixed.nu + 1 and m_yaw.njnt == m_fixed.njnt + 1
 
 
-def test_foot_types_build_and_battery_lateral():
+def test_foot_types_build_and_battery_fore_aft():
     from evol_mech.body.structure import structure_from_params
     p = decode(DEFAULT_NORM)
     hx, hy, hz = structure_from_params(p).payload_half
-    assert hy > hx > hz                      # battery long axis along y, lying flat
+    assert hx > hy > hz                      # battery long axis along x (fore/aft), lying flat
     for ft in (0.0, 1.0):
         m, _ = make_model(encode(dict(p, foot_type=ft)), "flat", np.random.default_rng(0))
         gid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "foot_l")

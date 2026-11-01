@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 
 from . import linkage
-from .structure import HIP_HALF_Z, CORE_HALF_XY, LINK_RADIUS, core_half_y, fan_center_y
+from .structure import HIP_HALF_Z, LINK_RADIUS, core_half_x, core_half_y, fan_center_y
 
 FAN_THICK = 0.008
 MARGIN = 0.003
@@ -37,7 +37,7 @@ def interference(p: dict[str, float], yaw_range: float = 0.0, n_theta: int = 36,
         n_yaw = 1
     y = p["hip_width"] / 2
     core_z0, core_z1 = HIP_HALF_Z - LINK_RADIUS - MARGIN, HIP_HALF_Z + p["core_height"] + LINK_RADIUS + MARGIN
-    core_hx = CORE_HALF_XY + LINK_RADIUS + MARGIN
+    core_hx = core_half_x(p) + LINK_RADIUS + MARGIN
     core_hy = core_half_y(p) + LINK_RADIUS + MARGIN
     fan_r = fan_diam_m(p) / 2 + FAN_THICK + LINK_RADIUS + MARGIN
     fy = fan_center_y(p)

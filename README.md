@@ -54,9 +54,10 @@ foot P is a flat pad rigid to the coupler CD, placed a fraction along CD and a
 height below it, so the foot path is set by link lengths and that triangle. The
 core sits on the hip, rigidly by default or on a ±30° yaw pivot when the run
 config sets `"waist_yaw": true` (the yaw gains in the genome are inert
-otherwise). It holds a 4S battery, lying flat with its long axis across the
-body so the core widens rather than lengthens with capacity; capacity and
-position are in the genome. Two pitch-vectored fans sit on the core. The foot
+otherwise). It holds a 4S battery, lying flat with its long axis fore/aft, so the
+core lengthens (never widens) with capacity; capacity and position are in
+the genome. The fans are placed by the gap between the prop's inboard edge
+and the core side, so they move outward with prop size and core width. Two pitch-vectored fans sit on the core. The foot
 is a gene: a flat pad along the coupler or a ball end (rotation-invariant
 contact).
 
