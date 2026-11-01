@@ -144,3 +144,17 @@ def test_locked_genes_held():
         assert g[locked].tolist() == center[locked].tolist()
     with pytest.raises(ValueError):
         _lock_mask({"locked": ["nope"]})
+
+
+def test_payload_inside_core_and_floor_grid():
+    from evol_mech.body.structure import battery_half, core_half_x, payload_z
+    rng = np.random.default_rng(5)
+    for _ in range(50):
+        p = decode(rng.random(N_PARAMS))
+        hx, hy, hz = battery_half(p)
+        assert abs(p["payload_x"]) + hx <= core_half_x(p)
+        if p["core_height"] / 2 >= hz + 0.005:
+            assert abs(payload_z(p)) + hz <= p["core_height"] / 2 + 1e-9
+    for kind in ("flat", "cobblestone"):
+        m, _ = make_model(DEFAULT_NORM, kind, np.random.default_rng(0))
+        assert mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_MATERIAL, "grid") >= 0

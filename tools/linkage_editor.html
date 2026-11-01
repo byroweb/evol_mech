@@ -193,7 +193,7 @@ const ST = {shellKgM2: 2.4, hipHardware: 0.06, postKgM: 0.08, armKgM: 0.06, elec
             battBase: 0.020, battPerMah: 1.0e-4, battM3PerMah: 4.9e-8, aspect: [3.5, 1.13, 1.0], hx: 0.05, coreHalf: 0.05};
 const boxArea = (hx, hy, hz) => 8 * (hx * hy + hy * hz + hx * hz);
 function batteryHalf(p) { const [lg, mid, sh] = ST.aspect, unit = Math.cbrt(ST.battM3PerMah * p.battery_mah / (8 * lg * mid * sh)); return [lg * unit, mid * unit, sh * unit]; }  // long axis along x (fore/aft)
-const coreHalfX = p => Math.max(ST.coreHalf, batteryHalf(p)[0] + 0.005);
+const coreHalfX = p => Math.max(ST.coreHalf, batteryHalf(p)[0] + Math.abs(p.payload_x) + 0.005);
 const coreHalfY = p => Math.max(ST.coreHalf, batteryHalf(p)[1] + 0.005);
 const hipHalfY = p => p.hip_width / 2 - 0.006 - 0.002;
 const fanCenterY = p => coreHalfY(p) + p.fan_gap + p.fan_diam_in * 0.0254 / 2;
@@ -210,7 +210,7 @@ function structureSpec(p) {
 const HZ = 0.035;                              // hip half-height; pivot B sits on a post above it
 const hipTop = () => HZ;
 const coreZ = () => HZ + P.core_height / 2;
-const payloadZ = () => coreZ() + P.payload_zf * P.core_height;
+const payloadZ = () => { const zm = Math.max(0, P.core_height / 2 - batteryHalf(P)[2] - 0.005); return coreZ() + Math.min(zm, Math.max(-zm, P.payload_zf * P.core_height)); };
 const fanZ = () => hipTop() + P.fan_z;      // fan_z from the core bottom
 
 // ---------- canvases ----------

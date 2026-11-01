@@ -16,19 +16,25 @@ HF_HALF_Y = 3.0
 TERRAINS = ["flat", "cobblestone", "potholes", "gravel"]
 
 
+# 10 cm checker so motion is readable in the viewer; texuniform makes texrepeat per metre
+GRID_ASSET = ('<texture name="grid" type="2d" builtin="checker" width="256" height="256" '
+              'rgb1="0.82 0.82 0.82" rgb2="0.55 0.55 0.58"/>'
+              '<material name="grid" texture="grid" texrepeat="10 10" texuniform="true" reflectance="0.1"/>')
+
+
 def _hfield_xml(name: str, zmax: float, friction: str) -> tuple[str, str]:
-    asset = (f'<hfield name="{name}" nrow="{HF_ROWS}" ncol="{HF_COLS}" '
+    asset = (GRID_ASSET + f'<hfield name="{name}" nrow="{HF_ROWS}" ncol="{HF_COLS}" '
              f'size="{HF_HALF_X} {HF_HALF_Y} {zmax} 0.05"/>')
     geom = (f'<geom name="floor" type="hfield" hfield="{name}" pos="0 0 0" '
-            f'friction="{friction}" condim="3" rgba="0.55 0.5 0.45 1"/>')
+            f'friction="{friction}" condim="3" material="grid" rgba="0.75 0.7 0.65 1"/>')
     return asset, geom
 
 
 def build(kind: str, rng: np.random.Generator):
     if kind == "flat":
         geom = ('<geom name="floor" type="plane" size="0 0 0.05" '
-                'friction="1.0 0.005 0.0001" rgba="0.8 0.8 0.8 1"/>')
-        return "", geom, None
+                'friction="1.0 0.005 0.0001" material="grid"/>')
+        return GRID_ASSET, geom, None
 
     if kind == "cobblestone":
         # 4-7 cm stones, 1-2 cm relief: rounded bumps on a grid with jitter

@@ -19,7 +19,7 @@ from .hardware import (fan_from_params, stepper_from_params,
                        FAN_PITCH_SERVO_KP, FAN_PITCH_SERVO_TORQUE)
 from . import linkage
 from .clearance import interference
-from .structure import (structure_from_params, hip_half_y, fan_center_y, HIP_HALF_X, HIP_HALF_Z,
+from .structure import (structure_from_params, hip_half_y, fan_center_y, payload_z as _payload_z, HIP_HALF_X, HIP_HALF_Z,
                         CORE_HALF_XY, LINK_RADIUS)
 
 SIM_DT = 0.002          # physics step
@@ -131,7 +131,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
                  f'range="{-YAW_RANGE:.4f} {YAW_RANGE:.4f}" damping="0.2"/>' if waist_yaw else "")
     yaw_act = (f'<position name="core_yaw" joint="core_yaw" kp="{p["kp_yaw"]:.3f}" '
                f'kv="{p["kp_yaw"]*0.05:.3f}" forcerange="-3 3"/>' if waist_yaw else "")
-    payload_z = p["payload_zf"] * p["core_height"]
+    payload_z = _payload_z(p)
     theta_r = theta_l + p["crank_phase_r"]
     z0 = spawn_height(p, terrain_zmax, theta_l)
 

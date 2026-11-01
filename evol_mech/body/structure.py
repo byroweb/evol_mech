@@ -56,7 +56,15 @@ def battery_half(p: dict[str, float]) -> tuple[float, float, float]:
 
 
 def core_half_x(p: dict[str, float]) -> float:
-    return max(CORE_HALF_XY, battery_half(p)[0] + BATTERY_CLEARANCE)
+    """Core lengthens to enclose the battery wherever payload_x puts it."""
+    return max(CORE_HALF_XY, battery_half(p)[0] + abs(p["payload_x"]) + BATTERY_CLEARANCE)
+
+
+def payload_z(p: dict[str, float]) -> float:
+    """Battery centre height relative to the core centre: payload_zf of the
+    core height, clamped so the pack stays inside the shell."""
+    zmax = max(0.0, p["core_height"] / 2 - battery_half(p)[2] - BATTERY_CLEARANCE)
+    return float(min(zmax, max(-zmax, p["payload_zf"] * p["core_height"])))
 
 
 def core_half_y(p: dict[str, float]) -> float:
