@@ -1,0 +1,37 @@
+{
+  "run_name": "dev",
+  "seed": 0,
+  "population": 64,
+  "generations": 10,
+  "elites": 4,
+  "tournament_k": 3,
+  "mutation_sigma": 0.08,
+  "mutation_rate": 0.3,
+  "workers": 12,
+  "tasks": [
+    {
+      "name": "walk_flat",
+      "terrain": "flat",
+      "objective": "walk",
+      "duration": 8.0,
+      "weight": 1.0
+    },
+    {
+      "name": "walk_cobble",
+      "terrain": "cobblestone",
+      "objective": "walk",
+      "duration": 8.0,
+      "weight": 0.7
+    },
+    {
+      "name": "stand_perturbed",
+      "terrain": "flat",
+      "objective": "stand",
+      "duration": 6.0,
+      "weight": 0.6
+    }
+  ],
+  "fans_enabled": true,
+  "fan_energy_cost": 0.02,
+  "record_elite_video": false
+}

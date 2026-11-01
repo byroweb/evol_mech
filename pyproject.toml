@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evol_mech"
+version = "0.0.1"
+description = "Evolve the geometry and gait of a fan-assisted bipedal mech in MuJoCo"
+requires-python = ">=3.11"
+dependencies = [
+    "mujoco>=3.1",
+    "numpy>=1.26",
+    "imageio>=2.34",
+    "imageio-ffmpeg>=0.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "matplotlib>=3.8"]
+
+[tool.setuptools.packages.find]
+include = ["evol_mech*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

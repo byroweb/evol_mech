@@ -1,0 +1,20 @@
+# environments
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# experiment outputs: never commit, never let OneDrive sync them if avoidable
+runs/
+*.mp4
+*.parquet
+*.sqlite
+*.db
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
