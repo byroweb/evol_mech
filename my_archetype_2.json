@@ -51,7 +51,6 @@
     "fan_kd_roll": 0.05,
     "fan_pitch_bias": 0.17453292519943295,
     "fan_kp_pitch": 1,
-    "fan_kd_pitch": 0.1,
-    "fan_y": 0.1
+    "fan_kd_pitch": 0.1
   }
 }
