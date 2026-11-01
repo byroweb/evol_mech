@@ -61,6 +61,10 @@ and the core side, so they move outward with prop size and core width. Two pitch
 is a gene: a flat pad along the coupler or a ball end (rotation-invariant
 contact).
 
+**Locking genes.** The run config's `"locked"` list (or `--lock a,b` on the
+command line) holds those genes at the archetype's value through initialisation,
+crossover and mutation, e.g. `--lock foot_type` to evolve around a chosen foot.
+
 **Masses are derived, not evolved** (`body/structure.py`): hip and core shells
 weigh what printed boxes of their size weigh, bracket posts and fan arms by
 length, plus a 250 g electronics allowance and a battery mass that follows

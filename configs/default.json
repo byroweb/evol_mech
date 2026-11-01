@@ -34,5 +34,6 @@
   "fans_enabled": true,
   "fan_energy_cost": 0.02,
   "record_elite_video": false,
-  "waist_yaw": false
+  "waist_yaw": false,
+  "locked": []
 }

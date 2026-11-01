@@ -13,6 +13,7 @@ import time
 import numpy as np
 
 from ..genome import random_genome, mutate, crossover, N_PARAMS
+from ..genome.spec import INDEX
 from ..genome.archetype import archetype_center
 from ..sim.rollout import evaluate
 from ..data.store import RunStore
@@ -28,12 +29,23 @@ def _tournament(fit: np.ndarray, rng: np.random.Generator, k: int) -> int:
     return int(idx[np.argmax(fit[idx])])
 
 
+def _lock_mask(cfg: dict) -> np.ndarray:
+    """Genes listed in cfg['locked'] are held at the archetype's value."""
+    mask = np.zeros(N_PARAMS, dtype=bool)
+    for name in cfg.get("locked", []):
+        if name not in INDEX:
+            raise ValueError(f"locked gene {name!r} is not in the genome")
+        mask[INDEX[name]] = True
+    return mask
+
+
 def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, dict]:
     rng = np.random.default_rng(cfg["seed"])
     n = cfg["population"]
     center = archetype_center(cfg.get("archetype"))
+    locked = _lock_mask(cfg)
     pop = np.stack([random_genome(rng, cfg.get("init_spread", 0.25), center=center,
-                                  waist_yaw=cfg.get("waist_yaw", False)) for _ in range(n)])
+                                  waist_yaw=cfg.get("waist_yaw", False), locked=locked) for _ in range(n)])
     pop[0] = center   # keep the archetype itself in generation 0
     best_genome, best_result, best_fit = None, None, -np.inf
 
@@ -61,7 +73,9 @@ def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, 
                 a = pop[_tournament(fit, rng, cfg["tournament_k"])]
                 b = pop[_tournament(fit, rng, cfg["tournament_k"])]
                 child = crossover(a, b, rng) if rng.random() < 0.7 else a.copy()
-                next_pop.append(mutate(child, rng, cfg["mutation_sigma"], cfg["mutation_rate"]))
+                child = mutate(child, rng, cfg["mutation_sigma"], cfg["mutation_rate"])
+                child[locked] = center[locked]
+                next_pop.append(child)
             pop = np.stack(next_pop)
 
     return best_genome, best_result

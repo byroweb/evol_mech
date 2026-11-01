@@ -18,6 +18,7 @@ def main():
     ap.add_argument("--workers", type=int)
     ap.add_argument("--runs-dir", default="runs")
     ap.add_argument("--archetype", help="archetype JSON from tools/linkage_editor.html")
+    ap.add_argument("--lock", help="comma-separated genes held at the archetype value (adds to config 'locked')")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -26,11 +27,13 @@ def main():
         v = getattr(args, k)
         if v is not None:
             cfg[k] = v
+    if args.lock:
+        cfg["locked"] = sorted(set(cfg.get("locked", [])) | set(args.lock.split(",")))
 
     store = RunStore(args.runs_dir, cfg["run_name"], cfg)
     print(f"run '{cfg['run_name']}' -> {store.dir}   pop={cfg['population']} "
           f"gens={cfg['generations']} workers={cfg['workers']}  "
-          f"archetype={cfg.get('archetype') or 'built-in default'}")
+          f"archetype={cfg.get('archetype') or 'built-in default'}  locked={cfg.get('locked') or '-'}")
 
     def report(row, best_genome, best_result):
         print(f"gen {row['gen']:4d}  best {row['best']:7.3f}  mean {row['mean']:7.3f}  "

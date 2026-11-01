@@ -130,3 +130,17 @@ def test_foot_types_build_and_battery_fore_aft():
         m, _ = make_model(encode(dict(p, foot_type=ft)), "flat", np.random.default_rng(0))
         gid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "foot_l")
         assert m.geom_type[gid] == (mujoco.mjtGeom.mjGEOM_SPHERE if ft else mujoco.mjtGeom.mjGEOM_CAPSULE)
+
+
+def test_locked_genes_held():
+    from evol_mech.genome.ops import random_genome, mutate, crossover
+    from evol_mech.evolve.ga import _lock_mask
+    from evol_mech.genome.spec import INDEX
+    rng = np.random.default_rng(3)
+    center = DEFAULT_NORM.copy(); center[INDEX["foot_type"]] = 1.0
+    locked = _lock_mask({"locked": ["foot_type", "battery_mah"]})
+    for _ in range(10):
+        g = random_genome(rng, center=center, locked=locked)
+        assert g[locked].tolist() == center[locked].tolist()
+    with pytest.raises(ValueError):
+        _lock_mask({"locked": ["nope"]})
