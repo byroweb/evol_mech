@@ -1,6 +1,6 @@
 {
   "name": "my_archetype",
-  "created": "2026-11-01T11:47:18.078Z",
+  "created": "2026-11-01T11:55:31.357Z",
   "waist_yaw": false,
   "tags": {
     "hip": "hip / drivetrain housing",
@@ -24,7 +24,7 @@
     "payload_x": 0,
     "payload_zf": -0.2,
     "fan_x": -0.104,
-    "fan_gap": 0.004234,
+    "fan_gap": 0.008,
     "fan_z": 0.072,
     "foot_type": 0,
     "foot_radius": 0.015,
