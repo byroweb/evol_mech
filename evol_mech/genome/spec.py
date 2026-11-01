@@ -46,9 +46,10 @@ PARAMS: list[Param] = [
     Param("fan_x",          -0.12, 0.12, 0.00, "geometry"),   # fore/aft on core
     Param("fan_gap",         0.00, 0.15, 0.045, "geometry"),  # prop inboard edge to core side face
     Param("fan_zf",          0.00, 1.00, 0.60, "geometry"),   # height as a fraction of core height: 0 bottom, 1 top
-    Param("foot_type",       0,    1,    0,    "geometry", 1),  # 0 = flat pad, 1 = ball end
+    Param("foot_type",       0,    2,    0,    "geometry", 1),  # 0 = flat pad, 1 = ball end, 2 = cross (pad + lateral bar)
     Param("foot_radius",     0.008, 0.030, 0.015, "geometry"), # pad thickness or ball radius
-    Param("foot_half_len",   0.005, 0.070, 0.035, "geometry"), # pad fore/aft half-length (pad only)
+    Param("foot_half_len",   0.005, 0.070, 0.035, "geometry"), # pad fore/aft half-length (pad, cross)
+    Param("foot_half_width", 0.010, 0.080, 0.040, "geometry"), # lateral bar half-width (cross only), capped so feet never overlap
     # ---- 4-bar linkage, per leg (both legs identical), labels as in the sketch:
     # A crank pivot (hip origin), D crank tip, B rocker pivot = A + (pivot_b_dx, pivot_b_dz),
     # C coupler/rocker joint, P foot rigid to coupler CD.

@@ -126,10 +126,10 @@ def test_foot_types_build_and_battery_fore_aft():
     p = decode(DEFAULT_NORM)
     hx, hy, hz = structure_from_params(p).payload_half
     assert hx > hy > hz                      # battery long axis along x (fore/aft), lying flat
-    for ft in (0.0, 1.0):
+    for ft in (0.0, 1.0, 2.0):
         m, _ = make_model(encode(dict(p, foot_type=ft)), "flat", np.random.default_rng(0))
         gid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "foot_l")
-        assert m.geom_type[gid] == (mujoco.mjtGeom.mjGEOM_SPHERE if ft else mujoco.mjtGeom.mjGEOM_CAPSULE)
+        assert m.geom_type[gid] == (mujoco.mjtGeom.mjGEOM_SPHERE if ft == 1.0 else mujoco.mjtGeom.mjGEOM_CAPSULE)
 
 
 def test_locked_genes_held():
@@ -196,3 +196,16 @@ def test_narrow_hip_builds_with_core_following():
     assert m.geom_size[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "core")][1] < 0.05
     # a pack too wide for the hip is rejected rather than widening the core into the legs
     assert interference(dict(narrow, hip_width=0.06, battery_mah=6000)) is not None
+
+
+def test_cross_foot_bar_capped_and_counts_as_foot():
+    from evol_mech.body.structure import foot_half_width
+    from evol_mech.sim.rollout import rollout
+    p = dict(decode(DEFAULT_NORM), foot_type=2, foot_half_width=0.08, hip_width=0.10, foot_radius=0.015)
+    assert abs(foot_half_width(p) - (0.05 - 0.015 - 0.005)) < 1e-9
+    m, _ = make_model(encode(p), "flat", np.random.default_rng(0))
+    bar = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "foot_l_bar")
+    assert bar >= 0 and m.geom_type[bar] == mujoco.mjtGeom.mjGEOM_CAPSULE
+    # standing on cross feet with the cranks still must not register as a fall
+    r = rollout(encode(dict(p, crank_speed_hz=0.0)), {"terrain": "flat", "objective": "walk", "duration": 1.0}, seed=0, fans_enabled=False)
+    assert not r["fell"]

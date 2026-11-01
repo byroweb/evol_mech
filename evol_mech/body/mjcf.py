@@ -19,7 +19,7 @@ from .hardware import (fan_from_params, stepper_from_params,
                        FAN_PITCH_SERVO_KP, FAN_PITCH_SERVO_TORQUE)
 from . import linkage
 from .clearance import interference
-from .structure import (structure_from_params, hip_half_y, fan_center_y, fan_z_core, payload_z as _payload_z, HIP_HALF_X, HIP_HALF_Z,
+from .structure import (structure_from_params, hip_half_y, fan_center_y, fan_z_core, foot_half_width, payload_z as _payload_z, HIP_HALF_X, HIP_HALF_Z,
                         CORE_HALF_XY, LINK_RADIUS)
 
 SIM_DT = 0.002          # physics step
@@ -91,14 +91,24 @@ def _leg(side: str, sign: float, p: dict[str, float], theta0: float, crank_torqu
       </body>"""
 
 
+FOOT_ATTR = 'friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"'
+
+
 def _foot(side: str, p: dict[str, float], fx: float, fz: float) -> str:
-    """Ball end (rotation-invariant contact) or flat pad along the coupler."""
-    if p["foot_type"] >= 0.5:
-        return (f'<geom name="foot_{side}" type="sphere" size="{p["foot_radius"]:.4f}" pos="{fx:.4f} 0 {fz:.4f}" '
-                f'friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"/>')
-    return (f'<geom name="foot_{side}" type="capsule" size="{p["foot_radius"]:.4f}" '
-            f'fromto="{fx-p["foot_half_len"]:.4f} 0 {fz:.4f} {fx+p["foot_half_len"]:.4f} 0 {fz:.4f}" '
-            f'friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"/>')
+    """0: flat pad along the coupler. 1: ball end (rotation-invariant contact).
+    2: cross, the pad plus a lateral bar that resists roll on one leg.
+    The primary geom is always named foot_{side}; the bar is foot_{side}_bar."""
+    r = p["foot_radius"]
+    if 0.5 <= p["foot_type"] < 1.5:
+        return f'<geom name="foot_{side}" type="sphere" size="{r:.4f}" pos="{fx:.4f} 0 {fz:.4f}" {FOOT_ATTR}/>'
+    pad = (f'<geom name="foot_{side}" type="capsule" size="{r:.4f}" '
+           f'fromto="{fx-p["foot_half_len"]:.4f} 0 {fz:.4f} {fx+p["foot_half_len"]:.4f} 0 {fz:.4f}" {FOOT_ATTR}/>')
+    if p["foot_type"] < 1.5:
+        return pad
+    w = foot_half_width(p)
+    bar = (f'<geom name="foot_{side}_bar" type="capsule" size="{r:.4f}" '
+           f'fromto="{fx:.4f} {-w:.4f} {fz:.4f} {fx:.4f} {w:.4f} {fz:.4f}" {FOOT_ATTR}/>')
+    return pad + " " + bar
 
 
 def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) -> str:

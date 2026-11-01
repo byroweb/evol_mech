@@ -66,6 +66,9 @@ contact).
 **Locking genes.** The run config's `"locked"` list (or `--lock a,b` on the
 command line) holds those genes at the archetype's value through initialisation,
 crossover and mutation, e.g. `--lock foot_type` to evolve around a chosen foot.
+Foot types: 0 flat pad, 1 ball, 2 cross (pad plus a lateral bar whose half-width
+is a gene, capped so the feet never meet). Two point feet on a narrow hip have
+no roll stiffness: with antiphase cranks the body rolls onto the lifted foot.
 `--lock-groups geometry,linkage,drivetrain,fan_spec` freezes the whole body and
 evolves only the gait and fan-controller genes.
 

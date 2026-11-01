@@ -29,6 +29,7 @@
     "foot_type": 0,
     "foot_radius": 0.015,
     "foot_half_len": 0.035,
+    "foot_half_width": 0.04,
     "crank_len": 0.0355,
     "coupler_len": 0.114,
     "rocker_len": 0.14,

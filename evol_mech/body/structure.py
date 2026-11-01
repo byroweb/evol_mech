@@ -84,6 +84,15 @@ def fan_center_y(p: dict[str, float]) -> float:
     return core_half_y(p) + p["fan_gap"] + p["fan_diam_in"] * 0.0254 / 2
 
 
+FOOT_INNER_GAP = 0.005
+
+
+def foot_half_width(p: dict[str, float]) -> float:
+    """Lateral half-width of a cross foot, capped so the two feet cannot meet."""
+    cap = p["hip_width"] / 2 - p["foot_radius"] - FOOT_INNER_GAP
+    return max(0.0, min(p["foot_half_width"], cap))
+
+
 def fan_z_core(p: dict[str, float]) -> float:
     """Fan height relative to the core centre; fan_zf keeps it within the shell height."""
     return (p["fan_zf"] - 0.5) * p["core_height"]

@@ -83,7 +83,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     total_mass = float(model.body_subtreemass[hip_id])
     leg_len = nominal_leg_len(p)
     floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
-    feet = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, n) for n in ("foot_l", "foot_r")}
+    feet = {g for g in range(model.ngeom)
+            if (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "").startswith("foot_")}
     body_geoms = {g for g in range(model.ngeom) if g not in feet and g != floor_geom}
 
     duration = float(task["duration"])
