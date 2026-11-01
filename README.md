@@ -91,7 +91,9 @@ roll to differential throttle, pitch to fan pitch. Gains are in the genome.
 
 **Fitness** (`sim/rollout.py`). Walk: forward distance, minus lateral drift,
 fall penalty and fan energy. Stand: fraction of time upright under periodic
-shoves, minus drift and fan energy. Each run config lists tasks with terrains
+shoves, minus drift (`drift_cost` per metre, default 1.0) and fan energy.
+`fan_energy_cost` (0.2 by default) prices fan use so that thrust-propelled
+skating on the feet scores below actual stepping. Each run config lists tasks with terrains
 and weights. Every individual in a generation sees the same terrain seed.
 
 **Throughput** (i7-12700). ~100k physics steps/s per process; the pool peaks

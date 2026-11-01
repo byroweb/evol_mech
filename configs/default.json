@@ -28,11 +28,12 @@
       "terrain": "flat",
       "objective": "stand",
       "duration": 6.0,
-      "weight": 0.6
+      "weight": 0.6,
+      "drift_cost": 1.0
     }
   ],
   "fans_enabled": true,
-  "fan_energy_cost": 0.02,
+  "fan_energy_cost": 0.2,
   "record_elite_video": false,
   "waist_yaw": false,
   "locked": []

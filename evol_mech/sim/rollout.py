@@ -143,7 +143,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     elif objective == "walk":
         fitness = dx - 0.2 * abs(dy) - (0.5 if fell else 0.0) - fan_energy_cost * fan_energy
     elif objective == "stand":
-        fitness = (time_upright / duration) - 0.3 * math.hypot(dx, dy) - fan_energy_cost * fan_energy
+        # drift_cost per metre: sliding away under the fans is not standing
+        fitness = (time_upright / duration) - float(task.get("drift_cost", 1.0)) * math.hypot(dx, dy) - fan_energy_cost * fan_energy
     else:
         raise ValueError(f"unknown objective {objective!r}")
 
