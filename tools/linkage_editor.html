@@ -7,33 +7,40 @@
 <style>
   :root { --bg:#fafafa; --fg:#222; --muted:#777; --line:#ddd; --accent:#2563eb; --bad:#dc2626; --ok:#16a34a; }
   * { box-sizing: border-box; }
-  body { margin:0; font: 14px/1.4 system-ui, sans-serif; color:var(--fg); background:var(--bg); }
-  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  header h1 { font-size:16px; margin:0 12px 0 0; }
-  main { display:grid; grid-template-columns: 720px 1fr; gap:16px; padding:16px; }
-  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
-  canvas { background:#fff; border:1px solid var(--line); border-radius:6px; touch-action:none; width:100%; max-width:720px; }
-  .panel { border:1px solid var(--line); border-radius:6px; background:#fff; padding:10px 12px; margin-bottom:12px; }
-  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 8px; }
-  table { border-collapse:collapse; width:100%; }
-  td { padding:2px 6px; vertical-align:middle; }
-  td.k { color:var(--muted); white-space:nowrap; }
-  input[type=number] { width:88px; }
+  body { margin:0; font: 13px/1.4 system-ui, sans-serif; color:var(--fg); background:var(--bg); }
+  header { padding:8px 16px; border-bottom:1px solid var(--line); display:flex; gap:10px; align-items:center; flex-wrap:wrap; position:sticky; top:0; background:var(--bg); z-index:2; }
+  header h1 { font-size:15px; margin:0 10px 0 0; }
+  main { display:grid; grid-template-columns: 520px 400px minmax(360px, 1fr); gap:14px; padding:14px; align-items:start; }
+  @media (max-width: 1340px) { main { grid-template-columns: 520px 400px; } }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+  canvas { background:#fff; border:1px solid var(--line); border-radius:6px; touch-action:none; width:100%; display:block; }
+  .view h3 { margin:0 0 4px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .panel { border:1px solid var(--line); border-radius:6px; background:#fff; padding:8px 10px; margin-bottom:10px; }
+  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 6px; }
+  .row { display:grid; grid-template-columns: 118px 1fr 74px 48px; gap:6px; align-items:center; padding:1px 0; }
+  .row .k { color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row .u { color:var(--muted); font-size:11px; }
+  input[type=range] { width:100%; margin:0; }
+  input[type=number] { width:100%; font-size:12px; padding:2px 3px; }
   input[type=text] { width:100%; }
   input.bad { border-color:var(--bad); background:#fef2f2; }
-  button, label.btn { padding:5px 10px; border:1px solid var(--line); border-radius:5px; background:#fff; cursor:pointer; }
+  button, label.btn { padding:4px 10px; border:1px solid var(--line); border-radius:5px; background:#fff; cursor:pointer; font-size:13px; }
   button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   #status { font-weight:600; }
   #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
-  .metrics { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:4px 12px; }
-  .metrics div span { color:var(--muted); display:block; font-size:12px; }
-  .hint { color:var(--muted); font-size:12px; }
+  .metrics { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:3px 10px; }
+  .metrics div span { color:var(--muted); display:block; font-size:11px; }
+  .hint { color:var(--muted); font-size:12px; margin:6px 0 0; }
+  table { border-collapse:collapse; width:100%; }
+  td { padding:1px 4px; }
+  td.k { color:var(--muted); white-space:nowrap; width:80px; }
+  details summary { cursor:pointer; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
 </style>
 </head>
 <body>
 <header>
   <h1>Mech archetype editor</h1>
-  <input id="name" type="text" value="my_archetype" style="width:180px" title="archetype name">
+  <input id="name" type="text" value="my_archetype" style="width:170px" title="archetype name">
   <button id="btn-export" class="primary">Export JSON</button>
   <label class="btn">Import JSON <input id="file" type="file" accept="application/json" hidden></label>
   <button id="btn-reset">Reset to defaults</button>
@@ -41,45 +48,62 @@
   <span id="status"></span>
 </header>
 <main>
-  <div>
-    <canvas id="cv" width="720" height="720"></canvas>
-    <p class="hint">Side view, x forward, z up, hip origin at A. Drag <b>B</b> (rocker pivot), <b>D</b> (crank tip: sets crank length and preview angle),
-      <b>C</b> (sets coupler and rocker lengths), <b>P</b> (foot: fraction along CD and height below it). Blue is the foot path over one revolution.
-      Grey ghosts are other crank angles. Values outside the genome bounds turn red and will be rejected on import.</p>
+  <div class="view">
+    <h3>Side view (x forward, z up)</h3>
+    <canvas id="side" width="520" height="640"></canvas>
+    <p class="hint">Drag <b>B</b> rocker pivot, <b>D</b> crank tip (length + preview angle), <b>C</b> (coupler + rocker lengths),
+      <b>P</b> foot (fraction along CD, height below). Drag the <b>fan</b> for fore/aft and height, the <b>payload</b> for its position.</p>
     <div class="panel"><h2>Foot path</h2><div class="metrics" id="metrics"></div></div>
   </div>
-  <div>
-    <div class="panel"><h2>Part tags</h2>
-      <p class="hint">Short labels for each body part, saved with the archetype so sim bodies, exported URDF links and logs can carry your names.</p>
-      <table id="tags"></table>
+  <div class="view">
+    <h3>Front view (y left, z up)</h3>
+    <canvas id="front" width="400" height="640"></canvas>
+    <p class="hint">Drag a <b>fan</b> for spread and height, the <b>hip edge</b> for hip width, the <b>payload</b> for its height.</p>
+    <div class="panel"><h2>Hardware estimate</h2><div class="metrics" id="hw"></div></div>
+    <div class="panel"><details><summary>Part tags</summary>
+      <p class="hint">Short labels saved with the archetype so sim bodies, URDF links and logs can carry your names.</p>
+      <table id="tags"></table></details>
     </div>
-    <div id="params"></div>
   </div>
+  <div id="params"></div>
 </main>
 <script>
 // Keep in sync with evol_mech/genome/spec.py (tests/test_core.py checks this block).
 const SPEC = [{"name": "hip_width", "lo": 0.08, "hi": 0.3, "default": 0.16, "group": "geometry"}, {"name": "hip_struct_mass", "lo": 0.1, "hi": 1.5, "default": 0.4, "group": "geometry"}, {"name": "core_height", "lo": 0.05, "hi": 0.3, "default": 0.14, "group": "geometry"}, {"name": "core_shell_mass", "lo": 0.05, "hi": 0.8, "default": 0.2, "group": "geometry"}, {"name": "payload_mass", "lo": 0.1, "hi": 1.5, "default": 0.45, "group": "geometry"}, {"name": "payload_x", "lo": -0.06, "hi": 0.06, "default": 0.0, "group": "geometry"}, {"name": "payload_zf", "lo": -0.45, "hi": 0.45, "default": -0.2, "group": "geometry"}, {"name": "fan_x", "lo": -0.12, "hi": 0.12, "default": 0.0, "group": "geometry"}, {"name": "fan_y", "lo": 0.06, "hi": 0.3, "default": 0.14, "group": "geometry"}, {"name": "fan_z", "lo": 0.0, "hi": 0.3, "default": 0.12, "group": "geometry"}, {"name": "foot_radius", "lo": 0.008, "hi": 0.03, "default": 0.015, "group": "geometry"}, {"name": "foot_half_len", "lo": 0.005, "hi": 0.07, "default": 0.035, "group": "geometry"}, {"name": "crank_len", "lo": 0.015, "hi": 0.08, "default": 0.035, "group": "linkage"}, {"name": "coupler_len", "lo": 0.05, "hi": 0.26, "default": 0.11, "group": "linkage"}, {"name": "rocker_len", "lo": 0.05, "hi": 0.26, "default": 0.14, "group": "linkage"}, {"name": "pivot_b_dx", "lo": -0.15, "hi": 0.1, "default": -0.05, "group": "linkage"}, {"name": "pivot_b_dz", "lo": -0.05, "hi": 0.18, "default": 0.1, "group": "linkage"}, {"name": "foot_frac", "lo": 0.0, "hi": 1.0, "default": 0.45, "group": "linkage"}, {"name": "foot_height", "lo": 0.02, "hi": 0.32, "default": 0.16, "group": "linkage"}, {"name": "stepper_torque", "lo": 0.02, "hi": 0.6, "default": 0.2, "group": "drivetrain"}, {"name": "gear_ratio", "lo": 1.0, "hi": 8.0, "default": 3.0, "group": "drivetrain"}, {"name": "kp_yaw", "lo": 2.0, "hi": 30.0, "default": 8.0, "group": "drivetrain"}, {"name": "fan_diam_in", "lo": 2.0, "hi": 5.0, "default": 3.0, "group": "fan_spec"}, {"name": "fan_blades", "lo": 2.0, "hi": 6.0, "default": 3.0, "group": "fan_spec"}, {"name": "stator_d_mm", "lo": 12.0, "hi": 25.0, "default": 18.0, "group": "fan_spec"}, {"name": "stator_h_mm", "lo": 4.0, "hi": 10.0, "default": 6.0, "group": "fan_spec"}, {"name": "crank_speed_hz", "lo": -3.0, "hi": 3.0, "default": 1.0, "group": "gait"}, {"name": "crank_phase_r", "lo": 0.0, "hi": 6.283185307179586, "default": 3.141592653589793, "group": "gait"}, {"name": "yaw_amp", "lo": -0.5235987755982988, "hi": 0.5235987755982988, "default": 0.0, "group": "gait"}, {"name": "fan_base", "lo": 0.0, "hi": 1.0, "default": 0.2, "group": "fan_ctrl"}, {"name": "fan_kp_roll", "lo": -4.0, "hi": 4.0, "default": 0.5, "group": "fan_ctrl"}, {"name": "fan_kd_roll", "lo": -1.0, "hi": 1.0, "default": 0.05, "group": "fan_ctrl"}, {"name": "fan_pitch_bias", "lo": -1.0471975511965976, "hi": 1.0471975511965976, "default": 0.17453292519943295, "group": "fan_ctrl"}, {"name": "fan_kp_pitch", "lo": -4.0, "hi": 4.0, "default": 1.0, "group": "fan_ctrl"}, {"name": "fan_kd_pitch", "lo": -1.0, "hi": 1.0, "default": 0.1, "group": "fan_ctrl"}];
+const byName = Object.fromEntries(SPEC.map(s => [s.name, s]));
+
+// UI grouping (independent of the spec's group field), with display units.
+// unit: [label, factor to display, decimals]
+const MM = ["mm", 1000, 0], G = ["g", 1000, 0], DEG = ["deg", 180 / Math.PI, 0], ONE = ["", 1, 2];
+const UI_GROUPS = [
+  ["Leg linkage (A B C D P)", [["crank_len", "crank AD", MM], ["coupler_len", "coupler CD", MM], ["rocker_len", "rocker BC", MM],
+     ["pivot_b_dx", "pivot B fore/aft", MM], ["pivot_b_dz", "pivot B height", MM],
+     ["foot_frac", "foot along D->C", ["frac", 1, 2]], ["foot_height", "foot below CD", MM],
+     ["foot_half_len", "foot half-length", MM], ["foot_radius", "foot pad radius", MM]]],
+  ["Body and mass", [["hip_width", "hip width (leg spacing)", MM], ["hip_struct_mass", "hip structure", G],
+     ["core_height", "core height", MM], ["core_shell_mass", "core shell", G],
+     ["payload_mass", "payload (battery etc)", G], ["payload_x", "payload fore/aft", MM], ["payload_zf", "payload height", ["x core h", 1, 2]]]],
+  ["Fan placement", [["fan_x", "fore/aft on core", MM], ["fan_y", "half-spread", MM], ["fan_z", "above core centre", MM]]],
+  ["Fan hardware", [["fan_diam_in", "prop diameter", ["in", 1, 1]], ["fan_blades", "blades", ["", 1, 0]],
+     ["stator_d_mm", "stator diameter", ["mm", 1, 0]], ["stator_h_mm", "stator height", ["mm", 1, 0]]]],
+  ["Drivetrain", [["stepper_torque", "stepper holding torque", ["N·m", 1, 2]], ["gear_ratio", "gear ratio", ["x", 1, 1]], ["kp_yaw", "yaw pivot stiffness", ["N·m/rad", 1, 1]]]],
+  ["Gait", [["crank_speed_hz", "crank speed (sign = dir)", ["Hz", 1, 2]], ["crank_phase_r", "right crank phase", DEG], ["yaw_amp", "yaw amplitude", DEG]]],
+  ["Fan attitude controller", [["fan_base", "base throttle", ONE], ["fan_kp_roll", "roll Kp", ONE], ["fan_kd_roll", "roll Kd", ONE],
+     ["fan_pitch_bias", "forward pitch bias", DEG], ["fan_kp_pitch", "pitch Kp", ONE], ["fan_kd_pitch", "pitch Kd", ONE]]],
+];
 const PARTS = ["hip","core","payload","crank_l","crank_r","coupler_l","coupler_r","rocker_l","rocker_r","foot_l","foot_r","fan_l","fan_r"];
 const DEFAULT_TAGS = {hip:"hip / drivetrain housing", core:"core", payload:"battery + electronics",
   crank_l:"leg input crank L", crank_r:"leg input crank R", coupler_l:"leg coupler L", coupler_r:"leg coupler R",
   rocker_l:"leg rocker L", rocker_r:"leg rocker R", foot_l:"foot L", foot_r:"foot R", fan_l:"fan L", fan_r:"fan R"};
-const GROUP_TITLES = {geometry:"Body geometry", linkage:"Leg linkage (A B C D P)", drivetrain:"Drivetrain",
-  fan_spec:"Fan hardware", gait:"Gait", fan_ctrl:"Fan attitude controller"};
-const byName = Object.fromEntries(SPEC.map(s => [s.name, s]));
 
 // ---------- state ----------
-let P = {};            // physical params
-let TAGS = {};
-let theta = 0;         // preview crank angle
-function resetState() {
-  P = Object.fromEntries(SPEC.map(s => [s.name, s.default]));
-  TAGS = {...DEFAULT_TAGS};
-  theta = 0;
-}
+let P = {}, TAGS = {}, theta = 0;
+function resetState() { P = Object.fromEntries(SPEC.map(s => [s.name, s.default])); TAGS = {...DEFAULT_TAGS}; theta = 0; }
 resetState();
 try { const saved = JSON.parse(localStorage.getItem("evol_mech_archetype") || "null");
       if (saved && saved.phys) { Object.assign(P, saved.phys); Object.assign(TAGS, saved.tags || {});
         if (saved.name) document.getElementById("name").value = saved.name; } } catch (e) {}
+const clampP = (k, v) => Math.min(byName[k].hi, Math.max(byName[k].lo, v));
 
 // ---------- linkage solver: port of evol_mech/body/linkage.py ----------
 const sign1 = x => (x < 0 ? -1 : 1);
@@ -98,10 +122,8 @@ function reference(p) {
   const pts = circleIntersect(D, p.coupler_len, B, p.rocker_len);
   if (!pts) return null;
   const C = pts[0][1] <= pts[1][1] ? pts[0] : pts[1];
-  const ux = (C[0] - D[0]) / p.coupler_len, uz = (C[1] - D[1]) / p.coupler_len;
-  const nx = uz, nz = -ux;
-  const side = -sign1(nx * (0 - D[0]) + nz * (0 - D[1]));
-  return [orient(B, C, D), side];
+  const ux = (C[0] - D[0]) / p.coupler_len, uz = (C[1] - D[1]) / p.coupler_len, nx = uz, nz = -ux;
+  return [orient(B, C, D), -sign1(nx * (0 - D[0]) + nz * (0 - D[1]))];
 }
 function solve(p, th) {
   const ref = reference(p); if (!ref) return null;
@@ -124,170 +146,226 @@ function isValid(p, samples = 72) {
   return true;
 }
 function footPath(p, samples = 180) {
-  const out = [];
-  for (let k = 0; k < samples; k++) { const s = solve(p, 2 * Math.PI * k / samples); out.push(s ? s.P : null); }
-  return out;
+  const out = []; for (let k = 0; k < samples; k++) { const s = solve(p, 2 * Math.PI * k / samples); out.push(s ? s.P : null); } return out;
 }
 
-// ---------- canvas ----------
-const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
-const SCALE = 1500, OX = 360, OZ = 300;           // px per metre, origin
-const toPx = ([x, z]) => [OX + x * SCALE, OZ - z * SCALE];
-const toM = (px, py) => [(px - OX) / SCALE, (OZ - py) / SCALE];
-let drag = null;
+// ---------- hardware: port of evol_mech/body/hardware.py ----------
+function fanSpec(p) {
+  const d = p.fan_diam_in * 0.0254, blades = Math.round(p.fan_blades), area = Math.PI * d * d / 4;
+  const power = 0.09 * p.stator_d_mm ** 2 * p.stator_h_mm;
+  const fom = Math.min(0.70, Math.max(0.45, 0.68 - 0.03 * (blades - 2)));
+  const tmax = Math.pow(fom * power * Math.sqrt(2 * 1.225 * area), 2 / 3);
+  const mass = 8e-6 * p.stator_d_mm ** 2 * p.stator_h_mm + 0.7 * p.fan_diam_in * Math.sqrt(blades) * 1e-3 + 0.008 + 0.010;
+  return {d, power, tmax, mass, tau: 0.02 + 0.015 * p.fan_diam_in, fom};
+}
+function stepperSpec(p) {
+  const t = p.stepper_torque, g = p.gear_ratio;
+  return {mass: 0.05 + 0.45 * t + 0.004 * g, crankTorque: t * g * 0.9, crankMaxHz: 60 / g / (2 * Math.PI)};
+}
 
-function draw() {
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  // grid
+// ---------- geometry shared by views ----------
+const HZ = 0.035;                              // hip half-height
+const coreZ = () => HZ + P.core_height / 2;
+const payloadZ = () => coreZ() + P.payload_zf * P.core_height;
+const fanZ = () => coreZ() + P.fan_z;
+
+// ---------- canvases ----------
+const SCALE = 1100;
+const side = document.getElementById("side"), sctx = side.getContext("2d");
+const front = document.getElementById("front"), fctx = front.getContext("2d");
+const S_O = [250, 300], F_O = [200, 300];      // pixel origins (hip centre)
+const sPx = ([x, z]) => [S_O[0] + x * SCALE, S_O[1] - z * SCALE];
+const sM = (px, py) => [(px - S_O[0]) / SCALE, (S_O[1] - py) / SCALE];
+const fPx = ([y, z]) => [F_O[0] - y * SCALE, F_O[1] - z * SCALE];   // +y (left) drawn to the left
+const fM = (px, py) => [(F_O[0] - px) / SCALE, (F_O[1] - py) / SCALE];
+
+function grid(ctx, cv, toPx) {
   ctx.strokeStyle = "#eef"; ctx.lineWidth = 1;
-  for (let m = -0.3; m <= 0.3; m += 0.05) {
+  for (let m = -0.5; m <= 0.5; m += 0.05) {
     const [x] = toPx([m, 0]); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cv.height); ctx.stroke();
     const [, y] = toPx([0, m]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke();
   }
-  const valid = isValid(P);
-  const path = footPath(P);
-  const B = [P.pivot_b_dx, P.pivot_b_dz];
-
-  // body outline: hip box, core, payload, fans (side view)
-  const hx = P.hip_width / 2 + 0.02, HZ = 0.035, coreZ = HZ + P.core_height / 2;
-  ctx.fillStyle = "#e5e7eb"; ctx.strokeStyle = "#9ca3af";
-  rect([-hx, -HZ], [hx, HZ]);
-  rect([-0.05, HZ], [0.05, HZ + P.core_height]);
-  ctx.fillStyle = "#c7d2fe"; rect([P.payload_x - 0.03, coreZ + P.payload_zf * P.core_height - 0.015],
-                                   [P.payload_x + 0.03, coreZ + P.payload_zf * P.core_height + 0.015]);
-  ctx.fillStyle = "#fde68a"; const fd = P.fan_diam_in * 0.0254 / 2;
-  rect([P.fan_x - fd, coreZ + P.fan_z - 0.008], [P.fan_x + fd, coreZ + P.fan_z + 0.008]);
-
-  // ghosts
-  for (let k = 0; k < 12; k++) {
-    const s = solve(P, 2 * Math.PI * k / 12); if (!s) continue;
-    drawPose(s, B, 0.18);
-  }
-  // ground at lowest foot
-  const zs = path.filter(Boolean).map(q => q[1]);
-  if (zs.length) { const zg = Math.min(...zs) - P.foot_radius; ctx.strokeStyle = "#a16207"; ctx.lineWidth = 2;
-    const [, y] = toPx([0, zg]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke(); }
-  // foot path
-  ctx.strokeStyle = valid ? "#2563eb" : "#dc2626"; ctx.lineWidth = 2.5; ctx.beginPath();
-  let started = false;
-  for (const q of path) { if (!q) { started = false; continue; } const [x, y] = toPx(q); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; }
-  if (path[0] && path[path.length - 1]) ctx.closePath();
-  ctx.stroke();
-  // current pose
-  const s = solve(P, theta);
-  if (s) drawPose(s, B, 1.0);
-  // handles
-  const handles = {A: [0, 0], B, D: s ? s.D : crankTip(P.crank_len, theta), C: s ? s.C : null, P: s ? s.P : null};
-  ctx.font = "bold 13px system-ui";
-  for (const [name, pt] of Object.entries(handles)) {
-    if (!pt) continue;
-    const [x, y] = toPx(pt);
-    ctx.fillStyle = name === "A" ? "#111" : "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#111"; ctx.fillText(name, x + 8, y - 8);
-  }
-  updateMetrics(valid, path, s);
 }
-function rect(a, b) { const [x0, y0] = toPx(a), [x1, y1] = toPx(b); ctx.beginPath(); ctx.rect(x0, y1, x1 - x0, y0 - y1); ctx.fill(); ctx.stroke(); }
-function seg(a, b, color, w, alpha) { ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = w;
+function rect(ctx, toPx, a, b, fill, stroke = "#9ca3af") { const [x0, y0] = toPx(a), [x1, y1] = toPx(b);
+  ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.beginPath(); ctx.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0)); ctx.fill(); ctx.stroke(); }
+function seg(ctx, toPx, a, b, color, w, alpha = 1) { ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = w;
   const [x0, y0] = toPx(a), [x1, y1] = toPx(b); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; }
+function handle(ctx, toPx, pt, label, filled = false) { const [x, y] = toPx(pt);
+  ctx.fillStyle = filled ? "#111" : "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#111"; ctx.font = "bold 12px system-ui"; ctx.fillText(label, x + 8, y - 7); }
+function groundZ(path) { const zs = path.filter(Boolean).map(q => q[1]); return zs.length ? Math.min(...zs) - P.foot_radius : -0.3; }
+
+function drawSide(valid, path) {
+  const ctx = sctx; ctx.clearRect(0, 0, side.width, side.height); grid(ctx, side, sPx);
+  const B = [P.pivot_b_dx, P.pivot_b_dz], fan = fanSpec(P);
+  rect(ctx, sPx, [-0.05, -HZ], [0.05, HZ], "#e5e7eb");
+  rect(ctx, sPx, [-0.05, HZ], [0.05, HZ + P.core_height], "#e5e7eb");
+  rect(ctx, sPx, [P.payload_x - 0.03, payloadZ() - 0.015], [P.payload_x + 0.03, payloadZ() + 0.015], "#c7d2fe");
+  rect(ctx, sPx, [P.fan_x - fan.d / 2, fanZ() - 0.008], [P.fan_x + fan.d / 2, fanZ() + 0.008], "#fde68a");
+  seg(ctx, sPx, [0, coreZ()], [P.fan_x, fanZ()], "#bbb", 1);
+  for (let k = 0; k < 12; k++) { const s = solve(P, 2 * Math.PI * k / 12); if (s) drawPose(s, B, 0.18); }
+  const zg = groundZ(path); seg(ctx, sPx, [-1, zg], [1, zg], "#a16207", 2);
+  ctx.strokeStyle = valid ? "#2563eb" : "#dc2626"; ctx.lineWidth = 2.5; ctx.beginPath(); let started = false;
+  for (const q of path) { if (!q) { started = false; continue; } const [x, y] = sPx(q); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; }
+  if (path[0] && path[path.length - 1]) ctx.closePath(); ctx.stroke();
+  const s = solve(P, theta); if (s) drawPose(s, B, 1.0);
+  handle(ctx, sPx, [0, 0], "A", true); handle(ctx, sPx, B, "B");
+  handle(ctx, sPx, s ? s.D : crankTip(P.crank_len, theta), "D");
+  if (s) { handle(ctx, sPx, s.C, "C"); handle(ctx, sPx, s.P, "P"); }
+  handle(ctx, sPx, [P.fan_x, fanZ()], "fan"); handle(ctx, sPx, [P.payload_x, payloadZ()], "payload");
+}
 function drawPose(s, B, alpha) {
-  seg([0, 0], B, "#555", 1, alpha * 0.8);                 // frame AB (dashed look skipped for simplicity)
-  seg([0, 0], s.D, "#dc2626", 3, alpha);                  // crank AD
-  seg(B, s.C, "#16a34a", 3, alpha);                       // rocker BC
-  seg(s.D, s.C, "#111", 2, alpha); seg(s.C, s.P, "#111", 2, alpha); seg(s.P, s.D, "#111", 2, alpha);  // coupler triangle
-  // foot pad: horizontal in the theta=0 pose, rotates with the coupler
+  seg(sctx, sPx, [0, 0], B, "#555", 1, alpha * 0.8);
+  seg(sctx, sPx, [0, 0], s.D, "#dc2626", 3, alpha);
+  seg(sctx, sPx, B, s.C, "#16a34a", 3, alpha);
+  seg(sctx, sPx, s.D, s.C, "#111", 2, alpha); seg(sctx, sPx, s.C, s.P, "#111", 2, alpha); seg(sctx, sPx, s.P, s.D, "#111", 2, alpha);
   const s0 = solve(P, 0); if (!s0) return;
   const ang = Math.atan2(s.u[1], s.u[0]) - Math.atan2(s0.u[1], s0.u[0]);
   const fx = Math.cos(ang) * P.foot_half_len, fz = Math.sin(ang) * P.foot_half_len;
-  seg([s.P[0] - fx, s.P[1] - fz], [s.P[0] + fx, s.P[1] + fz], "#111", 2 * P.foot_radius * SCALE / 2 + 3, alpha);
+  seg(sctx, sPx, [s.P[0] - fx, s.P[1] - fz], [s.P[0] + fx, s.P[1] + fz], "#333", Math.max(3, 2 * P.foot_radius * SCALE * 0.5), alpha);
+}
+function drawFront(path) {
+  const ctx = fctx; ctx.clearRect(0, 0, front.width, front.height); grid(ctx, front, fPx);
+  const fan = fanSpec(P), hw = P.hip_width / 2 + 0.01, zg = groundZ(path);
+  const s = solve(P, theta), sR = solve(P, theta + P.crank_phase_r);
+  // legs (as vertical lines to their current foot height) and feet
+  for (const [sign, pose] of [[1, s], [-1, sR]]) {
+    const y = sign * P.hip_width / 2, pz = pose ? pose.P[1] : zg + P.foot_radius;
+    seg(ctx, fPx, [y, 0], [y, pz], "#3b82f6", 3);
+    rect(ctx, fPx, [y - P.foot_radius, pz - P.foot_radius], [y + P.foot_radius, pz + P.foot_radius], "#333", "#111");
+  }
+  seg(ctx, fPx, [-1, zg], [1, zg], "#a16207", 2);
+  rect(ctx, fPx, [-hw, -HZ], [hw, HZ], "#e5e7eb");
+  rect(ctx, fPx, [-0.05, HZ], [0.05, HZ + P.core_height], "#e5e7eb");
+  rect(ctx, fPx, [-0.035, payloadZ() - 0.015], [0.035, payloadZ() + 0.015], "#c7d2fe");
+  for (const sign of [1, -1]) {
+    seg(ctx, fPx, [0, coreZ()], [sign * P.fan_y, fanZ()], "#bbb", 1);
+    rect(ctx, fPx, [sign * P.fan_y - fan.d / 2, fanZ() - 0.008], [sign * P.fan_y + fan.d / 2, fanZ() + 0.008], "#fde68a");
+  }
+  handle(ctx, fPx, [P.fan_y, fanZ()], "fan L"); handle(ctx, fPx, [-P.fan_y, fanZ()], "fan R");
+  handle(ctx, fPx, [hw, 0], "hip edge"); handle(ctx, fPx, [0, payloadZ()], "payload");
+  ctx.fillStyle = "#777"; ctx.font = "11px system-ui";
+  ctx.fillText("L", 8, 14); ctx.fillText("R", front.width - 14, 14);
 }
 
-function updateMetrics(valid, path, s) {
+function draw() {
+  const valid = isValid(P), path = footPath(P);
+  drawSide(valid, path); drawFront(path); updateMetrics(valid, path);
+}
+
+function updateMetrics(valid, path) {
   const st = document.getElementById("status");
-  const outOfBounds = SPEC.filter(sp => P[sp.name] < sp.lo - 1e-9 || P[sp.name] > sp.hi + 1e-9).map(sp => sp.name);
-  st.className = valid && !outOfBounds.length ? "ok" : "bad";
-  st.textContent = !valid ? "linkage is NOT a rotatable crank-rocker" : outOfBounds.length ? "out of bounds: " + outOfBounds.join(", ") : "valid";
-  const pts = path.filter(Boolean);
-  const m = document.getElementById("metrics");
-  if (!pts.length) { m.innerHTML = ""; return; }
-  const xs = pts.map(q => q[0]), zs = pts.map(q => q[1]);
-  const zmin = Math.min(...zs), contact = pts.filter(q => q[1] < zmin + 0.005).length / pts.length;
-  const g = Math.hypot(P.pivot_b_dx, P.pivot_b_dz);
-  m.innerHTML = [
-    ["stride (x range)", (Math.max(...xs) - Math.min(...xs)) * 1000, "mm"],
-    ["lift (z range)", (Math.max(...zs) - zmin) * 1000, "mm"],
-    ["ground-contact share", contact * 100, "% of cycle (within 5 mm of lowest)"],
-    ["leg length A to lowest P", (-zmin + P.foot_radius) * 1000, "mm"],
-    ["crank AD", P.crank_len * 1000, "mm"], ["coupler CD", P.coupler_len * 1000, "mm"],
-    ["rocker BC", P.rocker_len * 1000, "mm"], ["frame AB", g * 1000, "mm"],
-    ["preview crank angle", theta * 180 / Math.PI, "deg"],
-  ].map(([k, v, u]) => `<div><span>${k}</span>${v.toFixed(1)} ${u}</div>`).join("");
+  const oob = SPEC.filter(sp => P[sp.name] < sp.lo - 1e-9 || P[sp.name] > sp.hi + 1e-9).map(sp => sp.name);
+  st.className = valid && !oob.length ? "ok" : "bad";
+  st.textContent = !valid ? "linkage is NOT a rotatable crank-rocker" : oob.length ? "out of bounds: " + oob.join(", ") : "valid";
+  const pts = path.filter(Boolean), m = document.getElementById("metrics");
+  const cell = ([k, v, u]) => `<div><span>${k}</span>${typeof v === "number" ? v.toFixed(1) : v} ${u}</div>`;
+  if (pts.length) {
+    const xs = pts.map(q => q[0]), zs = pts.map(q => q[1]), zmin = Math.min(...zs);
+    const contact = pts.filter(q => q[1] < zmin + 0.005).length / pts.length;
+    m.innerHTML = [
+      ["stride (x range)", (Math.max(...xs) - Math.min(...xs)) * 1000, "mm"],
+      ["lift (z range)", (Math.max(...zs) - zmin) * 1000, "mm"],
+      ["ground-contact share", contact * 100, "% of cycle"],
+      ["leg length, A to lowest P", (-zmin + P.foot_radius) * 1000, "mm"],
+      ["frame AB", Math.hypot(P.pivot_b_dx, P.pivot_b_dz) * 1000, "mm"],
+      ["preview crank angle", theta * 180 / Math.PI, "deg"],
+    ].map(cell).join("");
+  } else m.innerHTML = "";
+  const fan = fanSpec(P), st_ = stepperSpec(P);
+  const total = P.hip_struct_mass + 2 * st_.mass + P.core_shell_mass + P.payload_mass + 2 * fan.mass;
+  const standH = pts.length ? (-Math.min(...pts.map(q => q[1])) + P.foot_radius + HZ + P.core_height) : 0;
+  document.getElementById("hw").innerHTML = [
+    ["fan max thrust, each", fan.tmax, "N (" + (fan.tmax / 9.81 * 1000).toFixed(0) + " gf)"],
+    ["fan motor power", fan.power, "W"], ["fan + motor + servo mass", fan.mass * 1000, "g"],
+    ["fan spin-up tau", fan.tau * 1000, "ms"],
+    ["stepper mass, each", st_.mass * 1000, "g"], ["crank torque", st_.crankTorque, "N·m"],
+    ["max crank speed", st_.crankMaxHz, "Hz"],
+    ["total mass (excl. links)", total * 1000, "g"],
+    ["thrust / weight", 2 * fan.tmax / (total * 9.81), "x"],
+    ["standing height, floor to core top", standH * 1000, "mm"],
+  ].map(cell).join("");
 }
 
 // ---------- dragging ----------
-function handleAt(px, py) {
+let drag = null;
+function near(toPx, pt, px, py) { const [x, y] = toPx(pt); return Math.hypot(x - px, y - py) < 12; }
+function canvasXY(cv, e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; }
+function sideHandleAt(px, py) {
   const s = solve(P, theta);
-  const pts = {B: [P.pivot_b_dx, P.pivot_b_dz], D: s ? s.D : crankTip(P.crank_len, theta), C: s && s.C, P: s && s.P};
-  for (const [n, pt] of Object.entries(pts)) { if (!pt) continue; const [x, y] = toPx(pt); if (Math.hypot(x - px, y - py) < 12) return n; }
+  const pts = {B: [P.pivot_b_dx, P.pivot_b_dz], D: s ? s.D : crankTip(P.crank_len, theta), C: s && s.C, P: s && s.P,
+               fan: [P.fan_x, fanZ()], payload: [P.payload_x, payloadZ()]};
+  for (const [n, pt] of Object.entries(pts)) if (pt && near(sPx, pt, px, py)) return n;
   return null;
 }
-function canvasXY(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; }
-cv.addEventListener("pointerdown", e => { const [x, y] = canvasXY(e); drag = handleAt(x, y); if (drag) cv.setPointerCapture(e.pointerId); });
-cv.addEventListener("pointerup", () => { drag = null; persist(); });
-cv.addEventListener("pointermove", e => {
-  if (!drag) return;
-  const [px, py] = canvasXY(e), m = toM(px, py);
-  if (drag === "B") { P.pivot_b_dx = m[0]; P.pivot_b_dz = m[1]; }
-  else if (drag === "D") { P.crank_len = Math.max(0.005, Math.hypot(m[0], m[1])); theta = Math.atan2(-m[0], -m[1]); }
+function frontHandleAt(px, py) {
+  const pts = {fanL: [P.fan_y, fanZ()], fanR: [-P.fan_y, fanZ()], hip: [P.hip_width / 2 + 0.01, 0], payload: [0, payloadZ()]};
+  for (const [n, pt] of Object.entries(pts)) if (near(fPx, pt, px, py)) return n;
+  return null;
+}
+side.addEventListener("pointerdown", e => { const [x, y] = canvasXY(side, e); drag = sideHandleAt(x, y); if (drag) side.setPointerCapture(e.pointerId); });
+front.addEventListener("pointerdown", e => { const [x, y] = canvasXY(front, e); drag = frontHandleAt(x, y); if (drag) { drag = "F:" + drag; front.setPointerCapture(e.pointerId); } });
+for (const cv of [side, front]) cv.addEventListener("pointerup", () => { drag = null; persist(); });
+side.addEventListener("pointermove", e => {
+  if (!drag || drag.startsWith("F:")) return;
+  const [px, py] = canvasXY(side, e), m = sM(px, py);
+  if (drag === "B") { P.pivot_b_dx = clampP("pivot_b_dx", m[0]); P.pivot_b_dz = clampP("pivot_b_dz", m[1]); }
+  else if (drag === "D") { P.crank_len = clampP("crank_len", Math.hypot(m[0], m[1])); theta = Math.atan2(-m[0], -m[1]); }
   else if (drag === "C") { const s = solve(P, theta); const D = s ? s.D : crankTip(P.crank_len, theta);
-    P.coupler_len = Math.hypot(m[0] - D[0], m[1] - D[1]); P.rocker_len = Math.hypot(m[0] - P.pivot_b_dx, m[1] - P.pivot_b_dz); }
-  else if (drag === "P") { const s = solve(P, theta); if (s) {
-    const dx = m[0] - s.D[0], dz = m[1] - s.D[1];
-    P.foot_frac = Math.min(1, Math.max(0, (dx * s.u[0] + dz * s.u[1]) / P.coupler_len));
-    P.foot_height = Math.max(0.005, Math.abs(dx * s.n[0] + dz * s.n[1])); } }
-  round3(); syncInputs(); draw();
+    P.coupler_len = clampP("coupler_len", Math.hypot(m[0] - D[0], m[1] - D[1]));
+    P.rocker_len = clampP("rocker_len", Math.hypot(m[0] - P.pivot_b_dx, m[1] - P.pivot_b_dz)); }
+  else if (drag === "P") { const s = solve(P, theta); if (s) { const dx = m[0] - s.D[0], dz = m[1] - s.D[1];
+    P.foot_frac = clampP("foot_frac", (dx * s.u[0] + dz * s.u[1]) / P.coupler_len);
+    P.foot_height = clampP("foot_height", Math.abs(dx * s.n[0] + dz * s.n[1])); } }
+  else if (drag === "fan") { P.fan_x = clampP("fan_x", m[0]); P.fan_z = clampP("fan_z", m[1] - coreZ()); }
+  else if (drag === "payload") { P.payload_x = clampP("payload_x", m[0]); P.payload_zf = clampP("payload_zf", (m[1] - coreZ()) / P.core_height); }
+  roundAll(); syncInputs(); draw();
 });
-function round3() { for (const k of ["pivot_b_dx", "pivot_b_dz", "crank_len", "coupler_len", "rocker_len", "foot_height"]) P[k] = Math.round(P[k] * 2000) / 2000; P.foot_frac = Math.round(P.foot_frac * 100) / 100; }
+front.addEventListener("pointermove", e => {
+  if (!drag || !drag.startsWith("F:")) return;
+  const [px, py] = canvasXY(front, e), m = fM(px, py), what = drag.slice(2);
+  if (what === "fanL" || what === "fanR") { P.fan_y = clampP("fan_y", Math.abs(m[0])); P.fan_z = clampP("fan_z", m[1] - coreZ()); }
+  else if (what === "hip") { P.hip_width = clampP("hip_width", 2 * (Math.abs(m[0]) - 0.01)); }
+  else if (what === "payload") { P.payload_zf = clampP("payload_zf", (m[1] - coreZ()) / P.core_height); }
+  roundAll(); syncInputs(); draw();
+});
+function roundAll() { for (const sp of SPEC) { const step = sliderStep(sp); P[sp.name] = Math.round(P[sp.name] / step) * step; } }
 
-// ---------- parameter inputs & tags ----------
+// ---------- parameter sliders ----------
+function sliderStep(sp) { const span = sp.hi - sp.lo; const raw = span / 200; const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  return [1, 2, 5, 10].map(m => m * pow).find(s => s >= raw) || raw; }
 function buildInputs() {
   const root = document.getElementById("params"); root.innerHTML = "";
-  for (const g of Object.keys(GROUP_TITLES)) {
-    const div = document.createElement("div"); div.className = "panel";
-    div.innerHTML = `<h2>${GROUP_TITLES[g]}</h2><table></table>`;
-    const tb = div.querySelector("table");
-    for (const sp of SPEC.filter(s => s.group === g)) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td class="k">${sp.name}</td><td><input type="number" step="any" data-p="${sp.name}"></td><td class="hint">${fmt(sp.lo)} to ${fmt(sp.hi)}</td>`;
-      tb.appendChild(tr);
+  for (const [title, rows] of UI_GROUPS) {
+    const div = document.createElement("div"); div.className = "panel"; div.innerHTML = `<h2>${title}</h2>`;
+    for (const [name, label, [unit, factor, dec]] of rows) {
+      const sp = byName[name], step = sliderStep(sp);
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = `<div class="k" title="${name}">${label}</div>
+        <input type="range" min="${sp.lo}" max="${sp.hi}" step="${step}" data-r="${name}">
+        <input type="number" step="any" data-p="${name}" data-f="${factor}" data-d="${dec}">
+        <div class="u">${unit}</div>`;
+      div.appendChild(row);
     }
     root.appendChild(div);
   }
+  root.querySelectorAll("input[data-r]").forEach(inp => inp.addEventListener("input", () => { P[inp.dataset.r] = parseFloat(inp.value); syncInputs(inp); draw(); persist(); }));
   root.querySelectorAll("input[data-p]").forEach(inp => inp.addEventListener("input", () => {
-    const v = parseFloat(inp.value); if (Number.isFinite(v)) { P[inp.dataset.p] = v; draw(); markBounds(); persist(); } }));
+    const v = parseFloat(inp.value); if (Number.isFinite(v)) { P[inp.dataset.p] = v / parseFloat(inp.dataset.f); syncInputs(inp); draw(); persist(); } }));
   const tags = document.getElementById("tags"); tags.innerHTML = "";
-  for (const part of PARTS) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="k">${part}</td><td><input type="text" data-t="${part}"></td>`;
-    tags.appendChild(tr);
-  }
+  for (const part of PARTS) { const tr = document.createElement("tr"); tr.innerHTML = `<td class="k">${part}</td><td><input type="text" data-t="${part}"></td>`; tags.appendChild(tr); }
   tags.querySelectorAll("input[data-t]").forEach(inp => inp.addEventListener("input", () => { TAGS[inp.dataset.t] = inp.value; persist(); }));
 }
-const fmt = v => Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(3).replace(/\.?0+$/, "");
-function syncInputs() {
-  document.querySelectorAll("input[data-p]").forEach(inp => { if (document.activeElement !== inp) inp.value = +P[inp.dataset.p].toFixed(4); });
+function syncInputs(except) {
+  document.querySelectorAll("input[data-r]").forEach(inp => { if (inp !== except) inp.value = P[inp.dataset.r]; });
+  document.querySelectorAll("input[data-p]").forEach(inp => { if (inp !== except) inp.value = +(P[inp.dataset.p] * parseFloat(inp.dataset.f)).toFixed(+inp.dataset.d + 1);
+    const sp = byName[inp.dataset.p]; inp.classList.toggle("bad", P[sp.name] < sp.lo - 1e-9 || P[sp.name] > sp.hi + 1e-9); });
   document.querySelectorAll("input[data-t]").forEach(inp => { inp.value = TAGS[inp.dataset.t] || ""; });
-  markBounds();
-}
-function markBounds() {
-  document.querySelectorAll("input[data-p]").forEach(inp => { const sp = byName[inp.dataset.p];
-    inp.classList.toggle("bad", P[sp.name] < sp.lo - 1e-9 || P[sp.name] > sp.hi + 1e-9); });
 }
 
 // ---------- persistence, import, export ----------
-function archetype() { return {name: document.getElementById("name").value || "archetype", created: new Date().toISOString(),
-  tags: TAGS, phys: P}; }
+function archetype() { return {name: document.getElementById("name").value || "archetype", created: new Date().toISOString(), tags: TAGS, phys: P}; }
 function persist() { try { localStorage.setItem("evol_mech_archetype", JSON.stringify(archetype())); } catch (e) {} }
 document.getElementById("btn-export").addEventListener("click", () => {
   const a = archetype(), blob = new Blob([JSON.stringify(a, null, 2) + "\n"], {type: "application/json"});

@@ -22,7 +22,7 @@ from . import linkage
 SIM_DT = 0.002          # physics step
 YAW_RANGE = math.radians(30)
 FAN_PITCH_RANGE = math.radians(90)
-HIP_HALF_Y = 0.045
+HIP_HALF_X = 0.05
 HIP_HALF_Z = 0.035
 LINK_RADIUS = 0.006
 NOCOL = 'contype="0" conaffinity="0"'
@@ -109,7 +109,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
     fan = fan_from_params(p)
     step = stepper_from_params(p)
     hip_mass = p["hip_struct_mass"] + 2 * step.mass_kg
-    hx = p["hip_width"] / 2 + 0.02
+    hy = p["hip_width"] / 2 + 0.01      # hip spans the two leg planes
     core_z = HIP_HALF_Z + p["core_height"] / 2
     payload_z = p["payload_zf"] * p["core_height"]
     theta_r = theta_l + p["crank_phase_r"]
@@ -132,7 +132,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
     {terrain_geom}
     <body name="hip" pos="0 0 {z0:.4f}">
       <freejoint name="root"/>
-      <geom name="hip" type="box" size="{hx:.4f} {HIP_HALF_Y} {HIP_HALF_Z}" mass="{hip_mass:.4f}"
+      <geom name="hip" type="box" size="{HIP_HALF_X} {hy:.4f} {HIP_HALF_Z}" mass="{hip_mass:.4f}"
             rgba="0.6 0.6 0.6 1"/>
       <body name="core" pos="0 0 {core_z:.4f}">
         <joint name="core_yaw" type="hinge" axis="0 0 1" range="{-YAW_RANGE:.4f} {YAW_RANGE:.4f}" damping="0.2"/>
