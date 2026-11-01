@@ -145,6 +145,28 @@ function isValid(p, samples = 72) {
   for (let k = 0; k < samples; k++) if (!solve(p, 2 * Math.PI * k / samples)) return false;
   return true;
 }
+// port of evol_mech/body/clearance.py: leg links vs yaw-swept core and swept fan spheres
+function interference(p, nTheta = 36, nYaw = 7, nPts = 6) {
+  const y = p.hip_width / 2, cz = HZ + p.core_height / 2, LR = 0.006, M = 0.003, YAW = Math.PI / 6;
+  const z0 = HZ - LR - M, z1 = HZ + p.core_height + LR + M, half = 0.05 + LR + M;
+  const fanR = fanSpec(p).d / 2 + 0.008 + LR + M;
+  const fans = [[p.fan_x, p.fan_y, cz + p.fan_z], [p.fan_x, -p.fan_y, cz + p.fan_z]];
+  const B = [p.pivot_b_dx, p.pivot_b_dz];
+  for (let k = 0; k < nTheta; k++) {
+    const s = solve(p, 2 * Math.PI * k / nTheta); if (!s) continue;
+    for (const [a, b] of [[[0, 0], s.D], [s.D, s.C], [s.C, s.P], [s.P, s.D], [B, s.C], [[0, 0], B]])
+      for (let j = 0; j <= nPts; j++) {
+        const t = j / nPts, x = a[0] + t * (b[0] - a[0]), z = a[1] + t * (b[1] - a[1]);
+        for (let i = 0; i < nYaw; i++) {
+          const phi = -YAW + 2 * YAW * i / (nYaw - 1), c = Math.cos(phi), sn = Math.sin(phi);
+          const xr = x * c + y * sn, yr = -x * sn + y * c;
+          if (Math.abs(xr) < half && Math.abs(yr) < half && z > z0 && z < z1) return {reason: "leg hits core (within yaw range)", at: [x, z]};
+          for (const [fx, fy, fz] of fans) if ((xr - fx) ** 2 + (yr - fy) ** 2 + (z - fz) ** 2 < fanR * fanR) return {reason: "leg hits fan (within yaw / pitch range)", at: [x, z]};
+        }
+      }
+  }
+  return null;
+}
 function footPath(p, samples = 180) {
   const out = []; for (let k = 0; k < samples; k++) { const s = solve(p, 2 * Math.PI * k / samples); out.push(s ? s.P : null); } return out;
 }
@@ -164,10 +186,9 @@ function stepperSpec(p) {
 }
 
 // ---------- geometry shared by views ----------
-const HZ = 0.035, PIVOT_MARGIN = 0.015;        // hip extends HZ below A and past pivot B
-const hipHX = () => Math.max(0.05, Math.abs(P.pivot_b_dx) + PIVOT_MARGIN);
-const hipTop = () => Math.max(HZ, P.pivot_b_dz + PIVOT_MARGIN);   // both pivots are hip-mounted
-const coreZ = () => hipTop() + P.core_height / 2;
+const HZ = 0.035;                              // hip half-height; pivot B sits on a post above it
+const hipTop = () => HZ;
+const coreZ = () => HZ + P.core_height / 2;
 const payloadZ = () => coreZ() + P.payload_zf * P.core_height;
 const fanZ = () => coreZ() + P.fan_z;
 
@@ -201,7 +222,7 @@ function groundZ(path) { const zs = path.filter(Boolean).map(q => q[1]); return 
 function drawSide(valid, path) {
   const ctx = sctx; ctx.clearRect(0, 0, side.width, side.height); grid(ctx, side, sPx);
   const B = [P.pivot_b_dx, P.pivot_b_dz], fan = fanSpec(P);
-  rect(ctx, sPx, [-hipHX(), -HZ], [hipHX(), hipTop()], "#e5e7eb");
+  rect(ctx, sPx, [-0.05, -HZ], [0.05, HZ], "#e5e7eb");
   rect(ctx, sPx, [-0.05, hipTop()], [0.05, hipTop() + P.core_height], "#fee2e2");
   rect(ctx, sPx, [P.payload_x - 0.03, payloadZ() - 0.015], [P.payload_x + 0.03, payloadZ() + 0.015], "#c7d2fe");
   rect(ctx, sPx, [P.fan_x - fan.d / 2, fanZ() - 0.008], [P.fan_x + fan.d / 2, fanZ() + 0.008], "#fde68a");
@@ -252,15 +273,17 @@ function drawFront(path) {
 }
 
 function draw() {
-  const valid = isValid(P), path = footPath(P);
-  drawSide(valid, path); drawFront(path); updateMetrics(valid, path);
+  const valid = isValid(P), path = footPath(P), hit = valid ? interference(P) : null;
+  drawSide(valid && !hit, path); drawFront(path); updateMetrics(valid, path, hit);
+  if (hit) { const [x, y] = sPx(hit.at); sctx.strokeStyle = "#dc2626"; sctx.lineWidth = 2; sctx.beginPath(); sctx.arc(x, y, 10, 0, 2 * Math.PI); sctx.stroke(); }
 }
 
-function updateMetrics(valid, path) {
+function updateMetrics(valid, path, hit) {
   const st = document.getElementById("status");
   const oob = SPEC.filter(sp => P[sp.name] < sp.lo - 1e-9 || P[sp.name] > sp.hi + 1e-9).map(sp => sp.name);
-  st.className = valid && !oob.length ? "ok" : "bad";
-  st.textContent = !valid ? "linkage is NOT a rotatable crank-rocker" : oob.length ? "out of bounds: " + oob.join(", ") : "valid";
+  st.className = valid && !hit && !oob.length ? "ok" : "bad";
+  st.textContent = !valid ? "linkage is NOT a rotatable crank-rocker" : hit ? "interference: " + hit.reason
+                 : oob.length ? "out of bounds: " + oob.join(", ") : "valid, no interference";
   const pts = path.filter(Boolean), m = document.getElementById("metrics");
   const cell = ([k, v, u]) => `<div><span>${k}</span>${typeof v === "number" ? v.toFixed(1) : v} ${u}</div>`;
   if (pts.length) {

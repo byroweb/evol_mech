@@ -18,24 +18,13 @@ import math
 from .hardware import (fan_from_params, stepper_from_params,
                        FAN_PITCH_SERVO_KP, FAN_PITCH_SERVO_TORQUE)
 from . import linkage
+from .clearance import interference
 
 SIM_DT = 0.002          # physics step
 YAW_RANGE = math.radians(30)
 FAN_PITCH_RANGE = math.radians(90)
 HIP_HALF_X = 0.05
-HIP_HALF_Z = 0.035      # hip box extends this far below the crank pivot A
-PIVOT_MARGIN = 0.015    # hip frame extends this far past pivot B
-
-
-def hip_extent(p: dict[str, float]) -> tuple[float, float]:
-    """(half-width in x, top z) of the hip frame, relative to crank pivot A.
-
-    Both fixed pivots A and B are mounted on the hip, so the hip frame grows
-    to enclose B; the core is seated on top of that frame.
-    """
-    hx = max(HIP_HALF_X, abs(p["pivot_b_dx"]) + PIVOT_MARGIN)
-    top = max(HIP_HALF_Z, p["pivot_b_dz"] + PIVOT_MARGIN)
-    return hx, top
+HIP_HALF_Z = 0.035      # hip box half-height; pivot B sits on a post above it
 LINK_RADIUS = 0.006
 NOCOL = 'contype="0" conaffinity="0"'
 
@@ -118,14 +107,14 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
     """theta_l: initial left crank angle; the right crank is theta_l + crank_phase_r."""
     if not linkage.is_valid(p):
         raise InvalidBody("linkage is not a rotatable crank-rocker")
+    hit = interference(p)
+    if hit is not None:
+        raise InvalidBody(hit[0])
     fan = fan_from_params(p)
     step = stepper_from_params(p)
     hip_mass = p["hip_struct_mass"] + 2 * step.mass_kg
-    hy = p["hip_width"] / 2 + 0.01      # hip spans the two leg planes
-    hx, hip_top = hip_extent(p)
-    hip_cz = (hip_top - HIP_HALF_Z) / 2
-    hip_hz = (hip_top + HIP_HALF_Z) / 2
-    core_z = hip_top + p["core_height"] / 2
+    hy = p["hip_width"] / 2 - LINK_RADIUS - 0.002   # legs run just outside the hip's side faces
+    core_z = HIP_HALF_Z + p["core_height"] / 2
     payload_z = p["payload_zf"] * p["core_height"]
     theta_r = theta_l + p["crank_phase_r"]
     z0 = spawn_height(p, terrain_zmax, theta_l)
@@ -147,7 +136,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
     {terrain_geom}
     <body name="hip" pos="0 0 {z0:.4f}">
       <freejoint name="root"/>
-      <geom name="hip" type="box" pos="0 0 {hip_cz:.4f}" size="{hx:.4f} {hy:.4f} {hip_hz:.4f}" mass="{hip_mass:.4f}"
+      <geom name="hip" type="box" size="{HIP_HALF_X} {hy:.4f} {HIP_HALF_Z}" mass="{hip_mass:.4f}"
             rgba="0.6 0.6 0.6 1"/>
       <body name="core" pos="0 0 {core_z:.4f}">
         <joint name="core_yaw" type="hinge" axis="0 0 1" range="{-YAW_RANGE:.4f} {YAW_RANGE:.4f}" damping="0.2"/>

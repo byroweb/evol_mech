@@ -56,8 +56,9 @@ the core, which holds a light shell plus a dense payload block (battery and
 electronics) whose position is in the genome. Two pitch-vectored fans sit on
 the core. Linkages that are not rotatable crank-rockers are rejected before
 simulation (`body/linkage.py`). Both fixed pivots A and B are mounted on the
-hip, never the core, so the waist angle does not change the foot locus; the
-hip frame grows to enclose B and the core is seated on top of that frame.
+hip, never the core, so the waist angle does not change the foot locus. B sits
+on a post above the compact hip; `body/clearance.py` rejects any body whose leg
+links would touch the yaw-swept core or the swept fan discs.
 
 **Hardware models** (`body/hardware.py`). Fans: thrust from momentum theory
 with motor power proportional to stator volume, mass from the same spec,

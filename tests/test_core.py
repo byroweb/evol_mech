@@ -84,3 +84,15 @@ def test_archetype_roundtrip(tmp_path):
     a["phys"]["nope"] = 1.0; f.write_text(json.dumps(a))
     with pytest.raises(ValueError):
         load_archetype(f)
+
+
+def test_interference_check():
+    from evol_mech.body.clearance import interference, is_buildable
+    p = decode(DEFAULT_NORM)
+    assert interference(p) is None and is_buildable(p)
+    low_fans = dict(p, fan_y=0.08, fan_z=0.0, fan_diam_in=5.0)
+    assert interference(low_fans)[0] == "leg hits fan"
+    narrow = dict(p, hip_width=0.08)
+    assert interference(narrow)[0] == "leg hits core"
+    with pytest.raises(InvalidBody):
+        make_model(encode(narrow), "flat", np.random.default_rng(0))

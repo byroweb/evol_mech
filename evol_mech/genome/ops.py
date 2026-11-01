@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from .spec import DEFAULT_NORM, N_PARAMS, decode
-from ..body import linkage
+from ..body.clearance import is_buildable
 
 
 def random_genome(rng: np.random.Generator, spread: float = 0.25, max_tries: int = 100,
@@ -15,7 +15,7 @@ def random_genome(rng: np.random.Generator, spread: float = 0.25, max_tries: int
     c = DEFAULT_NORM if center is None else center
     for _ in range(max_tries):
         g = np.clip(c + rng.normal(0.0, spread, N_PARAMS), 0.0, 1.0)
-        if linkage.is_valid(decode(g)):
+        if is_buildable(decode(g)):
             return g
     return c.copy()
 
