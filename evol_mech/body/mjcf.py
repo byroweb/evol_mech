@@ -76,9 +76,7 @@ def _leg(side: str, sign: float, p: dict[str, float], theta0: float, crank_torqu
                 rgba="0.3 0.5 0.9 1" {NOCOL}/>
           <geom type="capsule" fromto="{bx:.4f} 0 {bz:.4f} {fx:.4f} 0 {fz:.4f}" size="{LINK_RADIUS}"
                 rgba="0.3 0.5 0.9 1" {NOCOL}/>
-          <geom name="foot_{side}" type="capsule" size="{p['foot_radius']:.4f}"
-                fromto="{fx-p['foot_half_len']:.4f} 0 {fz:.4f} {fx+p['foot_half_len']:.4f} 0 {fz:.4f}"
-                friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"/>
+          {_foot(side, p, fx, fz)}
         </body>
       </body>
       <geom type="capsule" fromto="0 {y:.4f} 0 {Bp[0]:.4f} {y:.4f} {Bp[1]:.4f}" size="0.004"
@@ -88,6 +86,16 @@ def _leg(side: str, sign: float, p: dict[str, float], theta0: float, crank_torqu
         <geom type="capsule" fromto="0 0 0 {rx:.4f} 0 {rz:.4f}" size="{LINK_RADIUS}"
               rgba="0.3 0.8 0.4 1" {NOCOL}/>
       </body>"""
+
+
+def _foot(side: str, p: dict[str, float], fx: float, fz: float) -> str:
+    """Ball end (rotation-invariant contact) or flat pad along the coupler."""
+    if p["foot_type"] >= 0.5:
+        return (f'<geom name="foot_{side}" type="sphere" size="{p["foot_radius"]:.4f}" pos="{fx:.4f} 0 {fz:.4f}" '
+                f'friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"/>')
+    return (f'<geom name="foot_{side}" type="capsule" size="{p["foot_radius"]:.4f}" '
+            f'fromto="{fx-p["foot_half_len"]:.4f} 0 {fz:.4f} {fx+p["foot_half_len"]:.4f} 0 {fz:.4f}" '
+            f'friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"/>')
 
 
 def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) -> str:
@@ -146,7 +154,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
             rgba="0.6 0.6 0.6 1"/>
       <body name="core" pos="0 0 {core_z:.4f}">
         {yaw_joint}
-        <geom name="core" type="box" size="{struct.core_half_x:.4f} {CORE_HALF_XY} {p['core_height']/2:.4f}" mass="{struct.core_kg:.4f}"
+        <geom name="core" type="box" size="{CORE_HALF_XY} {struct.core_half_y:.4f} {p['core_height']/2:.4f}" mass="{struct.core_kg:.4f}"
               rgba="0.7 0.3 0.3 0.6"/>
         <geom name="payload" type="box" pos="{p['payload_x']:.4f} 0 {payload_z:.4f}" size="{px:.4f} {py:.4f} {pz:.4f}"
               mass="{struct.payload_kg:.4f}" rgba="0.2 0.2 0.6 1" {NOCOL}/>

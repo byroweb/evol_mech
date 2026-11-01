@@ -46,8 +46,9 @@ PARAMS: list[Param] = [
     Param("fan_x",          -0.12, 0.12, 0.00, "geometry"),   # fore/aft on core
     Param("fan_y",           0.06, 0.30, 0.14, "geometry"),   # half-spread
     Param("fan_z",           0.00, 0.30, 0.12, "geometry"),   # above core centre
-    Param("foot_radius",     0.008, 0.030, 0.015, "geometry"), # foot pad thickness
-    Param("foot_half_len",   0.005, 0.070, 0.035, "geometry"), # fore/aft half-length of foot
+    Param("foot_type",       0,    1,    0,    "geometry", 1),  # 0 = flat pad, 1 = ball end
+    Param("foot_radius",     0.008, 0.030, 0.015, "geometry"), # pad thickness or ball radius
+    Param("foot_half_len",   0.005, 0.070, 0.035, "geometry"), # pad fore/aft half-length (pad only)
     # ---- 4-bar linkage, per leg (both legs identical), labels as in the sketch:
     # A crank pivot (hip origin), D crank tip, B rocker pivot = A + (pivot_b_dx, pivot_b_dz),
     # C coupler/rocker joint, P foot rigid to coupler CD.
