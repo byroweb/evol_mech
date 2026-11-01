@@ -72,7 +72,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     rng = np.random.default_rng(seed)
     objective = task["objective"]
     try:
-        model, p = make_model(genome, task["terrain"], rng, park=(objective == "stand"), waist_yaw=waist_yaw)
+        # every task starts from the parked stance (feet level); the gait then
+        # spins the cranks on from there, instead of spawning mid-stride on one foot
+        model, p = make_model(genome, task["terrain"], rng, park=True, waist_yaw=waist_yaw)
     except InvalidBody as e:
         return _invalid_result(str(e))
     data = mujoco.MjData(model)
