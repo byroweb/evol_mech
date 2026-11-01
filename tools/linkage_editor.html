@@ -102,7 +102,7 @@ let P = {}, TAGS = {}, theta = 0;
 function resetState() { P = Object.fromEntries(SPEC.map(s => [s.name, s.default])); TAGS = {...DEFAULT_TAGS}; theta = 0; }
 resetState();
 try { const saved = JSON.parse(localStorage.getItem("evol_mech_archetype") || "null");
-      if (saved && saved.phys) { Object.assign(P, saved.phys); Object.assign(TAGS, saved.tags || {});
+      if (saved && saved.phys) { for (const k in saved.phys) if (byName[k]) P[k] = saved.phys[k]; Object.assign(TAGS, saved.tags || {});
         if (saved.name) document.getElementById("name").value = saved.name; } } catch (e) {}
 const clampP = (k, v) => Math.min(byName[k].hi, Math.max(byName[k].lo, v));
 
