@@ -36,7 +36,7 @@ MAX_ROLLERS = 6
 WHEEL_RADIUS_FACTOR = 1.5       # foot_type 1: heel and toe wheels, larger than the tread rollers
 LEG_MASS_FRACTION_TARGET = 0.12
 
-HIP_YAW_RANGE = math.radians(90)
+HIP_YAW_RANGE = math.radians(45)     # stage 1: steering only; crab (90 deg) is out of scope
 HIP_ROLL_RANGE = math.radians(35)
 HIP_PITCH_RANGE = (math.radians(-120), math.radians(60))   # negative = thigh forward
 KNEE_RANGE = (0.0, math.radians(150))                      # positive = shin back

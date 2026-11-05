@@ -16,8 +16,8 @@ Render the default body and an 8 s skate clip with
 | Mass stays at the hip; every leg-joint motor in the hip cluster | `skater/structure.py` | Ten QDD motors (`leg_motor_torque` gene -> mass) are added to the hip body. Thigh and shin carry tube + pushrod + belt mass per metre only. |
 | Each leg at most ~10-12 % of total mass, penalised in decode | `structure.leg_mass_fraction`, `rollout.LEG_MASS_PENALTY` | Default body: 7.7 % per leg. Excess above 12 % costs 5 fitness per unit fraction per leg. |
 | No passive self-centering, alignment held actively | `skater/mjcf.py` | No caster offset anywhere: hip yaw axis passes through the ankle/sole centre. |
-| Feet parallel unless steering, one turning centre (Ackermann) | `controller.act`, steering block | Each foot's ground velocity = v + omega x r_foot; hip yaw points the tread along it, tread speed is its magnitude. Straight ahead both yaws are exactly 0. Crab = both feet to the same yaw. |
-| Hip yaw / roll / pitch, knee, ankle pitch; no ankle roll or yaw | `mjcf._leg` | Five hinges per leg, ranges +-90, +-35, -120..+60, 0..150, +-70 deg. Yaw axis vertical through the hip point. |
+| Feet parallel unless steering, one turning centre (Ackermann) | `controller.act`, steering block | Each foot's ground velocity = v + omega x r_foot; hip yaw points the tread along it, tread speed is its magnitude. Straight ahead both yaws are exactly 0. Yaw demand beyond +-45 deg is clipped. |
+| Hip yaw / roll / pitch, knee, ankle pitch; no ankle roll or yaw | `mjcf._leg` | Five hinges per leg, ranges +-45, +-35, -120..+60, 0..150, +-70 deg. Yaw axis vertical through the hip point. Yaw beyond +-45 deg (crab) is out of scope for stage 1. |
 | Hip-mounted motors, knee by belt, ankle by pushrod | `mjcf._leg_actuators` | Simulated as position actuators on the joints with the QDD torque limit; the pushrod is represented by `ankle_lever` (torque x, speed /). The transmission's own mass is in the per-metre link mass. |
 | QDD BLDC leg motors, steppers retired | `body/hardware.leg_motor_from_params` | 0.5-6 Nm peak, 66-300 g each. |
 | Tread: rubber band under a flat sole, pulleys and idlers | `mjcf._foot`, `structure.foot_layout` | Row of 2-6 hinged rollers under a sole plate, radius = `pulley_radius`, spaced so they never overlap; rollers tied by joint equalities, one velocity actuator on the first roller. |
@@ -34,7 +34,7 @@ Render the default body and an 8 s skate clip with
 | Genome list | `skater/spec.py` | 42 genes in groups geometry, leg, foot, drivetrain, fan_spec, suspension, alloc, steer, fan_ctrl. `--lock-groups` works per group. |
 | Derived masses with new entries | `skater/structure.py` | Hip motor cluster, tread motor + worm, shin belt, rollers, sole plate, tread rubber, both fan servos. Core, battery and fan placement reuse the biped rules. |
 | MuJoCo tread as rollers with tied joints, one velocity actuator | as above | Plus `cone="elliptic"`, `impratio="10"`, `noslip_iterations="3"`: with the defaults the treads crept at low force. |
-| Tasks skate_flat, skate_rough, slalom, crab, stand_perturbed | `skater/rollout.py`, `configs/skater.json` | Fitness: mean speed x upright fraction, ride-quality cost on RMS hip acceleration, lateral error and foot scrub on the slalom, drift on stand, -0.5 per fall, fan and motor energy, leg-mass penalty. Only feet (sole, rollers) may touch the floor. |
+| Tasks skate_flat, skate_rough, slalom, stand_perturbed (crab objective exists but is not in the stage-1 config) | `skater/rollout.py`, `configs/skater.json` | Fitness: mean speed x upright fraction, ride-quality cost on RMS hip acceleration, lateral error and foot scrub on the slalom, drift on stand, -0.5 per fall, fan and motor energy, leg-mass penalty. Only feet (sole, rollers) may touch the floor. |
 
 ## Where the implementation departs from the doc, deliberately
 
@@ -72,16 +72,15 @@ Render the default body and an 8 s skate clip with
 
 Default-gain behaviour (untuned, seed 0, flat): hold 6 s with 3 cm drift,
 stand with shoves 6 s, skate at 0.6 m/s for 8 s covering 4.3 m, skate at
-1.2 m/s works with a lighter lean gain, crab at 0.3 m/s works for some gain
-sets and tips for others.
+1.2 m/s works with a lighter lean gain.
 
 ## Open questions for review
 
-- **Crab balance.** With both feet yawed 90 deg the fore/aft base is the 30 mm
-  roller width and the ankle axis is sideways, so body pitch has no leg
-  authority at all. Either the fans own pitch in crab, or crab uses less than
-  90 deg of yaw, or the hips spread. The doc's "up to +-90 deg" needs one of
-  these picked.
+- **Crab is deferred.** Decision taken: hip yaw beyond +-45 deg is out of scope
+  for stage 1, so crab skating is not a task. When it returns, note that with
+  both feet yawed 90 deg the fore/aft base is the 30 mm roller width and the
+  ankle axis is sideways, so body pitch has no leg authority and must come
+  from the fans or a wider hip.
 - **Fan vectoring.** Built as a two-axis gimbal (pitch then roll). Fixed cant
   with differential throttle would be lighter and is a small change here.
 - **QDD mass.** Ten motors at 2 Nm are 1.3 kg of a 2.7 kg robot. The genome can

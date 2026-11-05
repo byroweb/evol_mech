@@ -11,8 +11,9 @@ Five layers, all gains from the genome, structure fixed:
 3. Steering: one turning centre. Each foot's commanded ground velocity is
    v + omega x r_foot; its hip yaw points the tread along it (Ackermann for
    two side-by-side feet) and its tread speed is that velocity's magnitude.
-   Straight ahead both feet are exactly parallel; crab = both feet yawed the
-   same way.
+   Straight ahead both feet are exactly parallel. Yaw is limited to +-45 deg in
+   stage 1 (steering only); the "crab" objective still exists but is not in the
+   stage-1 task set.
 4. Suspension and leveling: knee PD on body height, hip pitch PD on body
    pitch about a lean reference (lean into demanded acceleration), hip roll
    PD on body roll, ankle keeps the sole level with the ground.
@@ -139,7 +140,11 @@ class SkaterController:
                 speed = float(np.hypot(*u))
                 if abs(delta) > math.pi / 2:        # drive the tread backwards instead of over-yawing
                     delta, speed = wrap(delta + math.pi), -speed
+            # stage 1: yaw is for steering only (+-45 deg); a demand beyond that is
+            # clipped and the tread only gets the component along the clipped heading
             delta = max(-HIP_YAW_RANGE, min(HIP_YAW_RANGE, delta))
+            if speed:
+                speed = float(np.hypot(*u)) * math.cos(math.atan2(u[1], u[0]) - delta) * (1 if speed > 0 else -1)
             self.foot_yaw[s] = delta
             e = np.array([math.cos(delta), math.sin(delta)])
             # 2. allocation: in-line force this foot can give

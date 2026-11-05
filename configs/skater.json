@@ -14,7 +14,6 @@
     {"name": "skate_rough", "terrain": "cobblestone", "objective": "skate",  "speed": 0.8, "duration": 8.0, "weight": 0.7, "accel_cost": 0.02},
     {"name": "slalom",      "terrain": "flat",        "objective": "slalom", "speed": 0.8, "duration": 10.0, "weight": 0.6,
                             "amplitude": 0.5, "wavelength": 3.0, "lat_cost": 1.0, "scrub_cost": 0.5},
-    {"name": "crab",        "terrain": "flat",        "objective": "crab",   "speed": 0.4, "duration": 6.0, "weight": 0.5},
     {"name": "stand_perturbed", "terrain": "flat",    "objective": "stand",  "duration": 6.0, "weight": 0.6, "drift_cost": 1.0}
   ],
   "fans_enabled": true,
