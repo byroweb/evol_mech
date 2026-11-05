@@ -70,3 +70,55 @@ def stepper_from_params(p: dict[str, float]) -> StepperSpec:
     g = p["gear_ratio"]
     mass = STEPPER_KG_BASE + STEPPER_KG_PER_NM * t + GEARBOX_KG_PER_RATIO * g
     return StepperSpec(t, g, mass, t * g * 0.9, STEPPER_MAX_RAD_S / g)
+
+
+# ---- skater mech parts (docs/skater_design.md) ----------------------------------
+# Quasi-direct-drive leg joint: small outrunner + low-ratio planetary, sized by
+# peak joint torque. GIM3505-class (1.2 Nm, 90 g) to GIM6010-class (6 Nm, 300 g).
+QDD_KG_BASE = 0.045
+QDD_KG_PER_NM = 0.042
+QDD_MAX_RAD_S = 25.0            # joint speed where peak torque falls off (~240 rpm)
+# Tread drive: small high-kv BLDC (power rating sets mass), self-locking worm,
+# belt down the shin to a pulley coaxial with the ankle.
+TREAD_MOTOR_KG_BASE = 0.012
+TREAD_MOTOR_KG_PER_W = 0.0004   # 50 W -> 32 g
+TREAD_MOTOR_MAX_RAD_S = 2000.0  # ~19 000 rpm, high-kv small outrunner
+WORM_KG = 0.030                 # worm, wheel, housing, bearings
+WORM_EFFICIENCY = 0.45          # self-locking lead angle; the design doc accepts 40-50 %
+SHIN_BELT_KG = 0.012            # belt + two pulleys
+TREAD_RUBBER_KG_PER_M2 = 1.2    # 2 mm rubber band, both runs, per m2 of sole area x2
+ROLLER_KG_PER_M = 0.25          # roller + axle per metre of roller length
+SOLE_PLATE_KG_PER_M2 = 3.0      # 3 mm CF/aluminium plate
+
+
+@dataclass(frozen=True)
+class LegMotorSpec:
+    torque_nm: float            # peak joint torque after the planetary
+    mass_kg: float              # per motor, lives in the hip cluster
+    max_rad_s: float
+
+
+def leg_motor_from_params(p: dict[str, float]) -> LegMotorSpec:
+    t = p["leg_motor_torque"]
+    return LegMotorSpec(t, QDD_KG_BASE + QDD_KG_PER_NM * t, QDD_MAX_RAD_S)
+
+
+@dataclass(frozen=True)
+class TreadDriveSpec:
+    motor_w: float
+    ratio: float
+    pulley_r: float
+    mass_kg: float              # motor + worm + belt, mounted at the knee on the shin
+    max_speed_m_s: float        # tread speed at max motor rpm
+    max_force_n: float          # tread force at rated power through the worm
+    pulley_torque_nm: float
+
+
+def tread_drive_from_params(p: dict[str, float]) -> TreadDriveSpec:
+    pw, ratio, r = p["tread_motor_w"], p["worm_ratio"], p["pulley_radius"]
+    omega_pulley = TREAD_MOTOR_MAX_RAD_S / ratio
+    v_max = omega_pulley * r
+    # torque at rated power and max rpm, multiplied by the worm, less its losses
+    tau_pulley = pw / TREAD_MOTOR_MAX_RAD_S * ratio * WORM_EFFICIENCY
+    mass = TREAD_MOTOR_KG_BASE + TREAD_MOTOR_KG_PER_W * pw + WORM_KG + SHIN_BELT_KG
+    return TreadDriveSpec(pw, ratio, r, mass, v_max, tau_pulley / r, tau_pulley)

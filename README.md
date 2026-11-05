@@ -16,6 +16,8 @@ Two simulators, two stages:
     evol_mech/genome   parameter vector, bounds, mutation, crossover
     evol_mech/body     genome -> MJCF (and later URDF)
     evol_mech/sim      terrains, controllers, rollout, fitness tasks
+    evol_mech/skater   the stage-1 skater mech: its own genome, body, controller, tasks
+    evol_mech/bodies   body registry: config "body": "biped" (default) or "skater"
     evol_mech/evolve   GA orchestrator and worker pool
     evol_mech/data     run directories, result logging, video export
     tools/             benchmark and inspection scripts
@@ -30,6 +32,21 @@ Two simulators, two stages:
     .venv\Scripts\python -m evol_mech.evolve.run configs\default.json
     .venv\Scripts\python tools\view.py runs\dev\best.json   # interactive viewer
     .venv\Scripts\python tools\plot_linkage.py runs\dev\best.json -o leg.png
+
+## Skater mech (stage 1)
+
+`docs/skater_design.md` describes the next target body: five-joint legs with
+all motors in the hip, powered tread feet, fans vectored in pitch and roll,
+travelling mostly by skating. Its skeleton is in `evol_mech/skater/` and
+shares the GA, worker pool, terrains, store and video with the biped; the
+genome, body, controller and tasks are its own. `docs/skater_review.md` maps
+the design doc to the code, lists where the build deliberately departs from
+it, and the open questions.
+
+    .venv\Scripts\python tools\skater_snapshot.py                 # stills, summary, 8 s skate clip
+    .venv\Scripts\python tools\view.py --body skater --speed 0.8   # interactive; --objective crab|slalom|stand
+    .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json
+    .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json --lock-groups geometry,leg,foot,drivetrain,fan_spec   # gains only
 
 ## Designing an archetype by hand
 

@@ -32,7 +32,8 @@ def main():
     if args.lock:
         locked |= set(args.lock.split(","))
     if args.lock_groups:
-        from ..genome.spec import PARAMS
+        from ..bodies import get_body
+        PARAMS = get_body(cfg.get("body", "biped")).PARAMS
         groups = set(args.lock_groups.split(","))
         unknown = groups - {p.group for p in PARAMS}
         if unknown:
@@ -42,7 +43,7 @@ def main():
         cfg["locked"] = sorted(locked)
 
     store = RunStore(args.runs_dir, cfg["run_name"], cfg)
-    print(f"run '{cfg['run_name']}' -> {store.dir}   pop={cfg['population']} "
+    print(f"run '{cfg['run_name']}' -> {store.dir}   body={cfg.get('body', 'biped')}  pop={cfg['population']} "
           f"gens={cfg['generations']} workers={cfg['workers']}  "
           f"archetype={cfg.get('archetype') or 'built-in default'}  locked={cfg.get('locked') or '-'}")
 
@@ -59,7 +60,8 @@ def main():
         from ..data.video import render_rollout
         for task in cfg["tasks"]:
             out = store.dir / "videos" / f"best_{task['name']}.mp4"
-            render_rollout(best_genome, task, out, fans_enabled=cfg.get("fans_enabled", True))
+            render_rollout(best_genome, task, out, fans_enabled=cfg.get("fans_enabled", True),
+                           body=cfg.get("body", "biped"))
             print("wrote", out)
 
     print("best fitness", best_result["fitness"] if best_result else None)

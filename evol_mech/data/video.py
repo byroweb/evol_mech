@@ -8,14 +8,14 @@ import imageio
 import mujoco
 import numpy as np
 
-from ..sim.rollout import rollout
+from ..bodies import get_body
 
 FPS = 30
 WIDTH, HEIGHT = 640, 480
 
 
 def render_rollout(genome: np.ndarray, task: dict, out_path: Path | str, seed: int = 0,
-                   fans_enabled: bool = True) -> dict:
+                   fans_enabled: bool = True, body: str = "biped") -> dict:
     frames: list[np.ndarray] = []
     state = {"renderer": None, "next_t": 0.0}
     cam = mujoco.MjvCamera()
@@ -33,7 +33,7 @@ def render_rollout(genome: np.ndarray, task: dict, out_path: Path | str, seed: i
             frames.append(state["renderer"].render().copy())
             state["next_t"] += 1.0 / FPS
 
-    result = rollout(genome, task, seed=seed, fans_enabled=fans_enabled, frame_cb=cb)
+    result = get_body(body).rollout(genome, task, seed=seed, fans_enabled=fans_enabled, frame_cb=cb)
     if state["renderer"] is not None:
         state["renderer"].close()
     if frames:

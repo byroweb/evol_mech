@@ -15,11 +15,12 @@ import time
 
 import numpy as np
 
-from ..genome.spec import decode
+from ..bodies import get_body
 
 
 class RunStore:
     def __init__(self, root: Path | str, run_name: str, cfg: dict):
+        self.decode = get_body(cfg.get("body", "biped")).decode
         self.dir = Path(root) / run_name
         (self.dir / "population").mkdir(parents=True, exist_ok=True)
         (self.dir / "videos").mkdir(exist_ok=True)
@@ -55,7 +56,7 @@ class RunStore:
 
     def save_best(self, gen: int, genome: np.ndarray, result: dict) -> None:
         with open(self.dir / "best.json", "w") as f:
-            json.dump({"gen": gen, "genome": genome.tolist(), "phys": decode(genome),
+            json.dump({"gen": gen, "genome": genome.tolist(), "phys": self.decode(genome),
                        "result": result}, f, indent=2)
 
     def close(self):
