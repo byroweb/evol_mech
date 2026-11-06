@@ -8,8 +8,10 @@ from evol_mech import skater
 from evol_mech.bodies import get_body
 from evol_mech.skater import (DEFAULT_NORM, N_PARAMS, decode, encode, random_genome, mutate, crossover,
                               structure_from_params, make_model, make_data, rollout, evaluate, InvalidBody)
-from evol_mech.skater.structure import nominal_angles, ankle_drop, foot_layout, LEG_MASS_FRACTION_TARGET
+from evol_mech.skater.structure import (nominal_angles, foot_from_angles, angles_from_foot, foot_layout,
+                                        LEG_MASS_FRACTION_TARGET)
 from evol_mech.skater.mjcf import ACTUATOR_NAMES
+from evol_mech.skater.rollout import LEG_MASS_PENALTY
 
 
 def test_roundtrip_and_operators():
@@ -20,13 +22,18 @@ def test_roundtrip_and_operators():
         assert c.shape == (N_PARAMS,) and c.min() >= 0.0 and c.max() <= 1.0
 
 
-def test_nominal_crouch_puts_ankle_under_hip():
+def test_nominal_crouch_and_two_link_ik():
     p = decode(DEFAULT_NORM)
-    hip, knee, ankle = nominal_angles(p)
-    x = p["thigh_len"] * np.sin(hip) + p["shin_len"] * np.sin(hip + knee)
-    assert abs(x) < 1e-9
-    assert ankle_drop(p, hip, knee) < p["thigh_len"] + p["shin_len"]
-    assert abs(hip + knee + ankle) < 1e-9          # sole square to the body
+    thigh, shin = nominal_angles(p)
+    assert abs(shin - thigh - p["crouch"]) < 1e-9             # knee flexion = crouch
+    x, z = foot_from_angles(p, thigh, shin)
+    assert abs(x) < 1e-9 and z < 0                             # ankle straight under the hip
+    # both servos move for a pure height change; one servo alone swings the foot on an arc
+    t2, s2 = angles_from_foot(p, 0.0, z + 0.03)
+    assert abs(t2 - thigh) > 1e-3 and abs(s2 - shin) > 1e-3
+    for xf, zf in ((0.0, z), (0.04, z + 0.02), (-0.05, z - 0.01)):
+        t, s = angles_from_foot(p, xf, zf)
+        assert np.allclose(foot_from_angles(p, t, s), (xf, zf), atol=1e-6)
 
 
 def test_foot_layout_tread_and_wheels():
@@ -35,8 +42,9 @@ def test_foot_layout_tread_and_wheels():
     xs = np.array(lay.roller_x)
     assert len(xs) >= 2 and np.all(np.diff(xs) >= 2 * lay.roller_r)   # rollers never overlap
     assert abs(xs[0] + xs[-1]) < 1e-9                                  # symmetric about the ankle
+    assert lay.idler is not None and lay.idler[0] > xs[-1] and lay.idler[1] > 0   # raised front idler
     w = foot_layout({**p, "foot_type": 1.0})
-    assert len(w.roller_x) == 2 and w.roller_r > lay.roller_r
+    assert len(w.roller_x) == 2 and w.roller_r > lay.roller_r and w.idler is None
     with pytest.raises(InvalidBody):
         foot_layout({**p, "sole_len": 0.08, "pulley_radius": 0.035})
 
@@ -44,17 +52,24 @@ def test_foot_layout_tread_and_wheels():
 def test_masses_follow_design_rules():
     p = decode(DEFAULT_NORM)
     st = structure_from_params(p)
-    assert st.leg_fraction < LEG_MASS_FRACTION_TARGET
-    # all ten leg motors live in the hip: the hip outweighs both legs together many times over
-    assert st.hip_kg > 4 * (st.thigh_kg + st.shin_kg + st.foot_kg)
-    heavier = structure_from_params({**p, "leg_motor_torque": 6.0})
+    # all six servos live in the hip: the hip outweighs both legs together
+    assert st.hip_kg > 2 * (st.thigh_kg + st.shin_kg + st.foot_kg)
+    heavier = structure_from_params({**p, "servo_kgcm": 60})
     assert heavier.hip_kg > st.hip_kg and heavier.thigh_kg == st.thigh_kg
+    # the leg-mass rule is enforced as a fitness penalty above the target
+    r = rollout(encode({**p, "tread_motor_w": 150.0}), {"name": "stand", "terrain": "flat", "objective": "stand",
+                                                         "duration": 0.5}, 0)
+    assert r["leg_mass_fraction"] > LEG_MASS_FRACTION_TARGET
+    assert abs(r["leg_mass_penalty"] - LEG_MASS_PENALTY * 2 * (r["leg_mass_fraction"] - LEG_MASS_FRACTION_TARGET)) < 1e-9
 
 
 def test_model_builds_with_expected_actuators_and_contacts():
     model, p = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
     names = {mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in range(model.nu)}
     assert names == set(ACTUATOR_NAMES)
+    assert not any(n.startswith("ankle") for n in names)      # the ankle is passive
+    ankle = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "ankle_l")
+    assert model.jnt_stiffness[ankle] == pytest.approx(p["ankle_stiffness"])
     floor = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
     data = make_data(model, p)
     for _ in range(200):
@@ -71,12 +86,12 @@ def test_model_builds_with_expected_actuators_and_contacts():
 
 def test_tread_drives_the_body_forward_and_locks_at_zero():
     model, p = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
-    hip, knee, ankle = nominal_angles(p)
+    thigh, shin = nominal_angles(p)
     aid = lambda n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
     def run(w):
         d = make_data(model, p)
         for s in ("l", "r"):
-            d.ctrl[aid(f"hip_pitch_{s}")], d.ctrl[aid(f"knee_{s}")], d.ctrl[aid(f"ankle_{s}")] = hip, knee, ankle
+            d.ctrl[aid(f"hip_pitch_{s}")], d.ctrl[aid(f"knee_{s}")] = thigh, shin - thigh
             d.ctrl[aid(f"tread_{s}")] = w
         for _ in range(500):
             mujoco.mj_step(model, d)
@@ -92,7 +107,7 @@ def test_all_objectives_run_and_default_stands():
     r = rollout(DEFAULT_NORM, {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 3.0}, 0)
     assert r["time_upright"] >= 2.5 and not r["fell"]
     r = rollout(DEFAULT_NORM, {"name": "skate", "terrain": "flat", "objective": "skate", "speed": 0.6, "duration": 4.0}, 0)
-    assert not r["fell"] and r["distance_x"] > 1.0
+    assert not r["fell"] and r["distance_x"] > 0.5
 
 
 def test_registry_and_evaluate():

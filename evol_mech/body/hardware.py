@@ -122,3 +122,28 @@ def tread_drive_from_params(p: dict[str, float]) -> TreadDriveSpec:
     tau_pulley = pw / TREAD_MOTOR_MAX_RAD_S * ratio * WORM_EFFICIENCY
     mass = TREAD_MOTOR_KG_BASE + TREAD_MOTOR_KG_PER_W * pw + WORM_KG + SHIN_BELT_KG
     return TreadDriveSpec(pw, ratio, r, mass, v_max, tau_pulley / r, tau_pulley)
+
+
+# ---- metal-gear hobby servos for the skater's leg joints -----------------------
+# Stall torque in kg·cm sets mass (20 kg·cm ~ 50 g, 35 ~ 65 g, 60 ~ 95 g). Speed
+# is the usual 60 deg in 0.12-0.2 s, largely independent of size.
+SERVO_KG_BASE = 0.025
+SERVO_KG_PER_KGCM = 0.0011
+SERVO_SEC_PER_60DEG = 0.15
+SERVO_DEADBAND_RAD = math.radians(4.0)   # full torque reached at this error: internal loop stiffness
+
+
+@dataclass(frozen=True)
+class ServoSpec:
+    stall_kgcm: float
+    torque_nm: float
+    mass_kg: float
+    max_rad_s: float
+    kp: float                    # N·m/rad of the internal position loop
+
+
+def servo_from_params(p: dict[str, float]) -> ServoSpec:
+    kgcm = p["servo_kgcm"]
+    t = kgcm * 0.0981
+    return ServoSpec(kgcm, t, SERVO_KG_BASE + SERVO_KG_PER_KGCM * kgcm,
+                     math.radians(60) / SERVO_SEC_PER_60DEG, t / SERVO_DEADBAND_RAD)

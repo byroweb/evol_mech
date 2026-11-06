@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw
 from evol_mech.data.store import load_genome
 from evol_mech.skater import (DEFAULT_NORM, decode, make_model, make_data, rollout,
                               structure_from_params, nominal_height)
-from evol_mech.body.hardware import fan_from_params, tread_drive_from_params, leg_motor_from_params
+from evol_mech.body.hardware import fan_from_params, tread_drive_from_params, servo_from_params
 
 W, H = 640, 480
 
@@ -57,15 +57,16 @@ def main():
     views = {"side": (90, -5), "front": (180, -5), "top": (90, -89), "three_quarter": (135, -20)}
     imgs = {k: still(model, data, az, el, d, look, out / f"{k}.png") for k, (az, el) in views.items()}
 
-    tread, fan, motor = tread_drive_from_params(p), fan_from_params(p), leg_motor_from_params(p)
+    tread, fan, servo = tread_drive_from_params(p), fan_from_params(p), servo_from_params(p)
     summary = {
         "total_kg": round(st.total_kg, 3),
-        "hip_kg (shell + 10 QDD motors)": round(st.hip_kg, 3),
+        "hip_kg (shell + 6 servos)": round(st.hip_kg, 3),
         "core_kg": round(st.core_kg, 3), "payload_kg": round(st.payload_kg, 3),
         "per_leg_kg": {"thigh": round(st.thigh_kg, 3), "shin_incl_tread_drive": round(st.shin_kg, 3),
                        "foot": round(st.foot_kg, 3), "fraction_of_total": round(st.leg_fraction, 3)},
         "fan_each_kg": round(st.fan_kg, 3), "fan_max_thrust_n": round(fan.max_thrust_n, 2),
-        "leg_motor": {"peak_nm": motor.torque_nm, "kg": round(motor.mass_kg, 3)},
+        "leg_servo": {"stall_kgcm": servo.stall_kgcm, "nm": round(servo.torque_nm, 2), "kg": round(servo.mass_kg, 3),
+                      "rad_s": round(servo.max_rad_s, 2)},
         "tread": {"max_speed_m_s": round(tread.max_speed_m_s, 2), "max_force_n": round(tread.max_force_n, 1),
                   "pulley_torque_nm": round(tread.pulley_torque_nm, 3), "drive_kg": round(tread.mass_kg, 3)},
         "hip_height_m": round(nominal_height(p), 3),

@@ -35,15 +35,17 @@ Two simulators, two stages:
 
 ## Skater mech (stage 1)
 
-`docs/skater_design.md` describes the next target body: five-joint legs with
-all motors in the hip, powered tread feet, fans vectored in pitch and roll,
-travelling mostly by skating. Its skeleton is in `evol_mech/skater/` and
-shares the GA, worker pool, terrains, store and video with the biped; the
-genome, body, controller and tasks are its own. `docs/skater_review.md` maps
-the design doc to the code, lists where the build deliberately departs from
-it, and the open questions.
+`docs/skater_design.md` describes the next target body; the build follows
+archetype B: three metal-gear servos per leg in the hip (yaw, thigh, and shin
+through a parallelogram knee, as on Caltech LEO), a passive sprung ankle,
+powered tread feet, and two pitch-only fans, travelling mostly by skating.
+Its skeleton is in `evol_mech/skater/` and shares the GA, worker pool,
+terrains, store and video with the biped; the genome, body, controller and
+tasks are its own. `docs/skater_review.md` maps the design to the code, lists
+where the build deliberately departs from it, and the open questions.
 
     .venv\Scripts\python tools\skater_snapshot.py                 # stills, summary, 8 s skate clip
+    .venv\Scripts\python tools\skater_layout.py                   # annotated servo-layout drawing
     .venv\Scripts\python tools\view.py --body skater --speed 0.8   # interactive; --objective slalom|stand
     .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json
     .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json --lock-groups geometry,leg,foot,drivetrain,fan_spec   # gains only

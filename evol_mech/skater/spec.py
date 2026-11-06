@@ -1,12 +1,14 @@
-"""Genome for the stage-1 skater mech (docs/skater_design.md).
+"""Genome for the stage-1 skater mech (docs/skater_design.md, archetype B).
 
 Same conventions as `genome/spec.py`: a flat vector in [0, 1], decoded through
 the bounds below; catalogue parts carry a `step`; masses are never genes.
 
-Topology is fixed: hip (all ten leg-joint motors inside) -> per leg hip yaw,
-hip roll, hip pitch, knee, ankle pitch -> flat sole with a powered tread (or a
-heel and toe wheel pair). The core sits on the hip and carries the battery and
-two fans vectored in pitch and roll.
+Topology is fixed: hip with three metal-gear servos per leg (yaw, thigh,
+shin; the shin servo drives the knee through a parallelogram so it sets the
+shin angle relative to the body) -> thigh -> shin -> passive sprung ankle ->
+flat sole with a powered tread (row of rollers plus a raised front idler).
+The core sits on the hip with the battery and two fans, each on its own pitch
+servo.
 """
 from __future__ import annotations
 
@@ -28,44 +30,45 @@ PARAMS: list[Param] = [
     Param("thigh_len",        0.08, 0.26, 0.15, "leg"),
     Param("shin_len",         0.08, 0.26, 0.15, "leg"),
     Param("crouch",           10*DEG, 100*DEG, 40*DEG, "leg"),  # nominal knee flexion
-    Param("ankle_lever",      0.5,  2.0,  1.0,  "leg"),         # ankle pushrod lever ratio: torque x, speed /
+    Param("ankle_stiffness",  0.2,  6.0,  4.0,  "leg"),         # passive ankle spring, Nm/rad
+    Param("ankle_rest",       0.0,  20*DEG, 0.0,   "leg"),      # unloaded toe-up angle (preload pushes the body nose-down when planted)
     # ---- foot -----------------------------------------------------------------
-    Param("foot_type",        0,    1,    0,    "foot", 1),     # 0 = tread (roller row), 1 = heel + toe wheels
+    Param("foot_type",        0,    1,    0,    "foot", 1),     # 0 = tread (roller row + idler), 1 = heel + toe wheels
     Param("sole_len",         0.08, 0.26, 0.14, "foot"),
     Param("pulley_radius",    0.010, 0.035, 0.018, "foot"),     # tread drive pulley = roller radius
     Param("worm_ratio",       8.0,  25.0, 15.0, "foot"),
     # ---- drivetrain -----------------------------------------------------------
-    Param("leg_motor_torque", 0.5,  6.0,  2.0,  "drivetrain"),  # Nm peak at the joint (QDD)
-    Param("leg_kp",           10.0, 300.0, 30.0, "drivetrain"), # joint position stiffness Nm/rad
-    Param("tread_motor_w",    20.0, 150.0, 60.0, "drivetrain"), # rated electrical power
+    Param("servo_kgcm",       10,   60,   25,   "drivetrain", 5),  # leg servo stall torque, catalogue steps
+    Param("tread_motor_w",    20.0, 150.0, 60.0, "drivetrain"),  # rated electrical power
     # ---- fan hardware spec (catalogue steps) ---------------------------------
     Param("fan_diam_in",      2,    6,    3,    "fan_spec", 1),
     Param("fan_blades",       2,    6,    3,    "fan_spec", 1),
     Param("stator_d_mm",      12,   28,   18,   "fan_spec", 1),
     Param("stator_h_mm",      4,    10,   6,    "fan_spec", 1),
-    # ---- suspension and leveling ---------------------------------------------
-    Param("kp_height",        0.0,  40.0, 5.0,  "suspension"),  # knee rad per m of height error
-    Param("kd_height",        0.0,  6.0,  0.2,  "suspension"),
-    Param("kp_roll_lvl",     -3.0,  3.0,  1.0,  "suspension"),  # hip roll per rad of body roll
-    Param("kd_roll_lvl",     -0.5,  0.5,  0.1,  "suspension"),
-    Param("kp_pitch_lvl",    -3.0,  3.0,  0.0,  "suspension"),  # hip pitch per rad of body pitch error
-    Param("kd_pitch_lvl",    -0.5,  0.5,  0.0,  "suspension"),
-    Param("kp_ankle_lvl",    -3.0,  3.0,  0.3,  "suspension"),  # ankle (toe-down) per rad of body pitch error
-    Param("kd_ankle_lvl",    -0.5,  0.5,  0.05, "suspension"),
-    Param("lean_gain",        0.0,  0.30, 0.06, "suspension"),  # hip pitch (feet back) per m/s^2 demanded: lean into acceleration
+    # ---- suspension and balance ----------------------------------------------
+    Param("kp_height",        0.0,  3.0,  1.0,  "suspension"),  # leg height correction per m of body height error
+    Param("kd_height",        0.0,  0.5,  0.02, "suspension"),
+    Param("kp_roll_lvl",     -0.3,  0.3,  0.05, "suspension"),  # left/right height difference per rad of roll (m/rad)
+    Param("kd_roll_lvl",     -0.05, 0.05, 0.005, "suspension"),
+    Param("kp_foot_x",       -0.3,  0.3,  0.05, "suspension"),  # foot fore/aft shift per rad of pitch error (m/rad)
+    Param("kd_foot_x",       -0.05, 0.05, 0.002, "suspension"),
+    Param("lean_gain",        0.0,  0.06, 0.03, "suspension"),  # feet shifted back per m/s^2 of tread accel (m per m/s^2); ~h/g = all lean by feet
+    Param("kp_bal",          -6.0,  6.0,  2.0,  "suspension"),  # tread speed per rad of pitch error (Segway balance, m/s per rad)
+    Param("kd_bal",          -1.5,  1.5,  0.3,  "suspension"),
     # ---- force allocation and steering ---------------------------------------
-    Param("vel_kp",           0.3,  6.0,  2.0,  "alloc"),       # demanded accel per (m/s) of velocity error
+    Param("vel_kp",           0.3,  6.0,  3.0,  "alloc"),       # demanded accel per (m/s) of velocity error
     Param("tread_share",      0.0,  1.0,  0.8,  "alloc"),       # fraction of in-line force asked of the treads first
     Param("friction_margin",  0.2,  1.0,  0.6,  "alloc"),       # tread force cap as a fraction of mu*N
-    Param("steer_kp",         0.3,  6.0,  2.0,  "steer"),       # yaw rate per rad of heading error
-    Param("path_kp",          0.3,  6.0,  1.5,  "steer"),       # heading per m of lateral path error
+    Param("steer_kp",         0.3,  6.0,  1.0,  "steer"),       # yaw rate per rad of heading error
+    Param("path_kp",          0.3,  6.0,  0.8,  "steer"),       # heading per m of lateral path error
     # ---- fan attitude controller --------------------------------------------
     Param("fan_base",         0.0,  1.0,  0.15, "fan_ctrl"),
-    Param("fan_kp_roll",     -4.0,  4.0,  0.5,  "fan_ctrl"),
+    Param("fan_kp_roll",     -4.0,  4.0,  0.5,  "fan_ctrl"),    # differential throttle per rad of roll
     Param("fan_kd_roll",     -1.0,  1.0,  0.05, "fan_ctrl"),
     Param("fan_pitch_bias",  -60*DEG, 60*DEG, 0.0, "fan_ctrl"),
-    Param("fan_kp_pitch",    -4.0,  4.0,  1.0,  "fan_ctrl"),
+    Param("fan_kp_pitch",    -4.0,  4.0,  1.0,  "fan_ctrl"),    # common pitch per rad of body pitch
     Param("fan_kd_pitch",    -1.0,  1.0,  0.1,  "fan_ctrl"),
+    Param("fan_kp_yaw",      -4.0,  4.0,  0.5,  "fan_ctrl"),    # opposite pitch per rad/s of yaw-rate error
 ]
 
 NAMES = [p.name for p in PARAMS]

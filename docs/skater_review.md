@@ -1,94 +1,116 @@
-# Skater skeleton: what was built from `skater_design.md`, and where it bends
+# Skater skeleton (archetype B): what was built, and where it bends
 
-Status: stage-1 skeleton, built for review before any evolution run. The
-biped is untouched; the skater lives in `evol_mech/skater/` and is selected by
-`"body": "skater"` in a run config (`configs/skater.json`).
+Status: stage-1 skeleton, archetype B (LEO-style legs wearing skates), built
+for review before any evolution run. The biped is untouched; the skater lives
+in `evol_mech/skater/` and is selected by `"body": "skater"` in a run config
+(`configs/skater.json`).
 
-Render the default body and an 8 s skate clip with
+Render the default body, the servo layout and an 8 s skate clip with
 
     .venv\Scripts\python tools\skater_snapshot.py            # -> runs/skater_skeleton/
-    .venv\Scripts\python tools\view.py --body skater          # interactive, --objective crab|slalom|stand
+    .venv\Scripts\python tools\skater_layout.py              # -> runs/skater_skeleton/servo_layout.png
+    .venv\Scripts\python tools\view.py --body skater          # interactive, --objective slalom|stand
+
+## The archetype in one paragraph
+
+Per leg: three metal-gear hobby servos in the hip. The yaw servo steers the
+whole leg about a vertical axis (+-45 deg). The thigh servo swings the thigh.
+The shin servo drives the knee through a parallelogram, so it sets the shin's
+angle relative to the body, not relative to the thigh. A squat therefore moves
+both the thigh and the shin servo; moving one alone swings the foot along a
+four-bar arc. Below the knee there is no servo: the ankle is a passive hinge
+with a torsion spring, and the only motor below the hip is the tread drive on
+the shin. Two fans sit on the core, each on its own pitch servo, no roll
+vectoring. Compared with Caltech LEO (abduction servo, two flexion servos, a
+quadrotor on top) this drops the abduction servo, keeps the two flexion servos,
+adds leg yaw for steering, and puts skates on the feet.
 
 ## Design doc -> code
 
-| Design doc | Where | Notes |
+| Design doc / decision | Where | Notes |
 |---|---|---|
-| Mass stays at the hip; every leg-joint motor in the hip cluster | `skater/structure.py` | Ten QDD motors (`leg_motor_torque` gene -> mass) are added to the hip body. Thigh and shin carry tube + pushrod + belt mass per metre only. |
-| Each leg at most ~10-12 % of total mass, penalised in decode | `structure.leg_mass_fraction`, `rollout.LEG_MASS_PENALTY` | Default body: 7.7 % per leg. Excess above 12 % costs 5 fitness per unit fraction per leg. |
-| No passive self-centering, alignment held actively | `skater/mjcf.py` | No caster offset anywhere: hip yaw axis passes through the ankle/sole centre. |
-| Feet parallel unless steering, one turning centre (Ackermann) | `controller.act`, steering block | Each foot's ground velocity = v + omega x r_foot; hip yaw points the tread along it, tread speed is its magnitude. Straight ahead both yaws are exactly 0. Yaw demand beyond +-45 deg is clipped. |
-| Hip yaw / roll / pitch, knee, ankle pitch; no ankle roll or yaw | `mjcf._leg` | Five hinges per leg, ranges +-45, +-35, -120..+60, 0..150, +-70 deg. Yaw axis vertical through the hip point. Yaw beyond +-45 deg (crab) is out of scope for stage 1. |
-| Hip-mounted motors, knee by belt, ankle by pushrod | `mjcf._leg_actuators` | Simulated as position actuators on the joints with the QDD torque limit; the pushrod is represented by `ankle_lever` (torque x, speed /). The transmission's own mass is in the per-metre link mass. |
-| QDD BLDC leg motors, steppers retired | `body/hardware.leg_motor_from_params` | 0.5-6 Nm peak, 66-300 g each. |
-| Tread: rubber band under a flat sole, pulleys and idlers | `mjcf._foot`, `structure.foot_layout` | Row of 2-6 hinged rollers under a sole plate, radius = `pulley_radius`, spaced so they never overlap; rollers tied by joint equalities, one velocity actuator on the first roller. |
-| Knee-mounted motor -> worm -> shin belt -> ankle-coaxial pulley | `body/hardware.tread_drive_from_params`, tread-drive geom at the knee | Speed = motor rpm / ratio x radius (default 2.4 m/s); pulley torque = P / omega_motor x ratio x 0.45; drive mass sits on the shin at the knee. Belt length constancy is implicit (no belt is simulated). |
-| Worm does not back-drive: stopped tread = locked sole | `controller` tread tracking | Position-tracked velocity command (rate + angle-error term). Zero command holds the roller angle. Verified: parked body moves < 1 cm in 1 s. |
-| No coasting: tread always driven at ground speed | `controller` tread block | Tread command = this foot's measured ground speed along its tread + a lead proportional to the force asked of it. It never steps to the target speed. |
-| Shock path: belt is the fuse | not modelled | Torque limit on the roller actuator stands in for it. |
-| Wheels as a `foot_type` alternative | `foot_type` = 1 | Heel and toe wheels, 1.5 x roller radius, same drive. |
-| Two vectored fans, second (roll) vectoring axis | `mjcf._fan` | Pitch hinge then roll hinge, each with the 10 g servo model; fan mass includes both servos. The "two-axis gimbal vs fixed cant" question is left open: this is the gimbal. |
-| Body planner | `controller.plan` | Task gives the objective and speed; slalom follows y = A sin(2 pi x / lambda) with a lateral-error correction. |
-| Force allocation: treads first within mu N, fans the rest, all when airborne | `controller.act` allocation | Per-foot cap = min(`friction_margin` x mu N, tip-over limit); fans get the remainder of x and all of y. Airborne (hip above nominal + 3 cm) sets N = 0. |
-| Suspension and leveling PD | `controller.act` leveling | Knee PD on height, hip roll PD on roll, hip pitch PD on pitch, ankle PD on pitch (ankle strategy), lean into acceleration. |
-| Fan attitude: existing PD loops | same gains as the biped | Allocation tilt added on top. |
-| Genome list | `skater/spec.py` | 42 genes in groups geometry, leg, foot, drivetrain, fan_spec, suspension, alloc, steer, fan_ctrl. `--lock-groups` works per group. |
-| Derived masses with new entries | `skater/structure.py` | Hip motor cluster, tread motor + worm, shin belt, rollers, sole plate, tread rubber, both fan servos. Core, battery and fan placement reuse the biped rules. |
-| MuJoCo tread as rollers with tied joints, one velocity actuator | as above | Plus `cone="elliptic"`, `impratio="10"`, `noslip_iterations="3"`: with the defaults the treads crept at low force. |
-| Tasks skate_flat, skate_rough, slalom, stand_perturbed (crab objective exists but is not in the stage-1 config) | `skater/rollout.py`, `configs/skater.json` | Fitness: mean speed x upright fraction, ride-quality cost on RMS hip acceleration, lateral error and foot scrub on the slalom, drift on stand, -0.5 per fall, fan and motor energy, leg-mass penalty. Only feet (sole, rollers) may touch the floor. |
+| Mass stays at the hip; every leg servo in the hip | `skater/structure.py` | Six servos (`servo_kgcm` gene -> torque, mass, speed) are added to the hip body. Thigh carries tube + parallelogram coupler mass per metre, shin carries tube + tread drive. |
+| Each leg at most ~10-12 % of total mass, penalised | `structure.leg_mass_fraction`, `rollout.LEG_MASS_PENALTY` | Default body is 12.9 % per leg (tread drive 78 g, foot 70 g, shin 37 g, thigh 44 g), so it pays 0.09 fitness. The GA can shrink the tread motor and sole; see open questions. |
+| Metal-gear servos, not steppers or QDD | `body/hardware.servo_from_params` | Stall 10-60 kg cm in 5 kg cm steps; mass 25 g + 1.1 g per kg cm; 60 deg in 0.15 s (7 rad/s, slew-limited in the controller); position gain = stall torque over 4 deg. |
+| Hip yaw, thigh, shin (via parallelogram); passive ankle; no hip roll | `mjcf._leg` | Hinges: yaw +-45, thigh -120..+60, knee 5..150 deg (the parallelogram never passes flat), ankle rest +-45 deg. Yaw axis vertical through the hip point. |
+| Knee via parallelogram from the shin servo | `mjcf._leg_actuators`, `controller` legs block | Modelled as a position actuator on the knee hinge with target shin_cmd - thigh_cmd, so the servo pair behaves like LEO's: body-relative thigh and shin angles. The coupler link is drawn (thin red capsule) but not simulated as a closed loop. |
+| Ankle passive, sprung, toe-up when unloaded | `mjcf._leg` ankle joint | `stiffness = ankle_stiffness` (gene, 0.2-6 N m/rad), `springref` = sole level at the parked crouch plus `ankle_rest` toe-up, damping 10 % of stiffness. Under load the sole flattens; a step lifts the toe first. |
+| Fans pitch only, independent channels | `mjcf._fan`, `controller` fans block | One pitch hinge per fan. Common pitch = allocation tilt + pitch PD; opposite pitch = yaw torque (`fan_kp_yaw`); differential throttle = roll. Sideways push, if ever wanted, is a body roll plus common thrust. |
+| Feet parallel unless steering, one turning centre | `controller.act` treads block | Each foot's ground velocity = v + omega x r_foot; the tread speed difference steers; hip yaw follows the path heading, clipped at +-45 deg. |
+| Tread: rubber band under a flat sole, raised front idler | `mjcf._foot`, `structure.foot_layout` | Row of 2-6 hinged rollers plus a front idler raised 0.6 r, tied by joint equalities, one velocity actuator on roller 0 with the worm's pulley torque limit. |
+| Knee-mounted motor -> worm -> belt -> ankle pulley | `body/hardware.tread_drive_from_params` | Speed = motor rpm / ratio x radius (default 2.4 m/s); pulley torque = P / omega x ratio x 0.45; mass on the shin at the knee. |
+| Worm does not back-drive | `controller` tread tracking | Position-tracked velocity command; zero command holds the roller angle. Parked body moves < 1 cm in 1 s. |
+| No coasting: tread driven at ground speed | `controller` tread block | Command = measured ground speed along the tread + balance term + turn differential. |
+| Balance | `controller.act` allocation + legs | Segway-style cascade: velocity error -> demanded accel -> tread accel (capped by tip-over and friction) -> lean, split into a foot shift (`lean_gain`) and a pitch reference; tread speed = ground speed + `kp_bal` (pitch - ref) + `kd_bal` pitch rate; fans take the remainder. |
+| Suspension and levelling | `controller.act` legs block | Two-link IK on each foot target: height PD, roll levelling by unequal leg height, fore/aft foot shift on pitch error. Commands are slew-limited to the servo speed. |
+| Genome | `skater/spec.py` | 44 genes in groups geometry, leg, foot, drivetrain, fan_spec, suspension, alloc, steer, fan_ctrl. `--lock-groups` works per group. |
+| Tasks skate_flat, skate_rough, slalom, stand_perturbed | `skater/rollout.py`, `configs/skater.json` | Fitness as before: mean speed x upright fraction, ride-quality cost, lateral error and scrub on the slalom, drift on stand, falls, energy, leg-mass penalty. Only `foot_*` geoms may touch the floor. The crab objective exists in code but is not a stage-1 task. |
+| MuJoCo contact settings | `mjcf.build_mjcf` | `cone="elliptic" impratio="10" noslip_iterations="3"`; with defaults the treads crept at low force. |
 
 ## Where the implementation departs from the doc, deliberately
 
-1. **Ankle does not hold the sole level in world frame while planted.** The doc
-   says the ankle "keeps the sole flat on slopes". A world-level feed-forward on
-   a planted sole pushes the body the wrong way (toe-down when the body is
-   nose-up lifts the front rollers); it made the first build fall in 0.3 s. The
-   ankle is now square to the leg plus a balance PD on body pitch, and complies
-   with slopes through that PD. Level-in-air feed-forward can come back when
-   stage 2 adds swing legs.
-2. **Tread force is capped by a tip-over limit, not only by friction.** Pushing
+1. **No hip roll (abduction) servo.** LEO has one; stage 1 does not. Roll is
+   levelled by unequal leg height and by differential fan throttle. Adding it
+   back is a fourth servo per leg and a fourth hinge in `_leg`.
+2. **Ankle is passive.** The doc had an ankle servo driven by pushrod. A sprung
+   hinge replaces it; the sole follows the ground and the spring sets the
+   toe-up rest. Consequence: there is no ankle balance strategy, so pitch is
+   held by foot shift, tread force and fan pitch only.
+3. **Ankle rest defaults to level, not toe-up.** With a 6 deg toe-up rest and
+   the spring at 1.5 N m/rad the planted sole pre-loads the body nose-down and
+   the hold drifted 3.8 m in 6 s; at 0 deg it drifts under 1 m. The gene is
+   still 0-20 deg, so evolution can trade preload against step clearance.
+4. **Tread force is capped by a tip-over limit, not only by friction.** Pushing
    at ground level with the centre of mass 40 cm up tips a 14 cm sole at about
-   1.2 m/s^2. Beyond `TIP_MARGIN` x that, the remainder goes to the fans. This is
-   the doc's "fans and treads push together" made explicit.
-3. **Lean is a foot shift.** `lean_gain` swings the feet back under the lean
-   (positive hip pitch per m/s^2 demanded) rather than only setting a body-pitch
-   reference, so the inertial force lands mid-sole.
-4. **The pushrod and belt are not simulated as mechanisms.** Joint actuators
-   carry their torque limits; `ankle_lever` is the only pushrod geometry gene so
-   far. Pushrod attachment offsets as listed in the doc's genome can be added
-   once there is a reason to model their nonlinearity.
-5. **No lateral tread compliance.** Rollers are rigid cylinders, so a yawed tread
-   scrubs with full friction, which the slalom's scrub cost sees.
+   1.2 m/s^2. Beyond `TIP_MARGIN` x that the remainder goes to the fans.
+5. **The parallelogram is a joint actuator, not a closed loop.** The knee
+   position actuator with the body-relative target reproduces the kinematics
+   and the servo's torque limit; coupler flex and pin friction are not modelled.
+6. **No lateral tread compliance.** Rigid rollers, so a yawed tread scrubs
+   with full friction, which the slalom's scrub cost sees.
 
 ## Numbers for the default body
 
 | | |
 |---|---|
-| Total mass | 2.74 kg |
-| Hip incl. ten 2 Nm QDD motors | 1.52 kg |
-| Per leg (thigh, shin + tread drive, foot) | 0.21 kg, 7.7 % |
-| Fan, each, incl. two servos | 47 g, 5.2 N max |
-| Tread | 2.4 m/s max, 11 N max, 0.20 Nm at the pulley, 78 g drive |
-| Hip height in the parked crouch | 0.33 m (thigh 150, shin 150, knee 40 deg) |
+| Total mass | 1.78 kg |
+| Hip incl. six 25 kg cm servos | 0.54 kg |
+| Per leg (thigh, shin + tread drive, foot) | 0.23 kg, 12.9 % |
+| Leg servo | 2.45 N m, 53 g, 7 rad/s |
+| Fan, each, incl. pitch servo | 37 g, 5.2 N max |
+| Tread | 2.4 m/s max, 11 N max, 0.20 N m at the pulley, 78 g drive |
+| Hip height in the parked crouch | 0.33 m (thigh 150, shin 150, knee 40 deg; thigh -20, shin +20 deg) |
 
-Default-gain behaviour (untuned, seed 0, flat): hold 6 s with 3 cm drift,
-stand with shoves 6 s, skate at 0.6 m/s for 8 s covering 4.3 m, skate at
-1.2 m/s works with a lighter lean gain.
+Default-gain behaviour (seed 0, 6 s unless noted, ankle 4 N m/rad, vel_kp 3,
+steer_kp 1, path_kp 0.8):
+
+| Task | Upright | Distance | RMS hip accel |
+|---|---|---|---|
+| hold (0 m/s) | 6.0 s | 1.8 m drift | 5.9 |
+| skate 0.6 m/s | 6.0 s | 2.1 m | 2.2 |
+| skate 1.2 m/s | 6.0 s | 5.1 m | 2.1 |
+| slalom 0.6 m/s, 8 s | 8.0 s | 3.2 m, 7 cm lateral drift | 5.0 |
+| cobblestone 0.6 m/s | 6.0 s | 1.9 m | 4.2 |
+| stand with shoves | 6.0 s | 1.0 m drift | 5.8 |
+
+Nothing falls, but the hold and stand still creep forward: the cascade has no
+integral term, so a small steady pitch offset turns into a steady tread speed.
+Softer ankles (1.5 N m/rad) hold better (0.5-0.9 m) and skate worse (slalom
+falls at 3 s). This is the first thing evolution should find a better point
+for; a velocity integral in the controller is the alternative.
 
 ## Open questions for review
 
-- **Crab is deferred.** Decision taken: hip yaw beyond +-45 deg is out of scope
-  for stage 1, so crab skating is not a task. When it returns, note that with
-  both feet yawed 90 deg the fore/aft base is the 30 mm roller width and the
-  ankle axis is sideways, so body pitch has no leg authority and must come
-  from the fans or a wider hip.
-- **Fan vectoring.** Built as a two-axis gimbal (pitch then roll). Fixed cant
-  with differential throttle would be lighter and is a small change here.
-- **QDD mass.** Ten motors at 2 Nm are 1.3 kg of a 2.7 kg robot. The genome can
-  shrink them (0.5 Nm -> 66 g each) but the hip will stay the heaviest part by
-  design; whether hip yaw and roll really need the same motor as hip pitch and
-  knee is a doc question.
+- **Hip roll.** Keep three servos per leg, or add LEO's abduction servo as a
+  fourth? Three keeps the hip lighter and the genome smaller; four gives the
+  legs roll authority without the fans.
+- **Leg mass.** 12.9 % against a 12 % target. The tread drive (78 g) is the
+  bulk; a 40 W motor or a shorter sole brings it under. Or relax the target.
+- **Fan vectoring.** Decided: pitch only, independent channels.
+- **Crab is deferred.** Hip yaw beyond +-45 deg is out of scope for stage 1.
 - **Tread drive numbers.** Worm efficiency 0.45 and a 19 000 rpm motor cap are
   placeholders in `body/hardware.py`; replace with the chosen parts.
-- **Pushrod offsets** as genes: not yet, see departure 4.
+- **Servo numbers.** 25 g + 1.1 g per kg cm and 0.15 s per 60 deg are typical
+  for 20-35 kg cm metal-gear servos; a chosen part number pins them.
 - **Ride-quality cost** is RMS hip acceleration including the spawn drop; fine
   for ranking, crude for absolute numbers.
