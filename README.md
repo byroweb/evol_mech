@@ -133,6 +133,8 @@ any ground contact by anything other than a foot: shins, fans, hip and core
 are not built for it. Each run config lists tasks with terrains
 and weights. Every individual in a generation sees the same terrain seed.
 
+**Motor traces.** `tools/joint_trace.py <archetype or best.json> --objective walk --duration 4 --out trace.png` plots every motor's commanded and measured angle against time, one panel per motor (left solid, right dashed), and prints gait-smoothness metrics: realized stride (progress per step), servo command acceleration RMS, the share of servo command power above 2.5 x the step rate, body roll and pitch RMS.
+
 **Throughput** (i7-12700). ~100k physics steps/s per process; the pool peaks
 around 8-12 workers (~7.5x), hyperthreads add little. `tools/benchmark.py`
 measures this; `generations.jsonl` logs steps/s and parallel efficiency every

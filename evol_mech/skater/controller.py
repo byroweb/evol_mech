@@ -134,6 +134,7 @@ class SkaterController:
         self.last_throttle = (0.0, 0.0)
         self.last_fan_force = (0.0, 0.0)
         self.x_int = 0.0                             # legged: integrated foot shift (steady moments)
+        self.horn_cmd = {"l": 0.0, "r": 0.0}
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -307,6 +308,7 @@ class SkaterController:
             c[i[f"hip_roll_{s}"]] = self._slew(f"hip_roll_{s}", roll_cmd)
             thigh, shin = angles_from_foot(p, x_f + gx, -math.hypot(h, dy))
             thigh_cmd, horn_cmd = self._drive_commands(s, thigh, shin)
+            self.horn_cmd[s] = horn_cmd                      # the shin servo's own angle, for traces
             c[i[f"hip_pitch_{s}"]] = thigh_cmd
             # the knee follows the four-bar for the thigh as it actually is
             thigh_ref = float(data.qpos[self.thigh_q[s]]) if KNEE_FROM_MEASURED_THIGH else thigh_cmd
