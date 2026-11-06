@@ -239,16 +239,19 @@ def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     from evol_mech.skater.spec import encode, N_PARAMS
     from evol_mech.skater.rollout import FALL_COST
     assert N_PARAMS == 63 and FALL_COST == {"walk": 0.1}
-    phys = json.load(open("configs/archetypes/skater_walker.json"))["phys"]
+    phys = json.load(open("configs/archetypes/skater_walker_evolved.json"))["phys"]
     task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0}
-    r = rollout(encode(phys), task, 0)
-    # the hand-picked seed walks: forward progress of the feet, no fall, no fan lift
-    assert not r["fell"] and r["feet_x_m"] > 0.5 and abs(r["feet_x_m"] - r["distance_x"]) < 0.1
-    assert r["fan_energy"] < 0.3
-    # stepping outscores standing still on the walk task (the fixed costs - leg mass, ride
-    # quality, motor energy - make both negative on this heavy-servo seed)
-    r_still = rollout(encode({**phys, "step_len": 0.02, "walk_shift": 0.0}), task, 0)
-    assert r_still["feet_x_m"] < 0.2 and r["fitness"] > r_still["fitness"]
+    kw = dict(motor_energy_cost=0.0005)                 # as configs/skater_walk*.json price it
+    r = rollout(encode(phys), task, 0, **kw)
+    # the evolved gait walks: forward progress of the feet, no fall, fans near idle
+    assert not r["fell"] and r["feet_x_m"] > 3.0 and abs(r["feet_x_m"] - r["distance_x"]) < 0.3
+    assert r["fan_energy"] < 0.3 and 0.08 < r["stride_m"] < 0.2 and r["servo_accel_rms"] > 0
+    # stepping outscores standing still on the walk task by a wide margin
+    r_still = rollout(encode({**phys, "step_len": 0.02, "walk_shift": 0.0}), task, 0, **kw)
+    assert r_still["feet_x_m"] < 0.2 and r["fitness"] > r_still["fitness"] + 0.3
+    # the hand seed also walks, and its fall penalty on the walk is small
+    r_seed = rollout(encode(json.load(open("configs/archetypes/skater_walker.json"))["phys"]), task, 0, **kw)
+    assert not r_seed["fell"] and r_seed["feet_x_m"] > 0.5
     r_stand = rollout(encode(phys), {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.0}, 0)
     assert not r_stand["fell"] and r_stand["time_upright"] >= 0.9
 

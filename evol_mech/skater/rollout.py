@@ -14,8 +14,17 @@ Fitness (stage-1 tasks from the design doc):
           extremes (x = lambda/4 + n lambda/2), so the skater rounds each one
           on alternate sides
   stand   time upright minus drift, shoved every PERTURB_PERIOD seconds
-  walk    progress of the feet (mean foot x) per second of the task, minus
-          lateral drift (no ride-quality cost by default: step impacts are
+  walk    progress of the feet (mean foot x) per second of the task, plus
+          `stride_weight` (1.0) x the realized stride (progress per step,
+          capped at STRIDE_CAP_FRAC of the leg length so the splits do not
+          pay: larger, realistic steps for the same speed), minus a servo
+          chatter cost (`chatter_cost`, CHATTER_COST per objective, x the
+          RMS angular acceleration of the eight servo commands: hip roll,
+          thigh, shin horn and fan pitch on each side; the fans count so a
+          pitch gain that bangs an idle fan between its stops is paid for)
+          and `sat_cost` (SAT_COST) x the fraction of control steps with a
+          leg servo moving at its rate limit (motors slammed to their stops),
+          minus lateral drift (no ride-quality cost by default: step impacts are
           not a fault, and at skate's 0.02 they outweighed the progress of a
           0.1 m/s walk); treads locked (the gait cycle moves the feet). The
           fall penalty is small (0.1) and scales with the time left: the
@@ -58,6 +67,9 @@ from .structure import InvalidBody, nominal_height, leg_mass_fraction, LEG_MASS_
 from .controller import SkaterController
 
 OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "hop", "broad_jump")
+STRIDE_CAP_FRAC = 0.6           # realized stride rewarded up to this fraction of thigh + shin
+CHATTER_COST = {"walk": 1e-4}   # fitness per rad/s^2 of servo command acceleration RMS (0 elsewhere)
+SAT_COST = {"walk": 0.1}        # fitness x the fraction of control steps with a leg servo at its rate limit
 FALL_COST = {"walk": 0.1}       # default fall penalty per objective (0.5 otherwise); on the walk it
                                 # scales with the time left, so an early fall pays it all and a late one little
 ACCEL_COST = {"walk": 0.0}      # default ride-quality cost per objective (0.02 otherwise): a walk's
@@ -158,6 +170,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     n_ctrl = int(duration / CONTROL_DT)
     x0, y0 = float(data.qpos[0]), float(data.qpos[1])
     feet_x0 = float(np.mean([data.xpos[b][0] for b in foot_bodies]))
+    servo_prev: list[np.ndarray] = []                 # last two servo command vectors (chatter metric)
+    servo_acc_sq, servo_sat = 0.0, 0
+    servo_step = ctrl.servo.max_rad_s * CONTROL_DT
     fan_energy = motor_energy = 0.0
     time_upright = 0.0
     fell = unstable = False
@@ -195,6 +210,14 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
 
         thr_l, thr_r = ctrl.last_throttle
         fan_energy += (thr_l ** 2 + thr_r ** 2) * CONTROL_DT
+        servo_cmd = np.array([data.ctrl[ctrl.idx[f"hip_roll_{s}"]] for s in "lr"]
+                             + [data.ctrl[ctrl.idx[f"hip_pitch_{s}"]] for s in "lr"]
+                             + [ctrl.horn_cmd[s] for s in "lr"]
+                             + [data.ctrl[ctrl.idx[f"fan_pitch_{s}"]] for s in "lr"])
+        if len(servo_prev) == 2:
+            servo_acc_sq += float(np.mean((servo_cmd - 2 * servo_prev[-1] + servo_prev[-2]) ** 2))
+            servo_sat += int(np.any(np.abs(servo_cmd[:6] - servo_prev[-1][:6]) >= 0.98 * servo_step))
+        servo_prev = (servo_prev + [servo_cmd])[-2:]
         motor_energy += float(np.sum(np.abs(data.actuator_force[motor_acts] * data.actuator_velocity[motor_acts]))) * CONTROL_DT
         v = data.qvel[:3].copy()
         accel_sq += float(np.sum(((v - v_prev) / CONTROL_DT) ** 2))
@@ -245,6 +268,11 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     rms_accel = math.sqrt(accel_sq / n)
     rms_lat = math.sqrt(lat_err_sq / n)
     upright_frac = time_upright / duration
+    servo_acc_rms = math.sqrt(servo_acc_sq / max(1, n - 2)) / CONTROL_DT ** 2
+    servo_sat_frac = servo_sat / max(1, n - 2)
+    strides = p["step_hz"] * max(time_upright, CONTROL_DT)
+    stride = feet_dx / strides if objective == "walk" else 0.0
+    stride_eff = max(0.0, min(stride, STRIDE_CAP_FRAC * (p["thigh_len"] + p["shin_len"])))
     leg_frac = leg_mass_fraction(p)
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
     energy = fan_energy_cost * fan_energy + motor_energy_cost * motor_energy
@@ -258,7 +286,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     elif objective == "skate":
         fitness = (dx / duration) * upright_frac - accel_cost * rms_accel - 0.2 * abs(dy)
     elif objective == "walk":
-        fitness = feet_dx / duration - accel_cost * rms_accel - 0.2 * abs(dy)
+        fitness = (feet_dx / duration + float(task.get("stride_weight", 1.0)) * stride_eff
+                   - accel_cost * rms_accel - 0.2 * abs(dy))
     elif objective == "hop":
         fitness = sum(apexes[:HOP_TOP_N]) - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy)
     elif objective == "broad_jump":
@@ -275,13 +304,18 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         fall_cost = float(task.get("fall_cost", FALL_COST.get(objective, 0.5)))
         if objective == "walk":
             fall_cost *= 1.0 - upright_frac
-        fitness += -(fall_cost if fell else 0.0) - energy - leg_pen
+        chatter = (float(task.get("chatter_cost", CHATTER_COST.get(objective, 0.0))) * servo_acc_rms
+                   + float(task.get("sat_cost", SAT_COST.get(objective, 0.0))) * servo_sat_frac)
+        fitness += -(fall_cost if fell else 0.0) - energy - leg_pen - chatter
 
     return {
         "fitness": float(fitness),
         "invalid": False,
         "distance_x": dx,
         "feet_x_m": feet_dx,
+        "stride_m": stride,
+        "servo_accel_rms": servo_acc_rms,
+        "servo_sat_frac": servo_sat_frac,
         "drift_y": dy,
         "mean_speed": (dx if objective != "crab" else dy) / duration,
         "time_upright": time_upright,

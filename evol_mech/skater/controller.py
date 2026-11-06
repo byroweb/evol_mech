@@ -79,6 +79,8 @@ TIP_MARGIN = 0.5            # treads may use this fraction of the tip-over accel
 COM_ABOVE_HIP = 0.08        # rough centre-of-mass height above the hip joint (core + battery)
 TREAD_TRACK_GAIN = 10.0     # 1/s, angle-error term of the tread position hold
 AIRBORNE_Z = 0.03           # hip higher than nominal by this -> treat as airborne
+FAN_AUTH_THR = 0.1          # fan pitch feedback has full authority from this mean throttle up
+FLIGHT_PUSH_S = 0.1         # legged: the fans push forward only after this long with no foot down (a jump, not a jog's gap)
 CONTROL_DT = 0.01
 LEGGED = ("walk", "hop", "broad_jump")      # objectives with locked treads and moving feet
 # walk cycle: stance duty (`step_duty`) and the cycle fraction at which the body is
@@ -135,6 +137,10 @@ class SkaterController:
         self.last_fan_force = (0.0, 0.0)
         self.x_int = 0.0                             # legged: integrated foot shift (steady moments)
         self.horn_cmd = {"l": 0.0, "r": 0.0}
+        self.air_since = None                        # legged: time the feet left the floor
+        self.floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+        self.foot_geoms = {g for g in range(model.ngeom)
+                           if (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "").startswith("foot_")}
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -196,6 +202,13 @@ class SkaterController:
         amp = self.p["walk_shift"] * self.p["hip_width"] / 2          # 1.0 = hip over the stance foot
         return amp * math.cos(2 * math.pi * (u - self.p["shift_phase"]))
 
+    def _feet_down(self, data: mujoco.MjData) -> bool:
+        for ci in range(data.ncon):
+            g1, g2 = data.contact[ci].geom1, data.contact[ci].geom2
+            if (g1 == self.floor_geom and g2 in self.foot_geoms) or (g2 == self.floor_geom and g1 in self.foot_geoms):
+                return True
+        return False
+
     def _slew(self, name: str, target: float) -> float:
         step = self.servo.max_rad_s * CONTROL_DT
         cur = self.servo_cmd[name]
@@ -248,7 +261,18 @@ class SkaterController:
         # tip-over limit) becomes a lean, split between shifting the feet back
         # under the body (lean_gain) and pitching the body (the rest). The fans
         # take whatever acceleration is left, and all of the lateral demand.
-        airborne = pos[2] > self.z_ref + AIRBORNE_Z
+        # legged: airborne means no foot on the floor for FLIGHT_PUSH_S (a fast walk has a
+        # flight gap at every step, and the hip-height test flickered on every bob; either
+        # sent the fans into a forward push at idle throttle, which is a 90 deg pitch command
+        # and banged the pitch servos between their stops at each footfall)
+        if self.legged:
+            if self._feet_down(data):
+                self.air_since = None
+            elif self.air_since is None:
+                self.air_since = t
+            airborne = self.air_since is not None and t - self.air_since >= FLIGHT_PUSH_S
+        else:
+            airborne = pos[2] > self.z_ref + AIRBORNE_Z
         # legged: the soles are locked, so nothing is asked of the treads and there is no lean
         a_cap = 0.0 if (airborne or self.legged) else min(self.a_tip, p["friction_margin"] * MU_FOOT * G)
         a_tread = p["tread_share"] * max(-a_cap, min(a_cap, float(a_des[0])))
@@ -328,9 +352,12 @@ class SkaterController:
             thr_l = max(0.0, min(1.0, p["fan_base"] - diff + assist_l))
             thr_r = max(0.0, min(1.0, p["fan_base"] + diff + assist_r))
             t_vert = max(0.05, p["fan_base"]) * self.t_max
+            # pitching a fan that makes no thrust does nothing but bang the pitch servo between
+            # its stops on every footfall, so the attitude terms fade out with the throttle
+            auth = min(1.0, 0.5 * (thr_l + thr_r) / FAN_AUTH_THR)
             common = (math.atan2(f_fan[0] / 2, t_vert) + p["fan_pitch_bias"]
-                      - p["fan_kp_pitch"] * (pitch - pitch_ref) - p["fan_kd_pitch"] * pitch_rate)
-            d_yaw = p["fan_kp_yaw"] * (omega_des - yaw_rate)
+                      - auth * (p["fan_kp_pitch"] * (pitch - pitch_ref) + p["fan_kd_pitch"] * pitch_rate))
+            d_yaw = auth * p["fan_kp_yaw"] * (omega_des - yaw_rate)
             fan_l = max(-FAN_PITCH_RANGE, min(FAN_PITCH_RANGE, common - d_yaw))
             fan_r = max(-FAN_PITCH_RANGE, min(FAN_PITCH_RANGE, common + d_yaw))
         else:
