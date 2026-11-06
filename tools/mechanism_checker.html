@@ -72,7 +72,7 @@
   <div class="panel">
     <h2>Mechanism <span><button class="sm" id="export">export JSON</button></span></h2>
     <div id="mech"></div>
-    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; pin on a tab on the shin tube (crank angle 15&deg; = the pin sits ~11 mm aft of the shin axis so the coupler never rubs the tube). Default: both horns in the leg plane, servos opposed across it, shin servo axis staggered 30 mm aft and 10 mm above the hip pitch axis so the horns and the coupler clear the thigh, thigh servo body pointing up and shin servo body pointing down so the two blocks stack with the horns between them; 40 mm horn and crank (longer horns widen the reachable band). With the axis coaxial, crank angle 0 and equal horn / crank it becomes the LEO parallelogram.</div>
+    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; pin on a tab on the shin tube (crank angle 15&deg; = the pin sits ~11 mm aft of the shin axis so the coupler never rubs the tube). Default: both horns in the leg plane, servos opposed across it, shin servo axis staggered 30 mm aft and 10 mm above the hip pitch axis so the horns and the coupler clear the thigh, both servos lying flat, thigh servo body forward and shin servo body aft, so the horns sit in the gap between the blocks; 40 mm horn and crank (longer horns widen the reachable band). With the axis coaxial, crank angle 0 and equal horn / crank it becomes the LEO parallelogram.</div>
   </div>
 </div>
 <div id="viewwrap"><canvas id="view"></canvas><div id="hud"></div></div>
@@ -105,7 +105,7 @@ const mech = {
   servo_L: 40.5, servo_W: 20, servo_H: 38, shaft_off: 10, horn_gap: 6,
   pitch_drop: 32, thigh_plane: 0, coupler_plane: 0,
   horn_len: 40, crank_len: 41, coupler_len: 160, parallelogram: 1, crank_angle: 15, horn_phase: 0,
-  shin_dx: -30, shin_dz: 10, layout: 0, thigh_block: 3, shin_block: 2, yaw_block: 0,
+  shin_dx: -30, shin_dz: 10, layout: 0, thigh_block: 1, shin_block: 0, yaw_block: 0,
   tread_dx: 18, tread_dz: -30, tread_dy: 0, tread_hx: 12, tread_hy: 12, tread_hz: 20,
   clearance: 2,
 };
@@ -498,7 +498,7 @@ function runChecks(L, R, body) {
   for (let i = 0; i < L.parts.length; i++) for (let k = i + 1; k < L.parts.length; k++) check(L.parts[i], L.parts[k], 'same');
   for (const p of L.parts) {
     if (p.grp === 'servo' || p.grp === 'carrier' || p.grp === 'horn' || p.grp === 'yawservo') continue;   // hip hardware lives in / on the box
-    for (const b of body) check(p, b, 'body');
+    for (const b of body) if (b.name !== 'hip box') check(p, b, 'body');   // the hip box is the sim's stand-in; the servos and carrier are the real hip
   }
   for (const p of L.parts) for (const q of R.parts) check(p, q, 'other leg');
   hits.sort((a, b) => a.d - b.d);
@@ -509,12 +509,6 @@ function runChecks(L, R, body) {
     if (bad) { flagged.add(h.a); flagged.add(h.b); }
   }
   if (!hits.length) add_('ok', `no interference, all clearances ≥ ${mech.clearance} mm`);
-  // design-level notes
-  const yawTop = (mech.horn_gap + mech.servo_H) * MM;
-  if (yawTop > HIP_HALF_Z) add_('warn', `yaw servo top ${((yawTop - HIP_HALF_Z) * 1e3).toFixed(0)} mm above the hip box top (box is ±${HIP_HALF_Z * 1e3} mm about the hip point)`);
-  const legPlane = genes.hip_width / 2;
-  const hipSide = hipHalfY();
-  if (legPlane - LINK_R < hipSide + clr) add_(legPlane - LINK_R < hipSide ? 'bad' : 'warn', `thigh tube ${((legPlane - LINK_R - hipSide) * 1e3).toFixed(1)} mm from the hip box side face`);
   return { out, flagged };
 }
 
