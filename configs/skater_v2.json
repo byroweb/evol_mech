@@ -1,0 +1,57 @@
+{
+  "run_name": "skater_v2",
+  "body": "skater",
+  "seed": 0,
+  "population": 64,
+  "generations": 40,
+  "elites": 4,
+  "tournament_k": 3,
+  "mutation_sigma": 0.08,
+  "mutation_rate": 0.3,
+  "workers": 12,
+  "tasks": [
+    {
+      "name": "skate_flat",
+      "terrain": "flat",
+      "objective": "skate",
+      "speed": 1.0,
+      "duration": 8.0,
+      "weight": 1.0,
+      "accel_cost": 0.02
+    },
+    {
+      "name": "skate_rough",
+      "terrain": "cobblestone",
+      "objective": "skate",
+      "speed": 0.8,
+      "duration": 8.0,
+      "weight": 0.7,
+      "accel_cost": 0.02
+    },
+    {
+      "name": "slalom",
+      "terrain": "flat",
+      "objective": "slalom",
+      "speed": 0.8,
+      "duration": 10.0,
+      "weight": 0.6,
+      "amplitude": 0.5,
+      "wavelength": 3.0,
+      "lat_cost": 1.0,
+      "scrub_cost": 0.5
+    },
+    {
+      "name": "stand_perturbed",
+      "terrain": "flat",
+      "objective": "stand",
+      "duration": 6.0,
+      "weight": 0.6,
+      "drift_cost": 1.0
+    }
+  ],
+  "fans_enabled": true,
+  "fan_energy_cost": 0.2,
+  "motor_energy_cost": 0.002,
+  "record_elite_video": false,
+  "locked": []
+}
