@@ -8,7 +8,10 @@ Fitness (stage-1 tasks from the design doc):
   skate   mean speed along +x, scaled by the fraction of time upright,
           minus ride-quality cost (RMS hip acceleration) and lateral drift
   crab    the same along +y, drift along x penalised
-  slalom  mean speed along +x minus lateral path error and foot scrub
+  slalom  mean speed along +x minus lateral path error, foot scrub and
+          cones hit; cones stand on the centreline at the path's lateral
+          extremes (x = lambda/4 + n lambda/2), so the skater rounds each one
+          on alternate sides
   stand   time upright minus drift, shoved every PERTURB_PERIOD seconds
 All tasks: -0.5 for a fall, fan energy, leg + tread motor energy, and the
 distal-mass penalty (each leg above LEG_MASS_FRACTION_TARGET of total mass).
@@ -34,13 +37,43 @@ from .controller import SkaterController
 
 OBJECTIVES = ("skate", "crab", "slalom", "stand")
 LEG_MASS_PENALTY = 5.0          # fitness per unit of leg fraction above target, per leg
+CONE_HEIGHT = 0.30              # a small traffic cone: 30 cm tall, 10 cm base radius
+CONE_BASE_R = 0.10
+CONE_LAYERS = 5                 # stacked cylinders (MuJoCo has no cone primitive)
+CONE_COST = 0.1                 # default fitness per cone touched (task key "cone_cost")
 
 
-def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator):
-    """Compile a model. Raises InvalidBody for un-buildable genomes."""
+def slalom_cones(task: dict) -> list[float]:
+    """x positions of the slalom cones: on the centreline at the path's lateral
+    extremes, one every half wavelength, over the distance the task can cover."""
+    lam = float(task.get("wavelength", 3.0))
+    course = float(task.get("speed", 1.0)) * float(task.get("duration", 0.0)) + lam
+    return [lam / 4 + n * lam / 2 for n in range(int(course / (lam / 2)) + 1)
+            if lam / 4 + n * lam / 2 < course]
+
+
+def _cones_xml(xs: list[float], hdata, zmax: float) -> str:
+    """Static orange cones with a white band, tapered as stacked cylinders."""
+    out = []
+    h = CONE_HEIGHT / CONE_LAYERS
+    for n, x in enumerate(xs):
+        z0 = terrain_mod.height_at(hdata, zmax, x, 0.0)
+        for k in range(CONE_LAYERS):
+            r = CONE_BASE_R * (1 - 0.75 * (k + 0.5) / CONE_LAYERS)
+            rgba = "0.95 0.95 0.95 1" if k == CONE_LAYERS - 2 else "1.0 0.45 0.05 1"
+            out.append(f'<geom name="cone_{n}_{k}" type="cylinder" size="{r:.4f} {h / 2:.4f}" '
+                       f'pos="{x:.4f} 0 {z0 + (k + 0.5) * h:.4f}" rgba="{rgba}"/>')
+    return "\n    ".join(out)
+
+
+def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, task: dict | None = None):
+    """Compile a model. Raises InvalidBody for un-buildable genomes. With a slalom
+    task the cones are placed in the scene."""
     p = decode(genome)
     asset, geom, hdata = terrain_mod.build(terrain_kind, rng)
-    xml = build_mjcf(p, asset, geom, TERRAIN_ZMAX.get(terrain_kind, 0.0))
+    zmax = TERRAIN_ZMAX.get(terrain_kind, 0.0)
+    scene = _cones_xml(slalom_cones(task), hdata, zmax) if task and task.get("objective") == "slalom" else ""
+    xml = build_mjcf(p, asset, geom, zmax, scene)
     model = mujoco.MjModel.from_xml_string(xml)
     if hdata is not None:
         model.hfield_data[:] = hdata.ravel()
@@ -68,7 +101,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     if objective not in OBJECTIVES:
         raise ValueError(f"unknown objective {objective!r}; choose from {OBJECTIVES}")
     try:
-        model, p = make_model(genome, task["terrain"], rng)
+        model, p = make_model(genome, task["terrain"], rng, task)
     except InvalidBody as e:
         return _invalid_result(str(e))
     data = make_data(model, p)
@@ -78,9 +111,11 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     total_mass = float(model.body_subtreemass[hip_id])
     h_nom = nominal_height(p)
     floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
-    feet = {g for g in range(model.ngeom)
-            if (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "").startswith("foot_")}
-    body_geoms = {g for g in range(model.ngeom) if g not in feet and g != floor_geom}
+    names = {g: (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "") for g in range(model.ngeom)}
+    feet = {g for g, n in names.items() if n.startswith("foot_")}
+    cone_of = {g: int(n.split("_")[1]) for g, n in names.items() if n.startswith("cone_")}
+    body_geoms = {g for g in range(model.ngeom) if g not in feet and g != floor_geom and g not in cone_of}
+    cones_hit: set[int] = set()
     motor_acts = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
                   for n in ACTUATOR_NAMES if not n.startswith("fan_")]
 
@@ -131,6 +166,12 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         if objective == "slalom":
             y_ref = A * math.sin(2 * math.pi * float(data.qpos[0]) / lam)
             lat_err_sq += (float(data.qpos[1]) - y_ref) ** 2
+            for ci in range(data.ncon):
+                g1, g2 = data.contact[ci].geom1, data.contact[ci].geom2
+                if g1 in cone_of:
+                    cones_hit.add(cone_of[g1])
+                elif g2 in cone_of:
+                    cones_hit.add(cone_of[g2])
             for b in foot_bodies:
                 if data.xpos[b][2] < h_nom * 0.3:          # foot near the ground
                     mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_BODY, b, vel6, 1)
@@ -168,7 +209,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         fitness = (dy / duration) * upright_frac - accel_cost * rms_accel - 0.2 * abs(dx)
     elif objective == "slalom":
         fitness = ((dx / duration) * upright_frac - float(task.get("lat_cost", 1.0)) * rms_lat
-                   - float(task.get("scrub_cost", 0.5)) * scrub)
+                   - float(task.get("scrub_cost", 0.5)) * scrub
+                   - float(task.get("cone_cost", CONE_COST)) * len(cones_hit))
     else:
         fitness = upright_frac - float(task.get("drift_cost", 1.0)) * math.hypot(dx, dy)
     if not unstable:
@@ -186,6 +228,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "rms_accel": rms_accel,
         "rms_lat_err": rms_lat,
         "scrub_m": scrub,
+        "cones_hit": len(cones_hit),
+        "cones": len(cone_of) // CONE_LAYERS,
         "fan_energy": fan_energy,
         "motor_energy_j": motor_energy,
         "leg_mass_fraction": leg_frac,

@@ -150,7 +150,8 @@ def _roller_couplings(side: str, p: dict[str, float]) -> str:
 
 
 def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
-               terrain_zmax: float = 0.0) -> str:
+               terrain_zmax: float = 0.0, scene_geoms: str = "") -> str:
+    """scene_geoms: extra static worldbody geoms (task obstacles such as slalom cones)."""
     check_buildable(p)
     fan = fan_from_params(p)
     st = structure_from_params(p)
@@ -173,6 +174,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
   <worldbody>
     <light pos="0 0 3" dir="0 0 -1" directional="true"/>
     {terrain_geom}
+    {scene_geoms}
     <body name="hip" pos="0 0 {z0:.4f}">
       <freejoint name="root"/>
       <geom name="hip" type="box" size="{HIP_HALF_X} {hy:.4f} {HIP_HALF_Z}" mass="{st.hip_kg:.4f}"

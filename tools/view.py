@@ -32,9 +32,10 @@ def main():
     if args.body == "skater":
         from evol_mech.skater import DEFAULT_NORM, make_model, make_data, SkaterController
         genome = load_genome(args.best) if args.best else DEFAULT_NORM
-        model, p = make_model(genome, args.terrain, np.random.default_rng(args.seed))
+        task = {"objective": "stand" if args.stand else args.objective, "speed": args.speed, "terrain": args.terrain,
+                "duration": 30.0}
+        model, p = make_model(genome, args.terrain, np.random.default_rng(args.seed), task)
         data = make_data(model, p)
-        task = {"objective": "stand" if args.stand else args.objective, "speed": args.speed, "terrain": args.terrain}
         ctrl = SkaterController(model, p, task, fans_enabled=not args.no_fans)
     else:
         from evol_mech.genome import DEFAULT_NORM

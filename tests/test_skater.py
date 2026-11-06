@@ -140,6 +140,29 @@ def test_tread_drives_the_body_forward_and_locks_at_zero():
     assert run(8.0) > 0.08                              # positive roller rate rolls the body forward
 
 
+def test_slalom_cones():
+    import mujoco
+    from evol_mech.skater.rollout import slalom_cones, CONE_LAYERS
+    task = {"name": "slalom", "terrain": "flat", "objective": "slalom", "speed": 0.8, "duration": 10.0,
+            "amplitude": 0.5, "wavelength": 3.0}
+    xs = slalom_cones(task)
+    # one cone per half wavelength at the path's lateral extremes, covering the course
+    assert xs[0] == 0.75 and xs[1] == 2.25 and xs[-1] < 0.8 * 10 + 3.0 and len(xs) >= 7
+    model, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0), task)
+    cone_geoms = [g for g in range(model.ngeom)
+                  if (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "").startswith("cone_")]
+    assert len(cone_geoms) == len(xs) * CONE_LAYERS
+    assert all(model.geom_contype[g] and model.geom_conaffinity[g] for g in cone_geoms)   # collidable
+    # cones follow the ground on a heightfield
+    model_r, _ = make_model(DEFAULT_NORM, "cobblestone", np.random.default_rng(0), task)
+    assert model_r.ngeom == model.ngeom
+    # no cones on the other objectives; the metric is reported on the slalom
+    model_s, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0), {**task, "objective": "skate"})
+    assert model_s.ngeom == model.ngeom - len(cone_geoms)
+    r = rollout(DEFAULT_NORM, {**task, "duration": 1.0}, 0)
+    assert r["cones"] == len(slalom_cones({**task, "duration": 1.0})) == 3 and r["cones_hit"] == 0
+
+
 def test_all_objectives_run_and_default_stands():
     for obj, extra in (("skate", {"speed": 0.6}), ("crab", {"speed": 0.3}), ("slalom", {"speed": 0.6}), ("stand", {})):
         r = rollout(DEFAULT_NORM, {"name": obj, "terrain": "flat", "objective": obj, "duration": 1.0, **extra}, 0)

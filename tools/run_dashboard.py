@@ -32,12 +32,12 @@ LABELS = {
     "fitness": "task fitness", "distance_x": "distance x (m)", "drift_y": "drift y (m)",
     "mean_speed": "mean speed (m/s)", "time_upright": "time upright (s)", "fell": "fell",
     "unstable": "unstable", "rms_accel": "RMS hip accel (m/s²)", "rms_lat_err": "RMS lateral error (m)",
-    "scrub_m": "tread scrub (m)", "fan_energy": "fan energy (norm.)", "motor_energy_j": "motor energy (J)",
+    "scrub_m": "tread scrub (m)", "cones_hit": "cones hit", "cones": "cones on course", "fan_energy": "fan energy (norm.)", "motor_energy_j": "motor energy (J)",
     "leg_mass_fraction": "leg mass fraction", "leg_mass_penalty": "leg mass penalty",
     "total_mass": "total mass (kg)", "invalid": "invalid body",
 }
 ORDER = ["fitness", "time_upright", "fell", "unstable", "distance_x", "mean_speed", "drift_y", "rms_lat_err",
-         "scrub_m", "rms_accel", "fan_energy", "motor_energy_j", "leg_mass_fraction", "leg_mass_penalty",
+         "scrub_m", "cones_hit", "cones", "rms_accel", "fan_energy", "motor_energy_j", "leg_mass_fraction", "leg_mass_penalty",
          "total_mass", "invalid"]
 
 

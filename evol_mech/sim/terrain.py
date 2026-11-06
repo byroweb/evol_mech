@@ -30,6 +30,16 @@ def _hfield_xml(name: str, zmax: float, friction: str) -> tuple[str, str]:
     return asset, geom
 
 
+def height_at(hdata, zmax: float, x: float, y: float) -> float:
+    """Ground elevation at (x, y) for a heightfield from build() (0 for flat)."""
+    if hdata is None:
+        return 0.0
+    nrow, ncol = hdata.shape
+    c = int(round((x + HF_HALF_X) / (2 * HF_HALF_X) * (ncol - 1)))
+    r = int(round((y + HF_HALF_Y) / (2 * HF_HALF_Y) * (nrow - 1)))
+    return float(hdata[min(max(r, 0), nrow - 1), min(max(c, 0), ncol - 1)]) * zmax
+
+
 def build(kind: str, rng: np.random.Generator):
     if kind == "flat":
         geom = ('<geom name="floor" type="plane" size="0 0 0.05" '
