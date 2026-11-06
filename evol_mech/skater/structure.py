@@ -47,7 +47,7 @@ SERVOS_PER_LEG = 3
 
 HIP_YAW_RANGE = math.radians(45)     # stage 1: steering only; crab (90 deg) is out of scope
 THIGH_RANGE = (math.radians(-120), math.radians(60))    # negative = thigh forward
-KNEE_RANGE = (math.radians(5), math.radians(150))       # positive = shin back; parallelogram never passes flat
+KNEE_RANGE = (math.radians(10), math.radians(150))      # positive = shin back; the shin drive never comes within 10 deg of straight
 ANKLE_RANGE = math.radians(45)
 
 

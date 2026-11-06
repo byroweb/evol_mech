@@ -72,7 +72,7 @@
   <div class="panel">
     <h2>Mechanism <span><button class="sm" id="export">export JSON</button></span></h2>
     <div id="mech"></div>
-    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; crank on the shin (coaxial with the hip pitch axis and equal horn / crank with coupler = thigh length gives the LEO parallelogram).</div>
+    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; pin on a tab on the shin tube (crank angle 15&deg; = the pin sits ~11 mm aft of the shin axis so the coupler never rubs the tube). Default: both horns in the leg plane, servos opposed across it, shin servo axis staggered 30 mm aft and 10 mm above the hip pitch axis so the horns and the coupler clear the thigh; 40 mm horn and crank (longer horns widen the reachable band). With the axis coaxial, crank angle 0 and equal horn / crank it becomes the LEO parallelogram.</div>
   </div>
 </div>
 <div id="viewwrap"><canvas id="view"></canvas><div id="hud"></div></div>
@@ -97,27 +97,27 @@ const GENE_UI = [
 // body constants from evol_mech/body/structure.py (metres)
 const HIP_HALF_X = 0.05, HIP_HALF_Z = 0.035, CORE_HALF_XY = 0.05, CORE_SIDE_GAP = 0.012, LINK_RADIUS_BIPED = 0.006, LEG_SIDE_GAP = 0.002;
 const LINK_R = 0.008, SOLE_HALF_W = 0.02, SOLE_HALF_T = 0.004, ANKLE_PLATE_GAP = 0.006, ROLLER_GAP = 0.002, MAX_ROLLERS = 6, IDLER_RISE = 0.6;
-const HIP_YAW_RANGE = 45, THIGH_RANGE = [-120, 60], KNEE_RANGE = [5, 150], ANKLE_RANGE = 45;
-const FOLD_MARGIN = 5;      // deg: the shin horn never comes closer than this to straight with the coupler (hard stop)
+const HIP_YAW_RANGE = 45, THIGH_RANGE = [-120, 60], KNEE_RANGE = [10, 150], ANKLE_RANGE = 45;
+const FOLD_MARGIN = 10;     // deg: no two links of the shin drive (horn, coupler, shin) come closer than this to straight (hard stop)
 
 // mechanism parameters (mm / deg) – the physical layout the sim abstracts away
 const mech = {
   servo_L: 40.5, servo_W: 20, servo_H: 38, shaft_off: 10, horn_gap: 6,
-  pitch_drop: 32, thigh_plane: 0, coupler_plane: 14,
-  horn_len: 25, crank_len: 25, coupler_len: 150, parallelogram: 1, crank_angle: 0, horn_phase: 0,
-  shin_dx: 0, shin_dz: 0, layout: 0, thigh_block: 0, shin_block: 0, yaw_block: 0,
-  tread_dx: -18, tread_dz: -30, tread_dy: 0, tread_hx: 12, tread_hy: 12, tread_hz: 20,
+  pitch_drop: 32, thigh_plane: 0, coupler_plane: 0,
+  horn_len: 40, crank_len: 41, coupler_len: 160, parallelogram: 1, crank_angle: 15, horn_phase: 0,
+  shin_dx: -30, shin_dz: 10, layout: 0, thigh_block: 0, shin_block: 0, yaw_block: 0,
+  tread_dx: 18, tread_dz: -30, tread_dy: 0, tread_hx: 12, tread_hy: 12, tread_hz: 20,
   clearance: 2,
 };
 const MECH_UI = [
   ["servo_L", "servo length L", "mm", 20, 70], ["servo_W", "servo width W", "mm", 10, 40], ["servo_H", "servo height H (shaft axis)", "mm", 20, 60],
   ["shaft_off", "shaft from servo end", "mm", 0, 35], ["horn_gap", "horn face gap", "mm", 2, 20],
   ["pitch_drop", "pitch axis below yaw horn", "mm", 0, 80], ["thigh_plane", "thigh plane from yaw axis (+out)", "mm", -40, 40],
-  ["coupler_plane", "coupler plane from thigh (+out)", "mm", -40, 40],
+  ["coupler_plane", "coupler / shin horn plane from thigh plane (0 = in plane)", "mm", -40, 40],
   ["horn_len", "shin servo horn", "mm", 8, 60], ["crank_len", "knee crank", "mm", 8, 60], ["coupler_len", "coupler length", "mm", 60, 300],
-  ["parallelogram", "coupler = thigh length (parallelogram)", "0/1", 0, 1],
-  ["crank_angle", "crank angle on shin (0 = along shin)", "deg", -180, 180], ["horn_phase", "horn phase vs command", "deg", -180, 180],
-  ["shin_dx", "shin servo axis x from hip pitch", "mm", -60, 60], ["shin_dz", "shin servo axis z from hip pitch", "mm", -60, 60],
+  ["parallelogram", "coupler length auto: horn parallel to shin at nominal crouch", "0/1", 0, 1],
+  ["crank_angle", "crank angle on shin (0 = pin on the shin axis, + = pin tab aft of it)", "deg", -180, 180], ["horn_phase", "horn phase vs command", "deg", -180, 180],
+  ["shin_dx", "shin servo axis x from hip pitch (aft = stagger)", "mm", -80, 80], ["shin_dz", "shin servo axis z from hip pitch", "mm", -60, 60],
   ["layout", "shin servo side: 0 outboard (facing), 1 inboard (stacked)", "0/1", 0, 1],
   ["thigh_block", "thigh servo block: 0 back 1 front 2 down 3 up", "", 0, 3], ["shin_block", "shin servo block: 0 back 1 front 2 down 3 up", "", 0, 3],
   ["yaw_block", "yaw servo block: 0 back 1 front", "", 0, 1],
@@ -275,6 +275,18 @@ const BLOCK_DIRS = [[-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]];   // back, fr
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const wrapDeg = a => ((a + 180) % 360 + 360) % 360 - 180;
 
+// coupler length: the gene value, or (auto) the length that makes the horn parallel to the shin at the
+// nominal crouch; with a coaxial shin servo and equal horn / crank this is the thigh length (parallelogram)
+function autoCouplerLen() {
+  if (!mech.parallelogram) return mech.coupler_len * MM;
+  const [tn, sn] = nominalAngles();
+  const L1 = genes.thigh_len, h1 = mech.horn_len * MM, h2 = mech.crank_len * MM;
+  const uT = u(tn), uS = u(sn + mech.crank_angle * DEG), uHn = u(sn);
+  const K = [L1 * uT[0], L1 * uT[1]], S = [mech.shin_dx * MM, mech.shin_dz * MM];
+  const Q = [K[0] + h2 * uS[0], K[1] + h2 * uS[1]], P = [S[0] + h1 * uHn[0], S[1] + h1 * uHn[1]];
+  return Math.hypot(Q[0] - P[0], Q[1] - P[1]);
+}
+
 function legKin(j) {
   // leg frame: origin at the yaw axis point (hip height), x forward, y outboard, z up
   const L1 = genes.thigh_len, L2 = genes.shin_len;
@@ -286,7 +298,7 @@ function legKin(j) {
   const uT = u(th_t);
   const K2 = [L1 * uT[0], -D + L1 * uT[1]];                  // knee (x, z)
   const h1 = mech.horn_len * MM, h2 = mech.crank_len * MM;
-  const Lc = (mech.parallelogram ? genes.thigh_len * 1e3 : mech.coupler_len) * MM;
+  const Lc = autoCouplerLen();
   const uH = u(phi);
   const P2 = [S2[0] + h1 * uH[0], S2[1] + h1 * uH[1]];
   // Q: |Q-K| = h2, |Q-P| = Lc
@@ -371,8 +383,9 @@ function solveLeg(j, state) {
   cap(K, A, LINK_R, 'shin', C_SHIN, 'link');
   cap(S, P, 0.004, 'shin horn', C_RED, 'horn');
   cap(P, Q, 0.003, 'coupler', C_RED, 'link');
-  cap(K, Kc, 0.003, 'knee crank stub', C_RED, 'crank');
-  cap(Kc, Q, 0.003, 'knee crank', C_RED, 'crank');
+  if (Math.abs(yC - yT) > 1e-6) cap(K, Kc, 0.003, 'knee crank stub', C_RED, 'crank');
+  if (Math.abs(yC - yT) > 1e-6 || mech.crank_angle !== 0) cap(Kc, Q, 0.003, 'knee crank', C_RED, 'crank');
+  else box(Q, [0.006, 0.006, 0.006], I3, 'coupler pin on shin', C_RED, 'crank');
   // thigh servo horn: a disc inboard of the thigh tube
   const hornSide = -1;   // thigh servo always on the inboard side of the thigh plane
   box(v3(0, yT + hornSide * (LINK_R + 0.003), -D), [0.011, 0.002, 0.011], I3, 'thigh horn', 0xeeeeee, 'horn');
@@ -428,7 +441,7 @@ function bodyParts() {
 const PAIR_SKIP = new Set([
   'thigh|thigh horn', 'thigh|thigh servo', 'shin horn|shin horn hub', 'shin horn|shin servo', 'shin horn hub|shin servo',
   'knee crank stub|knee crank', 'knee crank stub|thigh', 'knee crank stub|shin', 'knee crank|shin', 'knee crank stub|tread drive',
-  'coupler|knee crank', 'shin horn|coupler', 'thigh|carrier plate', 'thigh horn|carrier plate', 'yaw horn|carrier plate', 'yaw servo|yaw horn',
+  'coupler|knee crank', 'shin horn|coupler', 'coupler pin on shin|shin', 'coupler pin on shin|coupler', 'coupler pin on shin|tread drive', 'thigh|carrier plate', 'thigh horn|carrier plate', 'yaw horn|carrier plate', 'yaw servo|yaw horn',
   'thigh servo|carrier plate', 'shin servo|carrier plate', 'thigh servo|carrier side (in)', 'shin servo|carrier side (out)',
   'thigh servo|carrier side (out)', 'shin servo|carrier side (in)', 'carrier plate|carrier side (in)', 'carrier plate|carrier side (out)',
   'thigh horn|thigh servo', 'shin horn hub|shin horn', 'yaw horn|yaw servo',
@@ -452,13 +465,13 @@ function runChecks(L, R, body) {
   const tdeg = inf.thigh / DEG;
   add_(tdeg < THIGH_RANGE[0] || tdeg > THIGH_RANGE[1] ? 'bad' : 'ok', `thigh ${tdeg.toFixed(0)}° (range ${THIGH_RANGE[0]}…${THIGH_RANGE[1]}°)`);
   const kdeg = inf.knee / DEG;
-  add_(!inf.reachable ? 'bad' : (kdeg < KNEE_RANGE[0] || kdeg > KNEE_RANGE[1] ? 'bad' : (kdeg < KNEE_RANGE[0] + 10 ? 'warn' : 'ok')),
+  add_(!inf.reachable ? 'bad' : (kdeg < KNEE_RANGE[0] - 1e-6 || kdeg > KNEE_RANGE[1] + 1e-6 ? 'bad' : (kdeg < KNEE_RANGE[0] + 10 ? 'warn' : 'ok')),
        inf.reachable ? `knee flexion ${kdeg.toFixed(0)}° (range ${KNEE_RANGE[0]}…${KNEE_RANGE[1]}°)` : 'coupler cannot reach: mechanism locks here');
   const mu = inf.transmission / DEG;
-  add_(mu < 15 || mu > 165 ? 'bad' : (mu < 30 || mu > 150 ? 'warn' : 'ok'),
+  add_(mu < FOLD_MARGIN - 1e-6 || mu > 180 - FOLD_MARGIN + 1e-6 ? 'bad' : (mu < 2 * FOLD_MARGIN || mu > 180 - 2 * FOLD_MARGIN ? 'warn' : 'ok'),
        `coupler–crank transmission angle ${mu.toFixed(0)}° (coupler force = knee torque / (crank × sin): ×${(1 / Math.max(1e-3, Math.sin(inf.transmission))).toFixed(1)})`);
   const hc = inf.hornCoupler / DEG;
-  add_(hc < 12 || hc > 168 ? 'bad' : (hc < 25 || hc > 155 ? 'warn' : 'ok'), `shin horn–coupler angle ${hc.toFixed(0)}° (0° / 180° = horn in line with coupler: dead point)`);
+  add_(hc < FOLD_MARGIN - 1e-6 || hc > 180 - FOLD_MARGIN + 1e-6 ? 'bad' : (hc < 2 * FOLD_MARGIN || hc > 180 - 2 * FOLD_MARGIN ? 'warn' : 'ok'), `shin horn–coupler angle ${hc.toFixed(0)}° (0° / 180° = horn in line with coupler: dead point, stop at ${FOLD_MARGIN}°)`);
   const aj = inf.ankleJoint / DEG, ar = inf.ankleRest / DEG;
   add_(Math.abs(aj - ar) > ANKLE_RANGE ? 'bad' : 'ok', `ankle joint ${aj.toFixed(0)}° vs spring rest ${ar.toFixed(0)}° (±${ANKLE_RANGE}°)`);
   // geometry notes
@@ -647,9 +660,19 @@ function legWorld(side) {
 function poseAllowed(j) {
   const inf = legKin(j);
   const k = inf.knee / DEG, hc = inf.hornCoupler / DEG, t = inf.thigh / DEG;
-  return inf.reachable && k >= KNEE_RANGE[0] - 1e-6 && k <= KNEE_RANGE[1] + 1e-6
-      && hc >= FOLD_MARGIN - 1e-6 && hc <= 180 - FOLD_MARGIN + 1e-6
-      && t >= THIGH_RANGE[0] - 1e-6 && t <= THIGH_RANGE[1] + 1e-6;
+  const mu = inf.transmission / DEG;
+  if (!(inf.reachable && k >= KNEE_RANGE[0] - 1e-6 && k <= KNEE_RANGE[1] + 1e-6
+        && hc >= FOLD_MARGIN - 1e-6 && hc <= 180 - FOLD_MARGIN + 1e-6
+        && mu >= FOLD_MARGIN - 1e-6 && mu <= 180 - FOLD_MARGIN + 1e-6
+        && t >= THIGH_RANGE[0] - 1e-6 && t <= THIGH_RANGE[1] + 1e-6)) return false;
+  // the shin horn and the coupler must clear the thigh tube (they share its plane in the staggered layout)
+  const { yT, yC, H, S2, P2, Q2, K2 } = inf;
+  const thighA = H, thighB = [K2[0], yT, K2[1]];
+  const S = [S2[0], yC, S2[1]], P = [P2[0], yC, P2[1]], Q = [Q2[0], yC, Q2[1]];
+  if (segSeg(S, P, thighA, thighB) - 0.004 - LINK_R < 0) return false;
+  const thighTrim = trimCap({ a: thighA, b: thighB }, 0, 0.0);
+  if (segSeg(P, Q, thighA, thighB) - 0.003 - LINK_R < 0) return false;
+  return true;
 }
 function hardStops(key) {
   const [, , lo, hi] = JOINT_UI.find(x => x[0] === key);
@@ -705,9 +728,9 @@ function update() {
   if (typeof jointCtl !== 'undefined') { for (const k of ['thigh', 'shin', 'fx', 'fz']) jointCtl[k].refresh(); drawMap(L.info); }
   for (const m of meshes.values()) m.visible = false;
   const showOther = document.getElementById('showOther').checked, showBody = document.getElementById('showBody').checked;
-  L.parts.forEach((p, i) => placePart('L' + i, p, flagged.has(p), 1));
+  L.parts.forEach(p => placePart('L:' + p.name + ':' + p.kind, p, flagged.has(p), 1));
   placeRollers(L.rollers, L.sole, 'L');
-  if (showOther) { R.parts.forEach((p, i) => placePart('R' + i, p, flagged.has(p), 0.55)); placeRollers(R.rollers, R.sole, 'R'); }
+  if (showOther) { R.parts.forEach(p => placePart('R:' + p.name + ':' + p.kind, p, flagged.has(p), 0.55)); placeRollers(R.rollers, R.sole, 'R'); }
   if (showBody) body.forEach((p, i) => placePart('B' + i, p, flagged.has(p), 0.25));
   // checks list
   const ul = document.getElementById('checks'); ul.innerHTML = '';

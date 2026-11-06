@@ -106,7 +106,7 @@ def _leg(side: str, sign: float, p: dict[str, float], st) -> str:
             <joint name="knee_{side}" type="hinge" axis="0 1 0" range="{KNEE_RANGE[0]:.4f} {KNEE_RANGE[1]:.4f}" damping="0.05"/>
             <geom type="capsule" fromto="0 0 0 0 0 {-L2:.4f}" size="{LINK_RADIUS}"
                   mass="{st.shin_kg - tread.mass_kg:.4f}" rgba="0.3 0.8 0.4 1" {NOCOL}/>
-            <geom name="tread_drive_{side}" type="box" pos="-0.018 0 -0.03" size="0.012 0.012 0.02"
+            <geom name="tread_drive_{side}" type="box" pos="0.018 0 -0.03" size="0.012 0.012 0.02"
                   mass="{tread.mass_kg:.4f}" rgba="0.9 0.3 0.3 1" {NOCOL}/>
             <body name="foot_{side}" pos="0 0 {-L2:.4f}">
               <joint name="ankle_{side}" type="hinge" axis="0 1 0" range="{ankle_rest-ANKLE_RANGE:.4f} {ankle_rest+ANKLE_RANGE:.4f}"
