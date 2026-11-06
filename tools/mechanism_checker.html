@@ -56,7 +56,7 @@
   <div class="panel">
     <h2>Actuate <span><button class="sm" id="nominal">nominal crouch</button> <label><input type="checkbox" id="both" checked> both legs</label></span></h2>
     <div id="joints"></div>
-    <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it.</div>
+    <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it. Thigh and shin sliders hard-stop where the linkage would reach knee flexion outside 5…150° or the horn within 5° of straight with the coupler; the stops move with the other servo.</div>
     <div id="sweep"></div>
   </div>
   <div class="panel">
@@ -96,6 +96,7 @@ const GENE_UI = [
 const HIP_HALF_X = 0.05, HIP_HALF_Z = 0.035, CORE_HALF_XY = 0.05, CORE_SIDE_GAP = 0.012, LINK_RADIUS_BIPED = 0.006, LEG_SIDE_GAP = 0.002;
 const LINK_R = 0.008, SOLE_HALF_W = 0.02, SOLE_HALF_T = 0.004, ANKLE_PLATE_GAP = 0.006, ROLLER_GAP = 0.002, MAX_ROLLERS = 6, IDLER_RISE = 0.6;
 const HIP_YAW_RANGE = 45, THIGH_RANGE = [-120, 60], KNEE_RANGE = [5, 150], ANKLE_RANGE = 45;
+const FOLD_MARGIN = 5;      // deg: the shin horn never comes closer than this to straight with the coupler (hard stop)
 
 // mechanism parameters (mm / deg) – the physical layout the sim abstracts away
 const mech = {
@@ -599,8 +600,47 @@ function legWorld(side) {
   const info = { ...sol.info, anklePt: sol.info.anklePt };   // ankle offset stays in the leg frame (relative to the yaw axis)
   return { parts, rollers, sole, info };
 }
+// ---- hard stops: the thigh / shin sliders only reach poses the linkage allows ----------------
+function poseAllowed(j) {
+  const inf = solveLeg(j, {}).info;
+  const k = inf.knee / DEG, hc = inf.hornCoupler / DEG, t = inf.thigh / DEG;
+  return inf.reachable && k >= KNEE_RANGE[0] - 1e-6 && k <= KNEE_RANGE[1] + 1e-6
+      && hc >= FOLD_MARGIN - 1e-6 && hc <= 180 - FOLD_MARGIN + 1e-6
+      && t >= THIGH_RANGE[0] - 1e-6 && t <= THIGH_RANGE[1] + 1e-6;
+}
+function hardStops(key) {
+  const [, , lo, hi] = JOINT_UI.find(x => x[0] === key);
+  const cur = joints[key], step = 0.5;
+  const ok = v => poseAllowed({ ...joints, [key]: v });
+  if (!ok(cur)) return null;
+  let a = cur, b = cur;
+  while (a - step >= lo && ok(a - step)) a -= step;
+  while (b + step <= hi && ok(b + step)) b += step;
+  return [a, b];
+}
+const stops = { thigh: null, shin: null };
+let lastMoved = 'shin';          // the joint the user touched last is the one that yields at a stop
+function applyHardStops() {
+  for (const key of (lastMoved === 'thigh' ? ['thigh', 'shin'] : ['shin', 'thigh'])) {
+    let st = hardStops(key);
+    if (!st) {                      // current pose is outside the linkage's band: pull it back in
+      const [, , lo, hi] = JOINT_UI.find(x => x[0] === key);
+      let best = null;
+      for (let v = lo; v <= hi; v += 0.5) if (poseAllowed({ ...joints, [key]: v }) && (best === null || Math.abs(v - joints[key]) < Math.abs(best - joints[key]))) best = v;
+      if (best === null) continue;
+      joints[key] = best; st = hardStops(key);
+    }
+    stops[key] = st;
+    joints[key] = Math.min(st[1], Math.max(st[0], joints[key]));
+    const c = jointCtl[key];
+    if (c) { c.rng.min = st[0]; c.rng.max = st[1]; c.num.min = st[0]; c.num.max = st[1]; c.refresh();
+             c.rng.parentElement.firstChild.textContent = `${c.label} [${st[0].toFixed(0)}…${st[1].toFixed(0)}°]`; }
+  }
+}
+
 function update() {
   rebuildFloor();
+  if (typeof jointCtl !== 'undefined') applyHardStops();
   const L = legWorld('L'), R = legWorld('R');
   const body = bodyParts();
   const { out, flagged } = runChecks(L, R, body);
@@ -639,15 +679,15 @@ function numRow(parent, label, unit, get, set, min, max, step, slider = true, cl
   rng.oninput = () => { num.value = rng.value; set(parseFloat(rng.value)); update(); };
   num.onchange = () => { rng.value = num.value; set(parseFloat(num.value)); update(); };
   row.append(k, rng, num, un); parent.appendChild(row);
-  return { rng, num, refresh: () => { rng.value = get(); num.value = get(); } };
+  return { rng, num, label, refresh: () => { rng.value = get(); num.value = get(); } };
 }
 const jointCtl = {};
 const jointsDiv = document.getElementById('joints');
 for (const [key, label, lo, hi] of JOINT_UI) {
-  const ctl = numRow(jointsDiv, label, '°', () => joints[key], v => joints[key] = v, lo, hi, 1, true, 'j');
+  const ctl = numRow(jointsDiv, label, '°', () => joints[key], v => { joints[key] = v; lastMoved = key; }, lo, hi, 1, true, 'j');
   const b = document.createElement('button'); b.className = 'sm'; b.textContent = 'sweep';
   ctl.rng.parentElement.lastChild.replaceWith(b);
-  b.onclick = () => sweep(key, lo, hi);
+  b.onclick = () => sweep(key, stops[key] ? stops[key][0] : lo, stops[key] ? stops[key][1] : hi);
   jointCtl[key] = ctl;
 }
 const geneCtl = {};
@@ -691,6 +731,7 @@ function sweep(key, lo, hi) {
     const f = Math.min(1, (now - t0) / T);
     const ph = f < 0.5 ? f * 2 : 2 - f * 2;              // lo -> hi -> lo
     joints[key] = lo + (hi - lo) * ph;
+    lastMoved = key;
     jointCtl[key].refresh();
     const out = update();
     for (const c of out) if (c.level !== 'ok') {
