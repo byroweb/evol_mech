@@ -45,7 +45,13 @@ targets instead: a walk cycle (stance foot travels back under the hip at
 step_hz, swing foot returns lifted by step_lift; legs half a cycle apart) or
 a jump cycle (crouch by jump_crouch, thrust to jump_ext above nominal with the
 feet jump_lean behind the hip on the broad jump, tuck,
-settle). In a walk the body is also shifted sideways over the stance foot
+settle). Nothing is asked of the treads then (no lean reference); the
+passive ankle is the only pitch pivot and its spring is softer than gravity,
+so pitch is balanced by shifting the feet under the body (kp_foot_leg,
+kd_foot_leg, with ki_foot_leg integrating out steady moments such as a fan
+pitch bias or a forward payload) and ahead of it by kv_foot_x per m/s of
+forward speed. In a
+walk the body is also shifted sideways over the stance foot
 (walk_shift, a sinusoid in phase with the step) through the hip roll servos,
 and the fan over the swing foot gets step_fan extra throttle at full lift so
 that side is carried while the foot is off the ground.
@@ -124,6 +130,7 @@ class SkaterController:
         self.p0 = None
         self.last_throttle = (0.0, 0.0)
         self.last_fan_force = (0.0, 0.0)
+        self.x_int = 0.0                             # legged: integrated foot shift (steady moments)
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -181,7 +188,8 @@ class SkaterController:
         if self.objective != "walk":
             return 0.0
         u = (self.p["step_hz"] * t) % 1.0
-        return self.p["walk_shift"] * math.cos(2 * math.pi * (u - WALK_SHIFT_PHASE))
+        amp = self.p["walk_shift"] * self.p["hip_width"] / 2          # 1.0 = hip over the stance foot
+        return amp * math.cos(2 * math.pi * (u - WALK_SHIFT_PHASE))
 
     def _slew(self, name: str, target: float) -> float:
         step = self.servo.max_rad_s * CONTROL_DT
@@ -236,13 +244,17 @@ class SkaterController:
         # under the body (lean_gain) and pitching the body (the rest). The fans
         # take whatever acceleration is left, and all of the lateral demand.
         airborne = pos[2] > self.z_ref + AIRBORNE_Z
-        a_cap = 0.0 if airborne else min(self.a_tip, p["friction_margin"] * MU_FOOT * G)
+        # legged: the soles are locked, so nothing is asked of the treads and there is no lean
+        a_cap = 0.0 if (airborne or self.legged) else min(self.a_tip, p["friction_margin"] * MU_FOOT * G)
         a_tread = p["tread_share"] * max(-a_cap, min(a_cap, float(a_des[0])))
         h_com = float(pos[2]) + COM_ABOVE_HIP
         d_lean = a_tread * h_com / G                      # CoM ahead of the contact for this acceleration
         d_feet = max(-0.06, min(0.06, p["lean_gain"] * a_tread))
         pitch_ref = (d_lean - d_feet) / h_com
-        f_fan = self.mass * np.array([float(a_des[0]) - a_tread, float(a_des[1])])
+        # legged on the ground: the fans do not push forward against locked soles (that
+        # just topples the body); progress comes from the steps. Airborne they take it all.
+        push = 0.0 if (self.legged and not airborne) else 1.0
+        f_fan = self.mass * np.array([push * (float(a_des[0]) - a_tread), float(a_des[1])])
         self.last_fan_force = (float(f_fan[0]), float(f_fan[1]))
 
         # 3 + 5. steering and Segway balance through the treads: each tread runs
@@ -267,8 +279,16 @@ class SkaterController:
         # forward under a nose-down body; sideways toward a roll (positive roll
         # = right side down) and away from the body's walk shift.
         h_fb = p["kp_height"] * (self.z_ref - float(pos[2])) - p["kd_height"] * float(v_world[2])
-        x_f = (self.x_nom - d_feet
-               + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)
+        if self.legged:
+            # on locked soles the passive ankle is the only pitch pivot and its spring is
+            # softer than gravity, so the feet are the balance: shifted under the body by
+            # the legged pitch PD and ahead of it when it runs away forward
+            self.x_int = max(-0.05, min(0.05, self.x_int + p["ki_foot_leg"] * pitch * CONTROL_DT))
+            x_f = (self.x_nom + p["kp_foot_leg"] * pitch + p["kd_foot_leg"] * pitch_rate + self.x_int
+                   + p["kv_foot_x"] * float(v_b[0]))
+        else:
+            x_f = (self.x_nom - d_feet
+                   + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)
         dh_roll = p["kp_roll_lvl"] * roll + p["kd_roll_lvl"] * roll_rate   # left side up -> shorten left
         dy_f = -self.body_shift(t) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
         gait = self.gait_offsets(t)

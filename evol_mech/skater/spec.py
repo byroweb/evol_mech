@@ -31,7 +31,7 @@ PARAMS: list[Param] = [
     Param("thigh_len",        0.08, 0.26, 0.15, "leg"),
     Param("shin_len",         0.08, 0.26, 0.15, "leg"),
     Param("crouch",           10*DEG, 100*DEG, 40*DEG, "leg"),  # nominal knee flexion
-    Param("ankle_stiffness",  0.2,  6.0,  4.0,  "leg"),         # passive ankle spring, Nm/rad
+    Param("ankle_stiffness",  0.2,  40.0, 4.0,  "leg"),         # passive ankle spring, Nm/rad; above m g h (~7) the body is stable on locked soles
     Param("ankle_rest",       0.0,  20*DEG, 0.0,   "leg"),      # unloaded toe-up angle (preload pushes the body nose-down when planted)
     # ---- foot -----------------------------------------------------------------
     Param("foot_type",        0,    1,    0,    "foot", 1),     # 0 = tread (roller row + idler), 1 = heel + toe wheels
@@ -80,10 +80,14 @@ PARAMS: list[Param] = [
     Param("fan_kd_pitch",    -1.0,  1.0,  0.1,  "fan_ctrl"),
     Param("fan_kp_yaw",      -4.0,  4.0,  0.5,  "fan_ctrl"),    # opposite pitch per rad/s of yaw-rate error
     # ---- hip roll: lateral foot placement (appended so older genomes pad) -----
-    Param("walk_shift",       0.0,  0.08, 0.03, "roll"),        # walk: body shifted over the stance foot (m)
+    Param("walk_shift",       0.0,  1.2,  0.5,  "roll"),        # walk: body shift toward the stance foot, fraction of the half hip width
     Param("kp_roll_y",       -0.3,  0.3,  0.05, "roll"),        # feet shifted toward a roll per rad (m/rad)
     Param("kd_roll_y",       -0.05, 0.05, 0.005, "roll"),
     Param("stance_w",         0.0,  0.06, 0.0,  "roll"),        # feet outboard of the hip points (m), a wider track
+    Param("kv_foot_x",        0.0,  0.5,  0.1,  "gait"),        # legged: feet ahead per m/s of forward body speed (s)
+    Param("kp_foot_leg",     -0.6,  0.6,  0.0,  "gait"),        # legged: foot fore/aft shift per rad of body pitch (m/rad)
+    Param("kd_foot_leg",     -0.1,  0.1,  0.0,  "gait"),
+    Param("ki_foot_leg",      0.0,  1.0,  0.2,  "gait"),        # legged: foot shift integral (m/rad/s), clamped at 5 cm
 ]
 
 NAMES = [p.name for p in PARAMS]

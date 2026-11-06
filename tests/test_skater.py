@@ -224,8 +224,9 @@ def test_hip_roll_places_the_feet():
     walk = SkaterController(model, p, {"objective": "walk", "speed": 0.4, "terrain": "flat"})
     T = 1 / p["step_hz"]
     mid_swing = T * (WALK_DUTY + (1 - WALK_DUTY) / 2)
-    assert walk.body_shift(mid_swing) < -0.9 * p["walk_shift"]
-    assert walk.body_shift(mid_swing + T / 2) > 0.9 * p["walk_shift"]
+    amp = p["walk_shift"] * p["hip_width"] / 2
+    assert walk.body_shift(mid_swing) < -0.9 * amp
+    assert walk.body_shift(mid_swing + T / 2) > 0.9 * amp
     c = walk.act(make_data(model, p), mid_swing)
     assert c[aid("hip_roll_l")] > 0 and c[aid("hip_roll_r")] > 0
     # the default stance is unchanged: zero roll, feet under the hips
