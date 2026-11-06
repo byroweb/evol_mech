@@ -58,7 +58,7 @@
     <div id="joints"></div>
     <div class="note" style="margin-top:6px">Foot workspace, side view, relative to the hip pitch axis (x fore &rarr;, z up). White = positions the linkage can reach within its stops, grey = not. Drag the dot to pose the leg; both servos follow through the IK. <span id="modetag"></span></div>
     <canvas id="map" width="376" height="300" style="width:100%; display:block; margin:6px 0; border:1px solid var(--line); border-radius:6px; touch-action:none; cursor:crosshair"></canvas>
-    <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it. Thigh and shin sliders hard-stop where the linkage would reach knee flexion outside 5…150° or the horn within 5° of straight with the coupler; the stops move with the other servo.</div>
+    <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it. Thigh and shin sliders hard-stop where the foot would hit the shin, the tread drive or the thigh, or the linkage would reach knee flexion outside 5…150° or the horn within 5° of straight with the coupler; the stops move with the other servo.</div>
     <div id="sweep"></div>
   </div>
   <div class="panel">
@@ -672,6 +672,19 @@ function poseAllowed(j) {
   if (segSeg(S, P, thighA, thighB) - 0.004 - LINK_R < 0) return false;
   const thighTrim = trimCap({ a: thighA, b: thighB }, 0, 0.0);
   if (segSeg(P, Q, thighA, thighB) - 0.003 - LINK_R < 0) return false;
+  // the foot (sole + roller envelope at the posed sole angle) must clear the shin tube, the tread drive and the thigh
+  const { A2, delta } = inf;
+  const K3 = [K2[0], yT, K2[1]], A3 = [A2[0], yT, A2[1]];
+  const lay = footLayout(), Rf = rotY(delta), xi = lay.idler[0] + lay.r;
+  const foot = { kind: 'box', c: add(A3, mv(Rf, [(xi - genes.sole_len / 2) / 2, 0, (lay.plate_z + SOLE_HALF_T + lay.bottom_z) / 2])),
+                 h: [(xi + genes.sole_len / 2) / 2, SOLE_HALF_W, (lay.plate_z + SOLE_HALF_T - lay.bottom_z) / 2], R: Rf };
+  const Rs = rotY(inf.shin);
+  const drive = { kind: 'box', c: add(K3, mv(Rs, [mech.tread_dx * MM, mech.tread_dy * MM, mech.tread_dz * MM])),
+                  h: [mech.tread_hx * MM, mech.tread_hy * MM, mech.tread_hz * MM], R: Rs };
+  const shin = trimCap({ kind: 'cap', a: K3, b: A3, r: LINK_R }, 0, 0.012);
+  if (shin && capBox(shin, foot) < 0) return false;
+  if (boxBox(drive, foot) < 0) return false;
+  if (capBox({ kind: 'cap', a: thighA, b: thighB, r: LINK_R }, foot) < 0) return false;
   return true;
 }
 function hardStops(key) {
@@ -850,10 +863,10 @@ function footAllowed(x, z) {
   const r = ik(x, z);
   if (!r.exact) return false;
   const thigh = r.thigh / DEG;
-  return poseAllowed({ thigh, shin: shinCmdFor(thigh, r.shin) });
+  return poseAllowed({ thigh, shin: shinCmdFor(thigh, r.shin), ankle: joints.ankle });
 }
 function buildMapImage() {
-  const key = JSON.stringify([genes, mech]);
+  const key = JSON.stringify([genes, mech, joints.ankle]);
   if (key === mapKey && mapImg) return;
   mapKey = key;
   const img = mctx.createImageData(map.width, map.height), d = img.data, cell = 2;
