@@ -33,6 +33,7 @@ Two simulators, two stages:
     .venv\Scripts\python tools\view.py runs\dev\best.json   # interactive viewer
     .venv\Scripts\python tools\plot_linkage.py runs\dev\best.json -o leg.png
     .venv\Scripts\python tools\evolution_video.py runs\dev    # every individual per generation, best outlined, children branching
+    .venv\Scripts\python toolsun_dashboard.py runs\dev      # browser dashboard: pick a generation, its best plays every task next to that task's metrics
 
 ## Skater mech (stage 1)
 
