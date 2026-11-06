@@ -72,7 +72,7 @@
   <div class="panel">
     <h2>Mechanism <span><button class="sm" id="export">export JSON</button></span></h2>
     <div id="mech"></div>
-    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; pin on a tab on the shin tube (crank angle 15&deg; = the pin sits ~11 mm aft of the shin axis so the coupler never rubs the tube). Default: both horns in the leg plane, servos opposed across it, shin servo axis staggered 30 mm aft and 10 mm above the hip pitch axis so the horns and the coupler clear the thigh, both servos lying flat, thigh servo body forward and shin servo body aft, so the horns sit in the gap between the blocks; 40 mm horn and crank (longer horns widen the reachable band). With the axis coaxial, crank angle 0 and equal horn / crank it becomes the LEO parallelogram.</div>
+    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; pin on a tab on the shin tube (crank angle 15&deg; = the pin sits ~11 mm aft of the shin axis so the coupler never rubs the tube). Default: the two servos mirror each other about the leg plane, both flat and at the same height, each horn 13 mm off the thigh tube on its own side; thigh horn at the front end of its block (body aft), shin servo axis 30 mm aft with its horn at the back end of its block (body forward); the shin tube carries a 13 mm tab out to the coupler plane; 40 mm horn and crank (longer horns widen the reachable band). With the axis coaxial, crank angle 0 and equal horn / crank it becomes the LEO parallelogram.</div>
   </div>
 </div>
 <div id="viewwrap"><canvas id="view"></canvas><div id="hud"></div></div>
@@ -103,9 +103,9 @@ const FOLD_MARGIN = 10;     // deg: no two links of the shin drive (horn, couple
 // mechanism parameters (mm / deg) – the physical layout the sim abstracts away
 const mech = {
   servo_L: 40.5, servo_W: 20, servo_H: 38, shaft_off: 10, horn_gap: 6,
-  pitch_drop: 32, thigh_plane: 0, coupler_plane: 0,
+  pitch_drop: 32, thigh_plane: 0, coupler_plane: 13,
   horn_len: 40, crank_len: 41, coupler_len: 160, parallelogram: 1, crank_angle: 15, horn_phase: 0,
-  shin_dx: -30, shin_dz: 10, layout: 0, thigh_block: 1, shin_block: 0, yaw_block: 0,
+  shin_dx: -30, shin_dz: 0, layout: 0, thigh_block: 0, shin_block: 1, yaw_block: 0,
   tread_dx: 18, tread_dz: -30, tread_dy: 0, tread_hx: 12, tread_hy: 12, tread_hz: 20,
   clearance: 2,
 };
