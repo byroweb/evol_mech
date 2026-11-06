@@ -61,6 +61,15 @@ PARAMS: list[Param] = [
     Param("friction_margin",  0.2,  1.0,  0.6,  "alloc"),       # tread force cap as a fraction of mu*N
     Param("steer_kp",         0.3,  6.0,  1.0,  "steer"),       # yaw rate per rad of heading error
     Param("path_kp",          0.3,  6.0,  0.8,  "steer"),       # heading per m of lateral path error
+    # ---- legged gaits (walk, hop, broad jump: treads locked) -----------------
+    Param("step_hz",          0.5,  3.0,  1.5,  "gait"),        # walk: stride frequency per leg
+    Param("step_len",         0.02, 0.20, 0.08, "gait"),        # walk: foot travel fore-aft under the hip (m)
+    Param("step_lift",        0.01, 0.08, 0.03, "gait"),        # walk: swing-foot clearance (m)
+    Param("jump_hz",          0.3,  1.5,  0.8,  "gait"),        # hop / broad jump: cycle rate
+    Param("jump_crouch",      0.0,  0.10, 0.04, "gait"),        # hip lowered before the thrust (m)
+    Param("jump_ext",         0.0,  0.12, 0.06, "gait"),        # hip raised above nominal at full thrust (m)
+    Param("jump_lean",       -0.08, 0.08, 0.03, "gait"),        # feet behind the hip during a forward jump's thrust (m)
+    Param("step_fan",         0.0,  0.6,  0.15, "gait"),        # walk: extra throttle on the swing-foot side at full lift
     # ---- fan attitude controller --------------------------------------------
     Param("fan_base",         0.0,  1.0,  0.15, "fan_ctrl"),
     Param("fan_kp_roll",     -4.0,  4.0,  0.5,  "fan_ctrl"),    # differential throttle per rad of roll

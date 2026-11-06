@@ -26,7 +26,7 @@ def main():
     ap.add_argument("--yaw", action="store_true", help="core on a yaw hinge (config waist_yaw)")
     ap.add_argument("--body", default="biped", choices=["biped", "skater"])
     ap.add_argument("--speed", type=float, default=0.6, help="skater: commanded speed (m/s)")
-    ap.add_argument("--objective", default="skate", help="skater: skate | slalom | stand")
+    ap.add_argument("--objective", default="skate", help="skater: skate | slalom | stand | walk | hop | broad_jump")
     args = ap.parse_args()
 
     if args.body == "skater":

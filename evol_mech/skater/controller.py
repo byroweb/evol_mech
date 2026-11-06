@@ -31,6 +31,15 @@ Layers, all gains from the genome, structure fixed:
 
 Treads are position-tracked (velocity command plus angle-error term) so a zero
 command is a locked sole: the worm does not back-drive.
+
+Legged objectives (walk, hop, broad_jump) lock the treads and move the foot
+targets instead: a walk cycle (stance foot travels back under the hip at
+step_hz, swing foot returns lifted by step_lift; legs half a cycle apart) or
+a jump cycle (crouch by jump_crouch, thrust to jump_ext above nominal with the
+feet jump_lean behind the hip on the broad jump, tuck,
+settle). Balance then comes from the fans and the foot-shift terms only; in
+a walk the fan over the swing foot gets step_fan extra throttle at full lift so
+that side is carried while the foot is off the ground.
 """
 from __future__ import annotations
 
@@ -53,6 +62,9 @@ COM_ABOVE_HIP = 0.08        # rough centre-of-mass height above the hip joint (c
 TREAD_TRACK_GAIN = 10.0     # 1/s, angle-error term of the tread position hold
 AIRBORNE_Z = 0.03           # hip higher than nominal by this -> treat as airborne
 CONTROL_DT = 0.01
+LEGGED = ("walk", "hop", "broad_jump")      # objectives with locked treads and moving feet
+WALK_DUTY = 0.6                             # fraction of the cycle a foot is in stance
+JUMP_PHASES = (0.45, 0.60, 0.80)            # cycle fractions: crouch | thrust | tuck | settle
 KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
                                   # closer to a rigid link but the two position loops then chatter (rms accel x3)
 
@@ -97,6 +109,7 @@ class SkaterController:
         reach = max(0.005, p["sole_len"] / 2 - p["pulley_radius"])
         self.a_tip = TIP_MARGIN * G * reach / (self.z_ref + COM_ABOVE_HIP)
         self.objective = task["objective"]
+        self.legged = self.objective in LEGGED
         self.speed = float(task.get("speed", 1.0))
         self.p0 = None
         self.last_throttle = (0.0, 0.0)
@@ -106,7 +119,7 @@ class SkaterController:
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
         p, obj = self.p, self.objective
-        if obj == "skate":
+        if obj in ("skate", "walk", "broad_jump"):
             v, heading = np.array([self.speed, 0.0]), 0.0
         elif obj == "crab":                          # kept for later stages; not in the stage-1 task set
             v, heading = np.array([0.0, self.speed]), 0.0
@@ -117,10 +130,41 @@ class SkaterController:
             slope = A * k * math.cos(k * pos[0])
             heading = math.atan(slope) - math.atan(p["path_kp"] * (pos[1] - y_ref))
             v = self.speed * np.array([math.cos(heading), math.sin(heading)])
-        else:                                       # stand: hold the spawn point
+        else:                                       # stand, hop: hold the spawn point
             v = np.clip(-0.5 * (pos[:2] - self.p0[:2]), -0.3, 0.3)
             heading = 0.0
         return v, p["steer_kp"] * wrap(heading - yaw)
+
+    # ---- legged cycles -------------------------------------------------------------
+    def gait_offsets(self, t: float) -> dict[str, tuple[float, float, bool]]:
+        """Per side: (foot x offset, foot lift, height feedback on) for the legged
+        objectives; zero for the others."""
+        p = self.p
+        if self.objective == "walk":
+            out = {}
+            for s, ph in (("l", 0.0), ("r", 0.5)):
+                u = (p["step_hz"] * t + ph) % 1.0
+                L = p["step_len"]
+                if u < WALK_DUTY:                    # stance: foot travels back under the hip
+                    out[s] = (L / 2 - L * u / WALK_DUTY, 0.0, True)
+                else:                                # swing: lifted return
+                    w = (u - WALK_DUTY) / (1 - WALK_DUTY)
+                    out[s] = (-L / 2 + L * w, p["step_lift"] * math.sin(math.pi * w), True)
+            return out
+        if self.objective in ("hop", "broad_jump"):
+            u = (p["jump_hz"] * t) % 1.0
+            c, th, tk = JUMP_PHASES
+            lean = p["jump_lean"] if self.objective == "broad_jump" else 0.0
+            if u < c:                                # crouch: ease down
+                off = (0.0, -p["jump_crouch"] * min(1.0, u / (0.5 * c)), True)
+            elif u < th:                             # thrust: full extension, feet back for a forward jump
+                off = (-lean, p["jump_ext"], False)
+            elif u < tk:                             # flight: tuck
+                off = (0.0, -0.5 * p["jump_crouch"], False)
+            else:                                    # settle
+                off = (0.0, 0.0, True)
+            return {"l": off, "r": off}
+        return {"l": (0.0, 0.0, True), "r": (0.0, 0.0, True)}
 
     def _slew(self, name: str, target: float) -> float:
         step = self.servo.max_rad_s * CONTROL_DT
@@ -202,7 +246,7 @@ class SkaterController:
             e = np.array([math.cos(delta), math.sin(delta)])
             v_ground = float(np.array([v_b[0] - yaw_rate * y_f, v_b[1]]) @ e)
             v_turn = -(omega_des - yaw_rate) * y_f
-            v_cmd = v_ground + v_bal + v_turn
+            v_cmd = 0.0 if self.legged else v_ground + v_bal + v_turn      # legged: soles locked
             v_cmd = max(-self.tread.max_speed_m_s, min(self.tread.max_speed_m_s, v_cmd))
             om_cmd = v_cmd / self.tread.pulley_r
             self.tread_ref[s] += om_cmd * CONTROL_DT
@@ -213,12 +257,15 @@ class SkaterController:
 
         # 4 + 5. legs: foot targets under the hip -> two-servo inverse kinematics.
         # Feet shift back for the lean and forward under a nose-down body.
-        h = self.h_nom + p["kp_height"] * (self.z_ref - float(pos[2])) - p["kd_height"] * float(v_world[2])
+        h_fb = p["kp_height"] * (self.z_ref - float(pos[2])) - p["kd_height"] * float(v_world[2])
         x_f = (self.x_nom - d_feet
                + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)
         dh_roll = p["kp_roll_lvl"] * roll + p["kd_roll_lvl"] * roll_rate   # left side up -> shorten left
+        gait = self.gait_offsets(t)
         for s, sign in (("l", +1.0), ("r", -1.0)):
-            thigh, shin = angles_from_foot(p, x_f, -(h - sign * dh_roll))
+            gx, gz, fb = gait[s]
+            h = self.h_nom + (h_fb if fb else 0.0) + gz
+            thigh, shin = angles_from_foot(p, x_f + gx, -(h - sign * dh_roll))
             thigh_cmd, horn_cmd = self._drive_commands(s, thigh, shin)
             c[i[f"hip_pitch_{s}"]] = thigh_cmd
             # the knee follows the four-bar for the thigh as it actually is
@@ -232,8 +279,12 @@ class SkaterController:
         # 6. fans: two pitch channels
         if self.fans_enabled:
             diff = p["fan_kp_roll"] * roll + p["fan_kd_roll"] * roll_rate
-            thr_l = max(0.0, min(1.0, p["fan_base"] - diff))
-            thr_r = max(0.0, min(1.0, p["fan_base"] + diff))
+            # swing-side assist: the fan over a lifted foot carries that side (feedforward
+            # on the gait phase, scaled by how far the foot is lifted), the roll PD does the rest
+            lift = p["step_lift"] if self.objective == "walk" else 1.0
+            assist_l, assist_r = (p["step_fan"] * max(0.0, g[1]) / lift for g in (gait["l"], gait["r"]))
+            thr_l = max(0.0, min(1.0, p["fan_base"] - diff + assist_l))
+            thr_r = max(0.0, min(1.0, p["fan_base"] + diff + assist_r))
             t_vert = max(0.05, p["fan_base"]) * self.t_max
             common = (math.atan2(f_fan[0] / 2, t_vert) + p["fan_pitch_bias"]
                       - p["fan_kp_pitch"] * (pitch - pitch_ref) - p["fan_kd_pitch"] * pitch_rate)
@@ -243,7 +294,7 @@ class SkaterController:
         else:
             thr_l = thr_r = fan_l = fan_r = 0.0
         self.dbg = {"pitch": pitch, "pitch_ref": pitch_ref, "a_des": float(a_des[0]), "a_tread": a_tread,
-                    "d_feet": d_feet, "v_bal": v_bal, "x_f": x_f, "h": h, "f_fan_x": float(f_fan[0]),
+                    "d_feet": d_feet, "v_bal": v_bal, "x_f": x_f, "h": self.h_nom + h_fb, "f_fan_x": float(f_fan[0]),
                     "fan_l": fan_l, "fan_r": fan_r, "thr": (thr_l, thr_r)}
         c[i["fan_thrust_l"]], c[i["fan_thrust_r"]] = thr_l, thr_r
         c[i["fan_pitch_l"]], c[i["fan_pitch_r"]] = fan_l, fan_r

@@ -1,8 +1,9 @@
 """Single-episode simulation of one skater genome on one task.
 
-Task dict: {"name", "terrain", "objective": "skate" | "crab" | "slalom" | "stand",
-"duration", "weight", "speed" (m/s, skate/crab/slalom), "amplitude" and
-"wavelength" (slalom path y = A sin(2 pi x / lambda))}.
+Task dict: {"name", "terrain", "objective": "skate" | "crab" | "slalom" | "stand"
+| "walk" | "hop" | "broad_jump", "duration", "weight", "speed" (m/s, skate/crab/
+slalom/walk/broad_jump), "amplitude" and "wavelength" (slalom path
+y = A sin(2 pi x / lambda))}.
 
 Fitness (stage-1 tasks from the design doc):
   skate   mean speed along +x, scaled by the fraction of time upright,
@@ -13,6 +14,12 @@ Fitness (stage-1 tasks from the design doc):
           extremes (x = lambda/4 + n lambda/2), so the skater rounds each one
           on alternate sides
   stand   time upright minus drift, shoved every PERTURB_PERIOD seconds
+  walk    as skate, with the treads locked (the gait cycle moves the feet)
+  hop     highest ballistic rise of the hip (apex above its take-off height)
+          plus a bonus per landed flight, minus drift; treads locked
+  broad_jump  longest flight (hip x from take-off to landing) plus a little
+          of the total distance; treads locked
+A flight is both feet off the floor for at least FLIGHT_MIN_S.
 All tasks: -0.5 for a fall, fan energy, leg + tread motor energy, and the
 distal-mass penalty (each leg above LEG_MASS_FRACTION_TARGET of total mass).
 A fall is a tipped or dropped hip, or anything but a foot touching the floor.
@@ -35,7 +42,9 @@ from .mjcf import build_mjcf, nominal_qpos, ACTUATOR_NAMES
 from .structure import InvalidBody, nominal_height, leg_mass_fraction, LEG_MASS_FRACTION_TARGET
 from .controller import SkaterController
 
-OBJECTIVES = ("skate", "crab", "slalom", "stand")
+OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "hop", "broad_jump")
+FLIGHT_MIN_S = 0.04             # both feet off the floor at least this long counts as a flight
+HOP_BONUS = 0.1                 # fitness per landed flight on the hop task
 LEG_MASS_PENALTY = 5.0          # fitness per unit of leg fraction above target, per leg
 CONE_HEIGHT = 0.30              # a small traffic cone: 30 cm tall, 10 cm base radius
 CONE_BASE_R = 0.10
@@ -116,6 +125,11 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     cone_of = {g: int(n.split("_")[1]) for g, n in names.items() if n.startswith("cone_")}
     body_geoms = {g for g in range(model.ngeom) if g not in feet and g != floor_geom and g not in cone_of}
     cones_hit: set[int] = set()
+    flights: list[tuple[float, float, float]] = []    # (apex rise, distance, duration)
+    off_floor_since = None                            # time the feet left the floor, else None
+    takeoff = None                                    # (x, z) at that moment
+    apex = 0.0
+    airborne_s = 0.0
     motor_acts = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
                   for n in ACTUATOR_NAMES if not n.startswith("fan_")]
 
@@ -163,15 +177,27 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         v = data.qvel[:3].copy()
         accel_sq += float(np.sum(((v - v_prev) / CONTROL_DT) ** 2))
         v_prev = v
+        feet_down = False
+        for ci in range(data.ncon):
+            g1, g2 = data.contact[ci].geom1, data.contact[ci].geom2
+            if (g1 == floor_geom and g2 in feet) or (g2 == floor_geom and g1 in feet):
+                feet_down = True
+            elif g1 in cone_of:
+                cones_hit.add(cone_of[g1])
+            elif g2 in cone_of:
+                cones_hit.add(cone_of[g2])
+        if not feet_down:
+            if off_floor_since is None:
+                off_floor_since, takeoff, apex = t, (float(data.qpos[0]), float(data.qpos[2])), float(data.qpos[2])
+            apex = max(apex, float(data.qpos[2]))
+            airborne_s += CONTROL_DT
+        elif off_floor_since is not None:
+            if t - off_floor_since >= FLIGHT_MIN_S:
+                flights.append((apex - takeoff[1], float(data.qpos[0]) - takeoff[0], t - off_floor_since))
+            off_floor_since = None
         if objective == "slalom":
             y_ref = A * math.sin(2 * math.pi * float(data.qpos[0]) / lam)
             lat_err_sq += (float(data.qpos[1]) - y_ref) ** 2
-            for ci in range(data.ncon):
-                g1, g2 = data.contact[ci].geom1, data.contact[ci].geom2
-                if g1 in cone_of:
-                    cones_hit.add(cone_of[g1])
-                elif g2 in cone_of:
-                    cones_hit.add(cone_of[g2])
             for b in foot_bodies:
                 if data.xpos[b][2] < h_nom * 0.3:          # foot near the ground
                     mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_BODY, b, vel6, 1)
@@ -200,11 +226,18 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
     energy = fan_energy_cost * fan_energy + motor_energy_cost * motor_energy
     accel_cost = float(task.get("accel_cost", 0.02))
+    max_apex = max([f[0] for f in flights], default=0.0)
+    max_flight = max([f[1] for f in flights], default=0.0)
 
     if unstable:
         fitness = UNSTABLE_FITNESS
-    elif objective == "skate":
+    elif objective in ("skate", "walk"):
         fitness = (dx / duration) * upright_frac - accel_cost * rms_accel - 0.2 * abs(dy)
+    elif objective == "hop":
+        fitness = (max_apex + HOP_BONUS * len(flights)
+                   - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy))
+    elif objective == "broad_jump":
+        fitness = max_flight + float(task.get("dist_weight", 0.1)) * dx
     elif objective == "crab":
         fitness = (dy / duration) * upright_frac - accel_cost * rms_accel - 0.2 * abs(dx)
     elif objective == "slalom":
@@ -230,6 +263,10 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "scrub_m": scrub,
         "cones_hit": len(cones_hit),
         "cones": len(cone_of) // CONE_LAYERS,
+        "n_flights": len(flights),
+        "max_apex_m": max_apex,
+        "max_flight_m": max_flight,
+        "airborne_s": airborne_s,
         "fan_energy": fan_energy,
         "motor_energy_j": motor_energy,
         "leg_mass_fraction": leg_frac,

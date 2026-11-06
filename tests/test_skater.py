@@ -163,8 +163,40 @@ def test_slalom_cones():
     assert r["cones"] == len(slalom_cones({**task, "duration": 1.0})) == 3 and r["cones_hit"] == 0
 
 
+def test_legged_cycles():
+    import mujoco
+    from evol_mech.skater.controller import WALK_DUTY, SkaterController
+    p = decode(DEFAULT_NORM)
+    model, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
+    walk = SkaterController(model, p, {"objective": "walk", "speed": 0.4, "terrain": "flat"})
+    T = 1 / p["step_hz"]
+    # legs half a cycle apart; the stance foot travels back, the swing foot comes forward lifted
+    l0, r0 = walk.gait_offsets(0.0)["l"], walk.gait_offsets(0.0)["r"]
+    assert abs(l0[0] - p["step_len"] / 2) < 1e-9 and l0[1] == 0.0
+    assert walk.gait_offsets(T * WALK_DUTY / 2)["l"][0] < l0[0]
+    mid_swing = T * (WALK_DUTY + (1 - WALK_DUTY) / 2)
+    assert abs(walk.gait_offsets(mid_swing)["l"][1] - p["step_lift"]) < 1e-9
+    assert walk.gait_offsets(T / 2)["r"] == l0
+    hop = SkaterController(model, p, {"objective": "hop", "terrain": "flat"})
+    bj = SkaterController(model, p, {"objective": "broad_jump", "speed": 0.5, "terrain": "flat"})
+    Tj = 1 / p["jump_hz"]
+    assert hop.gait_offsets(0.4 * Tj)["l"][1] == -p["jump_crouch"]          # crouched before the thrust
+    assert hop.gait_offsets(0.5 * Tj)["l"] == (0.0, p["jump_ext"], False)   # hop: straight up
+    gx, gz, fb = bj.gait_offsets(0.5 * Tj)["l"]                             # broad jump: feet back
+    assert abs(gx + p["jump_lean"]) < 1e-9 and gz == p["jump_ext"] and not fb
+    assert hop.legged and not SkaterController(model, p, {"objective": "skate", "terrain": "flat"}).legged
+    # swing-side fan assist: mid-swing of the left foot the left fan runs harder than the right
+    data = make_data(model, p)
+    walk.act(data, 0.0)
+    thr0 = walk.last_throttle
+    walk.act(data, mid_swing)
+    thr1 = walk.last_throttle
+    assert abs(thr1[0] - thr0[0] - p["step_fan"]) < 1e-6 and abs(thr1[1] - thr0[1]) < 1e-6
+
+
 def test_all_objectives_run_and_default_stands():
-    for obj, extra in (("skate", {"speed": 0.6}), ("crab", {"speed": 0.3}), ("slalom", {"speed": 0.6}), ("stand", {})):
+    for obj, extra in (("skate", {"speed": 0.6}), ("crab", {"speed": 0.3}), ("slalom", {"speed": 0.6}), ("stand", {}),
+                       ("walk", {"speed": 0.4}), ("hop", {}), ("broad_jump", {"speed": 0.5})):
         r = rollout(DEFAULT_NORM, {"name": obj, "terrain": "flat", "objective": obj, "duration": 1.0, **extra}, 0)
         assert np.isfinite(r["fitness"]) and not r["invalid"]
     r = rollout(DEFAULT_NORM, {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 3.0}, 0)
