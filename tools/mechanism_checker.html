@@ -72,7 +72,7 @@
   <div class="panel">
     <h2>Mechanism <span><button class="sm" id="export">export JSON</button></span></h2>
     <div id="mech"></div>
-    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; pin on a tab on the shin tube (crank angle 15&deg; = the pin sits ~11 mm aft of the shin axis so the coupler never rubs the tube). Default: the two servos flank the leg plane, both flat and at the same height; thigh servo inboard, horn at the front end of its block (body aft), hub out to the thigh tube; shin servo outboard, axis 45 mm aft, horn at the back end of its block (body forward), horn and coupler in the thigh plane, coupler pinned to a tab on the shin tube. The shin servo sits far enough aft that its face (6 mm off the plane) never meets the thigh tube (8 mm radius); 40 mm horn and crank (longer horns widen the reachable band). With the axis coaxial, crank angle 0 and equal horn / crank it becomes the LEO parallelogram.</div>
+    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. The roll servo sits in the hip with its shaft fore-aft through the hip point; its horn carries the bracket that holds the thigh and shin servos, so the whole leg plane rolls (&plusmn;30&deg;). Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; pin on a tab on the shin tube (crank angle 15&deg; = the pin sits ~11 mm aft of the shin axis so the coupler never rubs the tube). Default: the two servos flank the leg plane, both flat and at the same height; thigh servo inboard, horn at the front end of its block (body aft), hub out to the thigh tube; shin servo outboard, axis 45 mm aft, horn at the back end of its block (body forward), horn and coupler in the thigh plane, coupler pinned to a tab on the shin tube. The shin servo sits far enough aft that its face (6 mm off the plane) never meets the thigh tube (8 mm radius); 40 mm horn and crank (longer horns widen the reachable band). With the axis coaxial, crank angle 0 and equal horn / crank it becomes the LEO parallelogram.</div>
   </div>
 </div>
 <div id="viewwrap"><canvas id="view"></canvas><div id="hud"></div></div>
@@ -97,7 +97,7 @@ const GENE_UI = [
 // body constants from evol_mech/body/structure.py (metres)
 const HIP_HALF_X = 0.05, HIP_HALF_Z = 0.035, CORE_HALF_XY = 0.05, CORE_SIDE_GAP = 0.012, LINK_RADIUS_BIPED = 0.006, LEG_SIDE_GAP = 0.002;
 const LINK_R = 0.008, SOLE_HALF_W = 0.02, SOLE_HALF_T = 0.004, ANKLE_PLATE_GAP = 0.006, ROLLER_GAP = 0.002, MAX_ROLLERS = 6, IDLER_RISE = 0.6;
-const HIP_YAW_RANGE = 45, THIGH_RANGE = [-120, 60], KNEE_RANGE = [10, 150], ANKLE_RANGE = 45;
+const HIP_ROLL_RANGE = 30, THIGH_RANGE = [-120, 60], KNEE_RANGE = [10, 150], ANKLE_RANGE = 45;
 const FOLD_MARGIN = 10;     // deg: no two links of the shin drive (horn, coupler, shin) come closer than this to straight (hard stop)
 
 // mechanism parameters (mm / deg) – the physical layout the sim abstracts away
@@ -105,14 +105,14 @@ const mech = {
   servo_L: 40.5, servo_W: 20, servo_H: 38, shaft_off: 10, horn_gap: 6,
   pitch_drop: 32, thigh_plane: 0, coupler_plane: 0,
   horn_len: 40, crank_len: 41, coupler_len: 160, parallelogram: 1, crank_angle: 15, horn_phase: 0,
-  shin_dx: -45, shin_dz: 0, layout: 0, thigh_block: 0, shin_block: 1, yaw_block: 0,
+  shin_dx: -45, shin_dz: 0, layout: 0, thigh_block: 0, shin_block: 1, roll_block: 0,
   tread_dx: 18, tread_dz: -30, tread_dy: 0, tread_hx: 12, tread_hy: 12, tread_hz: 20,
   clearance: 2,
 };
 const MECH_UI = [
   ["servo_L", "servo length L", "mm", 20, 70], ["servo_W", "servo width W", "mm", 10, 40], ["servo_H", "servo height H (shaft axis)", "mm", 20, 60],
   ["shaft_off", "shaft from servo end", "mm", 0, 35], ["horn_gap", "horn face gap", "mm", 2, 20],
-  ["pitch_drop", "pitch axis below yaw horn", "mm", 0, 80], ["thigh_plane", "thigh plane from yaw axis (+out)", "mm", -40, 40],
+  ["pitch_drop", "pitch axis below the roll axis", "mm", 0, 80], ["thigh_plane", "thigh plane from the hip point (+out)", "mm", -40, 40],
   ["coupler_plane", "coupler / shin horn plane from thigh plane (0 = in plane)", "mm", -40, 40],
   ["horn_len", "shin servo horn", "mm", 8, 60], ["crank_len", "knee crank", "mm", 8, 60], ["coupler_len", "coupler length", "mm", 60, 300],
   ["parallelogram", "coupler length auto: horn parallel to shin at nominal crouch", "0/1", 0, 1],
@@ -120,15 +120,15 @@ const MECH_UI = [
   ["shin_dx", "shin servo axis x from hip pitch (aft = stagger)", "mm", -80, 80], ["shin_dz", "shin servo axis z from hip pitch", "mm", -60, 60],
   ["layout", "shin servo side: 0 outboard (facing), 1 inboard (stacked)", "0/1", 0, 1],
   ["thigh_block", "thigh servo block: 0 back 1 front 2 down 3 up", "", 0, 3], ["shin_block", "shin servo block: 0 back 1 front 2 down 3 up", "", 0, 3],
-  ["yaw_block", "yaw servo block: 0 back 1 front", "", 0, 1],
+  ["roll_block", "roll servo block: 0 aft of its horn 1 fore", "", 0, 1],
   ["tread_dx", "tread drive x from knee", "mm", -60, 60], ["tread_dz", "tread drive z from knee", "mm", -120, 0], ["tread_dy", "tread drive y from shin (+out)", "mm", -40, 40],
   ["tread_hx", "tread drive half x", "mm", 4, 30], ["tread_hy", "tread drive half y", "mm", 4, 30], ["tread_hz", "tread drive half z", "mm", 4, 40],
   ["clearance", "clearance to flag as tight", "mm", 0, 10],
 ];
 // joints (deg)
-const joints = { yaw: 0, thigh: -20, shin: 20, ankle: 0, fx: 0, fz: -282 };
+const joints = { roll: 0, thigh: -20, shin: 20, ankle: 0, fx: 0, fz: -282 };
 const JOINT_UI = [
-  ["yaw", "hip yaw", -60, 60, "°"], ["thigh", "thigh servo", -130, 70, "°"], ["shin", "shin servo", -130, 130, "°"],
+  ["roll", "hip roll (+ = foot out)", -45, 45, "°"], ["thigh", "thigh servo", -130, 70, "°"], ["shin", "shin servo", -130, 130, "°"],
   ["fx", "foot x (fore, from pitch axis)", -330, 330, "mm"], ["fz", "foot z (from pitch axis)", -340, 160, "mm"],
   ["ankle", "ankle (sole)", -60, 60, "°"],
 ];
@@ -173,6 +173,7 @@ const norm = a => Math.sqrt(dot(a, a));
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const rotY = th => [[Math.cos(th), 0, Math.sin(th)], [0, 1, 0], [-Math.sin(th), 0, Math.cos(th)]];   // about +y
 const rotZ = th => [[Math.cos(th), -Math.sin(th), 0], [Math.sin(th), Math.cos(th), 0], [0, 0, 1]];
+const rotX = th => [[1, 0, 0], [0, Math.cos(th), -Math.sin(th)], [0, Math.sin(th), Math.cos(th)]];   // about +x
 const I3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
 const mv = (R, a) => [dot(R[0], a), dot(R[1], a), dot(R[2], a)];
 const mm3 = (A, B) => A.map(r => [0, 1, 2].map(j => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
@@ -288,7 +289,7 @@ function autoCouplerLen() {
 }
 
 function legKin(j) {
-  // leg frame: origin at the yaw axis point (hip height), x forward, y outboard, z up
+  // leg frame: origin at the hip point on the roll axis (hip height), x forward, y outboard, z up
   const L1 = genes.thigh_len, L2 = genes.shin_len;
   const th_t = j.thigh * DEG, phi = j.shin * DEG + mech.horn_phase * DEG, delta = (j.ankle || 0) * DEG;
   const yT = mech.thigh_plane * MM, yC = yT + mech.coupler_plane * MM * (mech.layout ? -1 : 1);
@@ -397,19 +398,22 @@ function solveLeg(j, state) {
   parts.push(tServo, sServo);
   // shin horn hub
   box(v3(S2[0], yC + sSide * 0.003, S2[1]), [0.010, 0.002, 0.010], I3, 'shin horn hub', 0xeeeeee, 'horn');
-  // yaw servo: shaft down through the origin, block above
-  const yawDir = BLOCK_DIRS[mech.yaw_block];
-  const yServo = servoBox(v3(0, 0, 0), [0, 0, 1], 1, yawDir, 'yaw servo', C_SERVO);
-  yServo.grp = 'yawservo';
-  parts.push(yServo);
-  box(v3(0, 0, 0.003), [0.011, 0.011, 0.002], I3, 'yaw horn', 0xeeeeee, 'horn');
-  // carrier: plate under the yaw horn spanning both servos, two side plates
+  // roll servo: shaft along x through the hip point, block above the shaft, on one side of its horn
+  const rollSide = mech.roll_block ? 1 : -1;      // which way along x the block sits from the horn plane
+  const rServo = servoBox(v3(0, 0, 0), [1, 0, 0], rollSide, [0, 0, 1], 'roll servo', C_SERVO);
+  rServo.grp = 'rollservo';
+  parts.push(rServo);
+  const xHorn = -rollSide * 0.003;
+  box(v3(xHorn, 0, 0), [0.002, 0.011, 0.011], I3, 'roll horn', 0xeeeeee, 'horn');
+  // carrier: a bracket hanging from the roll horn: a plate in the horn plane spanning both
+  // servos, two side plates down past them (it rolls with the leg)
   const yMin = Math.min(tServo.c[1] - tServo.h[1], sServo.c[1] - sServo.h[1], yT - 0.012);
   const yMax = Math.max(tServo.c[1] + tServo.h[1], sServo.c[1] + sServo.h[1], yC + 0.012);
   const zBot = Math.min(tServo.c[2] - mech.servo_W * MM / 2, sServo.c[2] - mech.servo_W * MM / 2, -D) - 0.004;
-  box(v3(0, (yMin + yMax) / 2, -0.0035), [0.026, (yMax - yMin) / 2 + 0.003, 0.0015], I3, 'carrier plate', C_CARRIER, 'carrier');
-  box(v3(0, yMin - 0.0015, (zBot - 0.005) / 2), [0.026, 0.0015, (0.005 - zBot) / 2], I3, 'carrier side (in)', C_CARRIER, 'carrier');
-  box(v3(0, yMax + 0.0015, (zBot - 0.005) / 2), [0.026, 0.0015, (0.005 - zBot) / 2], I3, 'carrier side (out)', C_CARRIER, 'carrier');
+  const xPlate = xHorn - rollSide * 0.0035;
+  box(v3(xPlate, (yMin + yMax) / 2, (zBot + 0.015) / 2), [0.0015, (yMax - yMin) / 2 + 0.003, (0.015 - zBot) / 2], I3, 'carrier plate', C_CARRIER, 'carrier');
+  box(v3(xPlate - rollSide * 0.0265, yMin - 0.0015, (zBot - 0.005) / 2), [0.025, 0.0015, (0.005 - zBot) / 2], I3, 'carrier side (in)', C_CARRIER, 'carrier');
+  box(v3(xPlate - rollSide * 0.0265, yMax + 0.0015, (zBot - 0.005) / 2), [0.025, 0.0015, (0.005 - zBot) / 2], I3, 'carrier side (out)', C_CARRIER, 'carrier');
   // tread drive on the shin
   const Rs = rotY(th_s);    // link frame: local -z along the link; u(th) = Ry(th) * (0, 0, -1)
   const tdLocal = [mech.tread_dx * MM, mech.tread_dy * MM, mech.tread_dz * MM];
@@ -441,10 +445,11 @@ function bodyParts() {
 const PAIR_SKIP = new Set([
   'thigh|thigh horn', 'thigh|thigh servo', 'shin horn|shin horn hub', 'shin horn|shin servo', 'shin horn hub|shin servo',
   'knee crank stub|knee crank', 'knee crank stub|thigh', 'knee crank stub|shin', 'knee crank|shin', 'knee crank stub|tread drive',
-  'coupler|knee crank', 'shin horn|coupler', 'coupler pin on shin|shin', 'coupler pin on shin|coupler', 'coupler pin on shin|tread drive', 'thigh|carrier plate', 'thigh horn|carrier plate', 'yaw horn|carrier plate', 'yaw servo|yaw horn',
+  'coupler|knee crank', 'shin horn|coupler', 'coupler pin on shin|shin', 'coupler pin on shin|coupler', 'coupler pin on shin|tread drive', 'thigh|carrier plate', 'thigh horn|carrier plate', 'roll horn|carrier plate', 'roll servo|roll horn', 'roll servo|carrier plate',
+  'roll servo|carrier side (in)', 'roll servo|carrier side (out)', 'roll horn|carrier side (in)', 'roll horn|carrier side (out)',
   'thigh servo|carrier plate', 'shin servo|carrier plate', 'thigh servo|carrier side (in)', 'shin servo|carrier side (out)',
   'thigh servo|carrier side (out)', 'shin servo|carrier side (in)', 'carrier plate|carrier side (in)', 'carrier plate|carrier side (out)',
-  'thigh horn|thigh servo', 'shin horn hub|shin horn', 'yaw horn|yaw servo',
+  'thigh horn|thigh servo', 'shin horn hub|shin horn', 'roll horn|roll servo',
   'thigh horn|carrier side (in)', 'shin horn hub|carrier side (out)', 'shin horn hub|carrier side (in)', 'thigh horn|carrier side (out)',
   'coupler|shin horn hub', 'shin|tread drive',
 ]);
@@ -460,8 +465,8 @@ function runChecks(L, R, body) {
   const add_ = (level, text) => out.push({ level, text });
   const inf = L.info;
   // ranges
-  const yaw = joints.yaw;
-  add_(Math.abs(yaw) > HIP_YAW_RANGE ? 'bad' : 'ok', `hip yaw ${yaw.toFixed(0)}° (limit ±${HIP_YAW_RANGE}°)`);
+  const roll = joints.roll;
+  add_(Math.abs(roll) > HIP_ROLL_RANGE ? 'bad' : 'ok', `hip roll ${roll.toFixed(0)}° (limit ±${HIP_ROLL_RANGE}°)`);
   const tdeg = inf.thigh / DEG;
   add_(tdeg < THIGH_RANGE[0] || tdeg > THIGH_RANGE[1] ? 'bad' : 'ok', `thigh ${tdeg.toFixed(0)}° (range ${THIGH_RANGE[0]}…${THIGH_RANGE[1]}°)`);
   const kdeg = inf.knee / DEG;
@@ -477,7 +482,7 @@ function runChecks(L, R, body) {
   // geometry notes
   const ap = inf.anklePt;
   const caster = Math.hypot(ap[0], ap[1]) * 1e3;
-  add_(caster > 5 ? 'warn' : 'ok', `ankle ${(ap[0] * 1e3).toFixed(0)} mm fore / ${(ap[1] * 1e3).toFixed(0)} mm out of the yaw axis (design wants 0: no caster)`);
+  add_(caster > 5 ? 'warn' : 'ok', `ankle ${(ap[0] * 1e3).toFixed(0)} mm fore / ${(ap[1] * 1e3).toFixed(0)} mm out of the hip point (design wants 0: the foot swings in the roll plane, under the roll axis)`);
   const floor = -nominalHeight() - mech.pitch_drop * MM;
   add_((inf.footBottom - floor) < -0.002 ? 'warn' : 'ok', `foot bottom ${((inf.footBottom - floor) * 1e3).toFixed(0)} mm above the nominal floor`);
   // interference within the left leg, with the body, and with the right leg
@@ -497,7 +502,7 @@ function runChecks(L, R, body) {
   };
   for (let i = 0; i < L.parts.length; i++) for (let k = i + 1; k < L.parts.length; k++) check(L.parts[i], L.parts[k], 'same');
   for (const p of L.parts) {
-    if (p.grp === 'servo' || p.grp === 'carrier' || p.grp === 'horn' || p.grp === 'yawservo') continue;   // hip hardware lives in / on the box
+    if (p.grp === 'servo' || p.grp === 'carrier' || p.grp === 'horn' || p.grp === 'rollservo') continue;   // hip hardware lives in / on the box
     for (const b of body) if (b.name !== 'hip box') check(p, b, 'body');   // the hip box is the sim's stand-in; the servos and carrier are the real hip
   }
   for (const p of L.parts) for (const q of R.parts) check(p, q, 'other leg');
@@ -638,16 +643,16 @@ let lastResult = null;
 function legWorld(side) {
   const s = side === 'L' ? 1 : -1;
   const j = { ...joints };
-  if (side === 'R' && !document.getElementById('both').checked) { j.yaw = 0; const [t, sh] = nominalAngles(); j.thigh = t / DEG; j.shin = sh / DEG - mech.horn_phase; j.ankle = 0; }
+  if (side === 'R' && !document.getElementById('both').checked) { j.roll = 0; const [t, sh] = nominalAngles(); j.thigh = t / DEG; j.shin = sh / DEG - mech.horn_phase; j.ankle = 0; }
   const sol = solveLeg(j, solveState[side]);
-  const Ryaw = rotZ(j.yaw * DEG);
+  const Rroll = rotX(s * j.roll * DEG);          // + = foot outboard on both legs
   const t = [0, s * genes.hip_width / 2, 0];
-  const parts = sol.parts.map(p => xformPart(p, Ryaw, t, side === 'R'));
-  const xf = v => add(mv(mm3(Ryaw, side === 'R' ? [[1, 0, 0], [0, -1, 0], [0, 0, 1]] : I3), v), t);
-  const RR = mm3(Ryaw, side === 'R' ? [[1, 0, 0], [0, -1, 0], [0, 0, 1]] : I3);
+  const parts = sol.parts.map(p => xformPart(p, Rroll, t, side === 'R'));
+  const xf = v => add(mv(mm3(Rroll, side === 'R' ? [[1, 0, 0], [0, -1, 0], [0, 0, 1]] : I3), v), t);
+  const RR = mm3(Rroll, side === 'R' ? [[1, 0, 0], [0, -1, 0], [0, 0, 1]] : I3);
   const rollers = sol.info.rollers.map(r => ({ c: xf(r.c), r: r.r, R: properRot(mm3(RR, r.R)) }));
   const sole = { c: xf(sol.info.sole.c), h: sol.info.sole.h, R: properRot(mm3(RR, sol.info.sole.R)) };
-  const info = { ...sol.info, anklePt: sol.info.anklePt };   // ankle offset stays in the leg frame (relative to the yaw axis)
+  const info = { ...sol.info, anklePt: sol.info.anklePt };   // ankle offset stays in the leg frame (relative to the hip point)
   return { parts, rollers, sole, info };
 }
 // ---- hard stops: the thigh / shin sliders only reach poses the linkage allows ----------------
@@ -796,7 +801,7 @@ for (const [key, label, unit, lo, hi] of MECH_UI)
 
 document.getElementById('nominal').onclick = () => {
   const [t, s] = nominalAngles();
-  joints.yaw = 0; joints.thigh = +(t / DEG).toFixed(1); joints.shin = +(s / DEG - mech.horn_phase).toFixed(1); joints.ankle = 0;
+  joints.roll = 0; joints.thigh = +(t / DEG).toFixed(1); joints.shin = +(s / DEG - mech.horn_phase).toFixed(1); joints.ankle = 0;
   driveMode = 'servo'; lastMoved = 'shin';
   solveState.L = {}; solveState.R = {};
   for (const c of Object.values(jointCtl)) c.refresh();

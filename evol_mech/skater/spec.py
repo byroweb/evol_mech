@@ -3,10 +3,11 @@
 Same conventions as `genome/spec.py`: a flat vector in [0, 1], decoded through
 the bounds below; catalogue parts carry a `step`; masses are never genes.
 
-Topology is fixed: hip with three metal-gear servos per leg (yaw, thigh,
+Topology is fixed: hip with three metal-gear servos per leg (roll, thigh,
 shin; the shin servo drives the knee through a parallelogram so it sets the
-shin angle relative to the body) -> thigh -> shin -> passive sprung ankle ->
-flat sole with a powered tread (row of rollers plus a raised front idler).
+shin angle relative to the body) -> thigh -> shin -> passive two-axis sprung
+ankle -> flat sole with a powered tread (row of rollers plus a raised front
+idler). There is no hip yaw: turning is a tread differential plus fan yaw.
 The core sits on the hip with the battery and two fans, each on its own pitch
 servo.
 """
@@ -59,7 +60,7 @@ PARAMS: list[Param] = [
     Param("vel_kp",           0.3,  6.0,  3.0,  "alloc"),       # demanded accel per (m/s) of velocity error
     Param("tread_share",      0.0,  1.0,  0.8,  "alloc"),       # fraction of in-line force asked of the treads first
     Param("friction_margin",  0.2,  1.0,  0.6,  "alloc"),       # tread force cap as a fraction of mu*N
-    Param("steer_kp",         0.3,  6.0,  1.0,  "steer"),       # yaw rate per rad of heading error
+    Param("steer_kp",         0.3,  6.0,  1.0,  "steer"),       # yaw rate per rad of heading error (tread differential + fan yaw)
     Param("path_kp",          0.3,  6.0,  0.8,  "steer"),       # heading per m of lateral path error
     # ---- legged gaits (walk, hop, broad jump: treads locked) -----------------
     Param("step_hz",          0.5,  3.0,  1.5,  "gait"),        # walk: stride frequency per leg
@@ -78,6 +79,11 @@ PARAMS: list[Param] = [
     Param("fan_kp_pitch",    -4.0,  4.0,  1.0,  "fan_ctrl"),    # common pitch per rad of body pitch
     Param("fan_kd_pitch",    -1.0,  1.0,  0.1,  "fan_ctrl"),
     Param("fan_kp_yaw",      -4.0,  4.0,  0.5,  "fan_ctrl"),    # opposite pitch per rad/s of yaw-rate error
+    # ---- hip roll: lateral foot placement (appended so older genomes pad) -----
+    Param("walk_shift",       0.0,  0.08, 0.03, "roll"),        # walk: body shifted over the stance foot (m)
+    Param("kp_roll_y",       -0.3,  0.3,  0.05, "roll"),        # feet shifted toward a roll per rad (m/rad)
+    Param("kd_roll_y",       -0.05, 0.05, 0.005, "roll"),
+    Param("stance_w",         0.0,  0.06, 0.0,  "roll"),        # feet outboard of the hip points (m), a wider track
 ]
 
 NAMES = [p.name for p in PARAMS]

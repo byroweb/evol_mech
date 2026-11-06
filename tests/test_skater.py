@@ -1,3 +1,4 @@
+import math
 import json
 
 import mujoco
@@ -192,6 +193,43 @@ def test_legged_cycles():
     walk.act(data, mid_swing)
     thr1 = walk.last_throttle
     assert abs(thr1[0] - thr0[0] - p["step_fan"]) < 1e-6 and abs(thr1[1] - thr0[1]) < 1e-6
+
+
+def test_hip_roll_places_the_feet():
+    import mujoco
+    from evol_mech.skater.controller import SkaterController, WALK_DUTY
+    from evol_mech.skater.structure import HIP_ROLL_RANGE
+    p = decode(DEFAULT_NORM)
+    model, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
+    jid = lambda n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n)
+    aid = lambda n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
+    # roll replaces yaw at the hip; the ankle is sprung in pitch and roll
+    assert jid("hip_yaw_l") < 0 and jid("hip_roll_l") >= 0 and jid("ankle_roll_r") >= 0
+    assert np.allclose(model.jnt_axis[jid("hip_roll_l")], [1, 0, 0])
+    assert abs(model.jnt_range[jid("hip_roll_l")][1] - HIP_ROLL_RANGE) < 1e-4
+    assert model.jnt_stiffness[jid("ankle_roll_l")] > 0 and aid("hip_roll_r") >= 0
+    # a rolled body (positive = right side down) shifts both feet to the right: negative roll commands
+    data = make_data(model, p)
+    data.qpos[3:7] = [math.cos(0.1), math.sin(0.1), 0.0, 0.0]
+    stand = SkaterController(model, p, {"objective": "stand", "terrain": "flat"})
+    c = stand.act(data, 0.0)
+    assert c[aid("hip_roll_l")] < 0 and c[aid("hip_roll_r")] < 0
+    # level body, wider stance: left foot out (+), right foot out (-)
+    data = make_data(model, p)
+    wide = SkaterController(model, {**p, "stance_w": 0.04}, {"objective": "stand", "terrain": "flat"})
+    c = wide.act(data, 0.0)
+    assert c[aid("hip_roll_l")] > 0 and c[aid("hip_roll_r")] < 0
+    # walk: mid-swing of the left foot the body sits over the right foot (shifted right),
+    # so both legs roll the feet to the left; the opposite half a cycle later
+    walk = SkaterController(model, p, {"objective": "walk", "speed": 0.4, "terrain": "flat"})
+    T = 1 / p["step_hz"]
+    mid_swing = T * (WALK_DUTY + (1 - WALK_DUTY) / 2)
+    assert walk.body_shift(mid_swing) < -0.9 * p["walk_shift"]
+    assert walk.body_shift(mid_swing + T / 2) > 0.9 * p["walk_shift"]
+    c = walk.act(make_data(model, p), mid_swing)
+    assert c[aid("hip_roll_l")] > 0 and c[aid("hip_roll_r")] > 0
+    # the default stance is unchanged: zero roll, feet under the hips
+    assert SkaterController(model, p, {"objective": "skate", "speed": 0.6, "terrain": "flat"}).body_shift(0.3) == 0.0
 
 
 def test_all_objectives_run_and_default_stands():

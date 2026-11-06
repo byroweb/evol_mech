@@ -33,13 +33,14 @@ Two simulators, two stages:
     .venv\Scripts\python tools\view.py runs\dev\best.json   # interactive viewer
     .venv\Scripts\python tools\plot_linkage.py runs\dev\best.json -o leg.png
     .venv\Scripts\python tools\evolution_video.py runs\dev    # every individual per generation, best outlined, children branching
-    .venv\Scripts\python toolsun_dashboard.py runs\dev      # browser dashboard: pick a generation, its best plays every task next to that task's metrics
+    .venv\Scripts\python tools
+un_dashboard.py runs\dev      # browser dashboard: pick a generation, its best plays every task next to that task's metrics
 
 ## Skater mech (stage 1)
 
 `docs/skater_design.md` describes the next target body; the build follows
-archetype B: three metal-gear servos per leg in the hip (yaw, thigh, and shin
-through a parallelogram knee, as on Caltech LEO), a passive sprung ankle,
+archetype B: three metal-gear servos per leg in the hip (roll, thigh, and shin
+through a parallelogram knee, as on Caltech LEO), a passive two-axis sprung ankle,
 powered tread feet, and two pitch-only fans, travelling mostly by skating.
 Its skeleton is in `evol_mech/skater/` and shares the GA, worker pool,
 terrains, store and video with the biped; the genome, body, controller and

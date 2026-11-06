@@ -36,12 +36,12 @@ Stage plan:
 
 | Joint | Actuation | Notes |
 |---|---|---|
-| Hip yaw | motor in hip | also the steering joint for skating; the leg below does not twist, so foot yaw = hip yaw |
-| Hip roll | motor in hip | lateral leveling, side steps |
+| Hip yaw | ~~motor in hip~~ none (stage 1 decision) | was the steering joint for skating; traded for the roll servo so the hip keeps three servos. Turning is tread differential + fan yaw; see `skater_review.md` |
+| Hip roll | motor in hip | lateral leveling, side steps, foot under the body for walking and landing |
 | Hip pitch | motor in hip | |
 | Knee | hip-mounted motor, belt or pushrod | |
 | Ankle pitch | hip-mounted motor, long pushrod | push-off for running/jumping; keeps the sole flat on slopes |
-| Ankle roll | none (optional passive elastomer) | hip roll covers leveling |
+| Ankle roll | passive spring (built) | lets the sole lie flat under a rolled leg |
 | Ankle yaw | none | steering is at the hip |
 
 Leg motors: quasi-direct-drive BLDC (low ratio planetary) so the legs can run,

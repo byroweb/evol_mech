@@ -9,10 +9,11 @@ Layers, all gains from the genome, structure fixed:
    Treads take `tread_share` of the in-line component first, capped at
    `friction_margin * mu * N` per foot and at the tip-over limit; the fans take
    the remainder, all of it when airborne.
-3. Steering: one turning centre. Each foot's commanded ground velocity is
-   v + omega x r_foot; hip yaw points the tread along it (+-45 deg) and the
-   tread speed is that velocity's magnitude. Straight ahead both feet are
-   exactly parallel.
+3. Steering: there is no hip yaw, so both treads always point along the
+   body. Each tread runs at its own ground speed along x; the yaw rate the
+   planner demands comes from the tread speed differential (a tank turn, so
+   the rollers scrub) and from opposite fan pitch (fan_kp_yaw). The lateral
+   velocity demand goes to the fans.
 4. Legs: each leg is two servos in the hip setting the thigh angle and, through
    the shin drive four-bar (horn -> coupler -> tab on the shin), the shin angle
    relative to the body. The controller picks a foot target (x, z) under the
@@ -21,10 +22,17 @@ Layers, all gains from the genome, structure fixed:
    the drive's hard stops (structure.drive_stops), slew-limits the thigh and
    horn servos, and sets the knee actuator to the shin angle the four-bar
    gives for the commanded thigh and horn. So a thigh command with a fixed
-   horn swings the shin as the linkage would.
+   horn swings the shin as the linkage would. The third hip servo is roll
+   (LEO's abduction axis): the controller picks a lateral foot offset too and
+   rolls the leg plane so the two-link IK, solved in that plane, lands the
+   ankle there.
 5. Balance: the ankle is passive, so pitch is held like a Segway: the treads
    are driven toward the fall (kp_bal, kd_bal) and the feet are shifted under
-   the body (kp_foot_x, kd_foot_x). Fans add their pitch PD on top.
+   the body (kp_foot_x, kd_foot_x). Roll is held the same way with the hip
+   roll servos: the feet shift sideways toward the fall (kp_roll_y,
+   kd_roll_y) and unequal leg height levels the body (kp_roll_lvl). A wider
+   track (stance_w) is an evolved standing / landing margin. Fans add their
+   pitch PD and roll differential on top.
 6. Fans: each on its own pitch servo. Common pitch = allocation tilt +
    attitude PD; opposite pitch = yaw torque toward the demanded yaw rate;
    differential throttle = roll.
@@ -37,8 +45,9 @@ targets instead: a walk cycle (stance foot travels back under the hip at
 step_hz, swing foot returns lifted by step_lift; legs half a cycle apart) or
 a jump cycle (crouch by jump_crouch, thrust to jump_ext above nominal with the
 feet jump_lean behind the hip on the broad jump, tuck,
-settle). Balance then comes from the fans and the foot-shift terms only; in
-a walk the fan over the swing foot gets step_fan extra throttle at full lift so
+settle). In a walk the body is also shifted sideways over the stance foot
+(walk_shift, a sinusoid in phase with the step) through the hip roll servos,
+and the fan over the swing foot gets step_fan extra throttle at full lift so
 that side is carried while the foot is off the ground.
 """
 from __future__ import annotations
@@ -52,7 +61,7 @@ from ..body.hardware import tread_drive_from_params, servo_from_params, fan_from
 from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .structure import (nominal_angles, nominal_height, foot_from_angles, angles_from_foot,
-                        horn_from_shin, shin_from_horn, drive_stops, HIP_YAW_RANGE, KNEE_RANGE)
+                        horn_from_shin, shin_from_horn, drive_stops, HIP_ROLL_RANGE, KNEE_RANGE)
 
 MU_FOOT = 1.2
 G = 9.81
@@ -64,6 +73,7 @@ AIRBORNE_Z = 0.03           # hip higher than nominal by this -> treat as airbor
 CONTROL_DT = 0.01
 LEGGED = ("walk", "hop", "broad_jump")      # objectives with locked treads and moving feet
 WALK_DUTY = 0.6                             # fraction of the cycle a foot is in stance
+WALK_SHIFT_PHASE = 0.3                      # cycle fraction (left foot) at which the body is furthest left
 JUMP_PHASES = (0.45, 0.60, 0.80)            # cycle fractions: crouch | thrust | tuck | settle
 KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
                                   # closer to a rigid link but the two position loops then chatter (rms accel x3)
@@ -103,7 +113,7 @@ class SkaterController:
         horn = horn_from_shin(p, thigh, shin)
         self.horn_nom = thigh + p["crouch"] if horn is None else horn
         self.servo_cmd = {f"{j}_{s}": (thigh if j == "hip_pitch" else self.horn_nom if j == "knee" else 0.0)
-                          for s in ("l", "r") for j in ("hip_yaw", "hip_pitch", "knee")}
+                          for s in ("l", "r") for j in ("hip_roll", "hip_pitch", "knee")}
         self.thigh_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"hip_pitch_{s}")]
                         for s in ("l", "r")}
         reach = max(0.005, p["sole_len"] / 2 - p["pulley_radius"])
@@ -114,7 +124,6 @@ class SkaterController:
         self.p0 = None
         self.last_throttle = (0.0, 0.0)
         self.last_fan_force = (0.0, 0.0)
-        self.foot_yaw = {"l": 0.0, "r": 0.0}
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -165,6 +174,14 @@ class SkaterController:
                 off = (0.0, 0.0, True)
             return {"l": off, "r": off}
         return {"l": (0.0, 0.0, True), "r": (0.0, 0.0, True)}
+
+    def body_shift(self, t: float) -> float:
+        """Walk: lateral body offset (+ = left) over the feet, furthest toward the
+        stance side mid-swing of the other foot; zero for the other objectives."""
+        if self.objective != "walk":
+            return 0.0
+        u = (self.p["step_hz"] * t) % 1.0
+        return self.p["walk_shift"] * math.cos(2 * math.pi * (u - WALK_SHIFT_PHASE))
 
     def _slew(self, name: str, target: float) -> float:
         step = self.servo.max_rad_s * CONTROL_DT
@@ -229,22 +246,13 @@ class SkaterController:
         self.last_fan_force = (float(f_fan[0]), float(f_fan[1]))
 
         # 3 + 5. steering and Segway balance through the treads: each tread runs
-        # at its own ground speed plus a term driving toward the fall, plus the
-        # differential that turns the body at the demanded yaw rate.
+        # at its own ground speed (along the body, there is no hip yaw) plus a
+        # term driving toward the fall, plus the differential that turns the
+        # body at the demanded yaw rate.
         w = p["hip_width"] / 2
         v_bal = p["kp_bal"] * (pitch - pitch_ref) + p["kd_bal"] * pitch_rate
         for s, y_f in (("l", w), ("r", -w)):
-            u = np.array([v_des_b[0] - omega_des * y_f, v_des_b[1]])
-            if np.hypot(*u) < 0.02:
-                delta = self.foot_yaw[s]
-            else:
-                delta = math.atan2(u[1], u[0])
-                if abs(delta) > math.pi / 2:
-                    delta = wrap(delta + math.pi)
-            delta = max(-HIP_YAW_RANGE, min(HIP_YAW_RANGE, delta))
-            self.foot_yaw[s] = delta
-            e = np.array([math.cos(delta), math.sin(delta)])
-            v_ground = float(np.array([v_b[0] - yaw_rate * y_f, v_b[1]]) @ e)
+            v_ground = float(v_b[0]) - yaw_rate * y_f
             v_turn = -(omega_des - yaw_rate) * y_f
             v_cmd = 0.0 if self.legged else v_ground + v_bal + v_turn      # legged: soles locked
             v_cmd = max(-self.tread.max_speed_m_s, min(self.tread.max_speed_m_s, v_cmd))
@@ -253,19 +261,24 @@ class SkaterController:
             q = float(data.qpos[self.roller_q[s]])
             self.tread_ref[s] = q + max(-0.5, min(0.5, self.tread_ref[s] - q))
             c[i[f"tread_{s}"]] = om_cmd + TREAD_TRACK_GAIN * (self.tread_ref[s] - q)
-            c[i[f"hip_yaw_{s}"]] = self._slew(f"hip_yaw_{s}", delta)
 
-        # 4 + 5. legs: foot targets under the hip -> two-servo inverse kinematics.
-        # Feet shift back for the lean and forward under a nose-down body.
+        # 4 + 5. legs: foot targets under the hip -> hip roll + two-servo inverse
+        # kinematics in the rolled leg plane. Feet shift back for the lean and
+        # forward under a nose-down body; sideways toward a roll (positive roll
+        # = right side down) and away from the body's walk shift.
         h_fb = p["kp_height"] * (self.z_ref - float(pos[2])) - p["kd_height"] * float(v_world[2])
         x_f = (self.x_nom - d_feet
                + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)
         dh_roll = p["kp_roll_lvl"] * roll + p["kd_roll_lvl"] * roll_rate   # left side up -> shorten left
+        dy_f = -self.body_shift(t) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
         gait = self.gait_offsets(t)
         for s, sign in (("l", +1.0), ("r", -1.0)):
             gx, gz, fb = gait[s]
-            h = self.h_nom + (h_fb if fb else 0.0) + gz
-            thigh, shin = angles_from_foot(p, x_f + gx, -(h - sign * dh_roll))
+            h = max(0.02, self.h_nom + (h_fb if fb else 0.0) + gz - sign * dh_roll)
+            dy = dy_f + sign * p["stance_w"]                      # + = foot to the left, both legs
+            roll_cmd = max(-HIP_ROLL_RANGE, min(HIP_ROLL_RANGE, math.atan2(dy, h)))
+            c[i[f"hip_roll_{s}"]] = self._slew(f"hip_roll_{s}", roll_cmd)
+            thigh, shin = angles_from_foot(p, x_f + gx, -math.hypot(h, dy))
             thigh_cmd, horn_cmd = self._drive_commands(s, thigh, shin)
             c[i[f"hip_pitch_{s}"]] = thigh_cmd
             # the knee follows the four-bar for the thigh as it actually is
@@ -294,7 +307,8 @@ class SkaterController:
         else:
             thr_l = thr_r = fan_l = fan_r = 0.0
         self.dbg = {"pitch": pitch, "pitch_ref": pitch_ref, "a_des": float(a_des[0]), "a_tread": a_tread,
-                    "d_feet": d_feet, "v_bal": v_bal, "x_f": x_f, "h": self.h_nom + h_fb, "f_fan_x": float(f_fan[0]),
+                    "d_feet": d_feet, "v_bal": v_bal, "x_f": x_f, "h": self.h_nom + h_fb, "dy_f": dy_f,
+                    "f_fan_x": float(f_fan[0]),
                     "fan_l": fan_l, "fan_r": fan_r, "thr": (thr_l, thr_r)}
         c[i["fan_thrust_l"]], c[i["fan_thrust_r"]] = thr_l, thr_r
         c[i["fan_pitch_l"]], c[i["fan_pitch_r"]] = fan_l, fan_r

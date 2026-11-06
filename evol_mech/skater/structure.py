@@ -2,7 +2,7 @@
 Never genes.
 
 Mass rules from docs/skater_design.md:
-  - every leg servo sits in the hip (three per leg: yaw, thigh, shin);
+  - every leg servo sits in the hip (three per leg: roll, thigh, shin);
   - below the hip are tubes and the parallelogram links, the tread drive
     (motor and worm) on the shin at the knee, the sole, rollers and rubber;
   - each leg's distal mass should stay at or below ~10-12 % of total mass;
@@ -16,8 +16,11 @@ and equal horn / crank it is LEO's parallelogram (shin angle = horn angle);
 the default staggers the shin servo aft (tools/mechanism_checker.html), so
 the shin angle depends a little on the thigh angle too, and the drive has
 hard stops where a link would come within FOLD_MARGIN of straight. The knee
-hinge angle is shin minus thigh. The ankle is a passive sprung hinge, so the sole is not part of
-the servo kinematics: it lies flat under load and rests toe-up when unloaded.
+hinge angle is shin minus thigh. The ankle is a passive two-axis sprung hinge
+(pitch and roll), so the sole is not part of the servo kinematics: it lies
+flat under load and rests toe-up when unloaded. The hip roll servo (LEO's
+abduction axis, along x through the hip point) swings the whole leg plane
+sideways; the controller puts the stance foot under the body with it.
 
 The core, battery and fan placement rules are shared with the biped
 (`body/structure.py`).
@@ -38,7 +41,7 @@ LINK_RADIUS = 0.008             # thigh / shin tube radius (16 mm CF tube)
 LINK_KG_PER_M = 0.08            # tube + bearings, per metre
 COUPLER_KG_PER_M = 0.05         # parallelogram coupler (thin CF strip + pins), per metre of thigh
 JOINT_BRACKET_KG = 0.025        # knee and ankle brackets, each
-ANKLE_SPRING_KG = 0.010
+ANKLE_SPRING_KG = 0.010         # per axis (pitch and roll)
 SOLE_HALF_W = 0.020             # sole plate half-width
 SOLE_HALF_T = 0.004             # sole plate half-thickness
 ANKLE_PLATE_GAP = 0.006         # ankle axis above the plate top (the coaxial pulley sits there)
@@ -50,7 +53,9 @@ WHEEL_RADIUS_FACTOR = 1.5       # foot_type 1: heel and toe wheels, larger than 
 LEG_MASS_FRACTION_TARGET = 0.12
 SERVOS_PER_LEG = 3
 
-HIP_YAW_RANGE = math.radians(45)     # stage 1: steering only; crab (90 deg) is out of scope
+HIP_ROLL_RANGE = math.radians(30)    # abduction: + swings the foot to +y (left) on both legs
+ANKLE_ROLL_RANGE = math.radians(30)  # passive sole roll, so a rolled leg still lands the tread flat
+ANKLE_ROLL_STIFF = 0.5               # ankle roll spring as a fraction of the pitch spring
 THIGH_RANGE = (math.radians(-120), math.radians(60))    # negative = thigh forward
 KNEE_RANGE = (math.radians(10), math.radians(150))      # positive = shin back; the shin drive never comes within 10 deg of straight
 ANKLE_RANGE = math.radians(45)
@@ -338,7 +343,7 @@ def structure_from_params(p: dict[str, float]) -> SkaterStructure:
     sole_area = p["sole_len"] * 2 * SOLE_HALF_W
     n_rollers = len(lay.roller_x) + (1 if lay.idler else 0)
     foot = (SOLE_PLATE_KG_PER_M2 * sole_area + TREAD_RUBBER_KG_PER_M2 * 2 * sole_area
-            + ROLLER_KG_PER_M * 2 * ROLLER_HALF_LEN * n_rollers + ANKLE_SPRING_KG)
+            + ROLLER_KG_PER_M * 2 * ROLLER_HALF_LEN * n_rollers + 2 * ANKLE_SPRING_KG)
     fan_kg = fan.mass_kg                            # fan_from_params already includes one pitch servo
     total = hip + core + payload + 2 * (thigh + shin + foot + fan_kg)
     return SkaterStructure(hip, core, cx, cy, payload, battery_half(p), thigh, shin, foot,

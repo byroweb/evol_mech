@@ -104,7 +104,7 @@ def main():
     proj = lambda q: (proj0(q)[0] + PX, proj0(q)[1] + PY)
     hip_cluster = J("hip_pitch_l")
     items = [
-        (hip_cluster, ["HIP CLUSTER (left leg shown)", "hip yaw, thigh and shin servos", "all three inside the hip box"], HIP, (-200, 0)),
+        (hip_cluster, ["HIP CLUSTER (left leg shown)", "hip roll, thigh and shin servos", "all three inside the hip box"], HIP, (-200, 0)),
         (G("coupler_l"), ["parallelogram coupler", "shin servo -> knee"], HIP, (-220, 70)),
         (J("knee_l"), ["KNEE joint", "set by the shin servo through", "the parallelogram (no motor here)"], HIP, (230, -60)),
         (J("ankle_l"), ["ANKLE: passive hinge + spring", "no servo; rests toe-up, flattens under load"], PASSIVE, (230, 10)),
@@ -122,10 +122,10 @@ def main():
     proj0 = fit_projection(model, data, seg)
     proj = lambda q: (proj0(q)[0] + PX, proj0(q)[1] + PY)
     items = [
-        (J("hip_yaw_l"), ["hip yaw servo (vertical axis)", "steering; +-45 deg"], HIP, (200, -80)),
+        (J("hip_roll_l"), ["hip roll servo (fore-aft axis)", "abduction; +-30 deg, foot under the body"], HIP, (200, -80)),
         (J("hip_pitch_r"), ["thigh servo (sideways axis)", "fore / aft swing"], HIP, (-200, -50)),
         (J("knee_r"), ["knee: shin servo via", "parallelogram (up / down)"], HIP, (-190, 0)),
-        (J("ankle_r"), ["ankle: passive, sprung"], PASSIVE, (-190, 30)),
+        (J("ankle_r"), ["ankle: passive, sprung (pitch + roll)"], PASSIVE, (-190, 30)),
         (G("tread_drive_l"), ["tread drive"], SHIN, (190, 10)),
         (G("foot_l_r1"), ["sole + rollers", f"{2*15} mm tread width"], PASSIVE, (190, 60)),
         (data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "fan_l")], ["fan on a single", "pitch servo"], FAN, (170, -70)),
@@ -142,7 +142,7 @@ def main():
     y = PH + 12
     d.text((16, y), "Actuators per leg as modelled (archetype B: 3 hip servos + tread drive, passive ankle):", fill=(0, 0, 0), font=big)
     legend = [
-        (HIP, "red: driven by a metal-gear servo in the HIP cluster (yaw and thigh directly; knee through the parallelogram from the shin servo)"),
+        (HIP, "red: driven by a metal-gear servo in the HIP cluster (roll and thigh directly; knee through the parallelogram from the shin servo)"),
         (SHIN, "orange: tread drive motor + worm, the only motor below the hip (on the shin at the knee)"),
         (PASSIVE, "blue: structure / unpowered parts, incl. the sprung ankle"),
         (FAN, "purple: fans, each on one pitch servo (independent channels)"),

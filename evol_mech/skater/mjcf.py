@@ -4,8 +4,8 @@ docs/skater_review.md).
 Topology (fixed):
     hip (free; six leg servos inside)
       ├─ core ── payload, fan_l / fan_r (own pitch hinge each -> thrust site)
-      ├─ leg_l: hip_yaw (z) -> thigh (hip_pitch, y) -> knee (y) -> shin
-      │           (+ tread drive at the knee) -> ankle (y, passive spring)
+      ├─ leg_l: hip_roll (x) -> thigh (hip_pitch, y) -> knee (y) -> shin
+      │           (+ tread drive at the knee) -> ankle (y and x, passive springs)
       │           -> sole plate + roller row + raised front idler (tread)
       │              or heel / toe wheels
       └─ leg_r: same
@@ -43,7 +43,8 @@ from ..body.structure import (hip_half_y, fan_center_y, fan_z_core, payload_z as
                               HIP_HALF_X, HIP_HALF_Z)
 from .structure import (structure_from_params, foot_layout, nominal_angles, spawn_height,
                         check_buildable, InvalidBody, LINK_RADIUS, SOLE_HALF_W, SOLE_HALF_T,
-                        ROLLER_HALF_LEN, HIP_YAW_RANGE, THIGH_RANGE, KNEE_RANGE, ANKLE_RANGE)
+                        ROLLER_HALF_LEN, HIP_ROLL_RANGE, THIGH_RANGE, KNEE_RANGE, ANKLE_RANGE,
+                        ANKLE_ROLL_RANGE, ANKLE_ROLL_STIFF)
 
 SIM_DT = 0.002
 FAN_PITCH_RANGE = math.radians(90)
@@ -52,7 +53,7 @@ FOOT_ATTR = 'friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"'
 TREAD_TRACK_KV = 0.1            # velocity actuator gain on the first roller (Nm s/rad)
 SERVO_KV_FRAC = 0.02            # servo damping as a fraction of its kp (s)
 
-LEG_JOINTS = ["hip_yaw", "hip_pitch", "knee"]           # the three servos; the ankle is passive
+LEG_JOINTS = ["hip_roll", "hip_pitch", "knee"]          # the three servos; the ankle is passive
 ACTUATOR_NAMES = ([f"{j}_{s}" for s in ("l", "r") for j in LEG_JOINTS]
                   + ["tread_l", "tread_r", "fan_pitch_l", "fan_pitch_r", "fan_thrust_l", "fan_thrust_r"])
 
@@ -93,8 +94,8 @@ def _leg(side: str, sign: float, p: dict[str, float], st) -> str:
     _, shin_nom = nominal_angles(p)
     ankle_rest = -shin_nom - p["ankle_rest"]
     return f"""
-      <body name="hip_yaw_{side}" pos="0 {y:.4f} 0">
-        <joint name="hip_yaw_{side}" type="hinge" axis="0 0 1" range="{-HIP_YAW_RANGE:.4f} {HIP_YAW_RANGE:.4f}" damping="0.05"/>
+      <body name="hip_roll_{side}" pos="0 {y:.4f} 0">
+        <joint name="hip_roll_{side}" type="hinge" axis="1 0 0" range="{-HIP_ROLL_RANGE:.4f} {HIP_ROLL_RANGE:.4f}" damping="0.05"/>
         <geom type="sphere" size="0.012" mass="0.001" rgba="0.5 0.5 0.5 1" {NOCOL}/>
         <body name="thigh_{side}">
           <joint name="hip_pitch_{side}" type="hinge" axis="0 1 0" range="{THIGH_RANGE[0]:.4f} {THIGH_RANGE[1]:.4f}" damping="0.05"/>
@@ -112,6 +113,9 @@ def _leg(side: str, sign: float, p: dict[str, float], st) -> str:
               <joint name="ankle_{side}" type="hinge" axis="0 1 0" range="{ankle_rest-ANKLE_RANGE:.4f} {ankle_rest+ANKLE_RANGE:.4f}"
                      stiffness="{p['ankle_stiffness']:.3f}" springref="{ankle_rest:.4f}"
                      damping="{0.1 * p['ankle_stiffness']:.4f}"/>
+              <joint name="ankle_roll_{side}" type="hinge" axis="1 0 0" range="{-ANKLE_ROLL_RANGE:.4f} {ANKLE_ROLL_RANGE:.4f}"
+                     stiffness="{ANKLE_ROLL_STIFF * p['ankle_stiffness']:.3f}" springref="0"
+                     damping="{0.1 * ANKLE_ROLL_STIFF * p['ankle_stiffness']:.4f}"/>
               {_foot(side, p, st.foot_kg)}
             </body>
           </body>
