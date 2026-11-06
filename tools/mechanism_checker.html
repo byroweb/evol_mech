@@ -56,6 +56,8 @@
   <div class="panel">
     <h2>Actuate <span><button class="sm" id="nominal">nominal crouch</button> <label><input type="checkbox" id="both" checked> both legs</label></span></h2>
     <div id="joints"></div>
+    <div class="note" style="margin-top:6px">Foot workspace, side view, relative to the hip pitch axis (x fore &rarr;, z up). White = positions the linkage can reach within its stops, grey = not. Drag the dot to pose the leg; both servos follow through the IK. <span id="modetag"></span></div>
+    <canvas id="map" width="376" height="300" style="width:100%; display:block; margin:6px 0; border:1px solid var(--line); border-radius:6px; touch-action:none; cursor:crosshair"></canvas>
     <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it. Thigh and shin sliders hard-stop where the linkage would reach knee flexion outside 5…150° or the horn within 5° of straight with the coupler; the stops move with the other servo.</div>
     <div id="sweep"></div>
   </div>
@@ -124,10 +126,13 @@ const MECH_UI = [
   ["clearance", "clearance to flag as tight", "mm", 0, 10],
 ];
 // joints (deg)
-const joints = { yaw: 0, thigh: -20, shin: 20, ankle: 0 };
+const joints = { yaw: 0, thigh: -20, shin: 20, ankle: 0, fx: 0, fz: -282 };
 const JOINT_UI = [
-  ["yaw", "hip yaw", -60, 60], ["thigh", "thigh servo", -130, 70], ["shin", "shin servo", -130, 130], ["ankle", "ankle (sole)", -60, 60],
+  ["yaw", "hip yaw", -60, 60, "°"], ["thigh", "thigh servo", -130, 70, "°"], ["shin", "shin servo", -130, 130, "°"],
+  ["fx", "foot x (fore, from pitch axis)", -330, 330, "mm"], ["fz", "foot z (from pitch axis)", -340, 160, "mm"],
+  ["ankle", "ankle (sole)", -60, 60, "°"],
 ];
+let driveMode = 'servo';         // 'servo': thigh/shin sliders drive; 'foot': fx/fz (or the map) drive through IK
 
 // ---- derived body geometry ------------------------------------------------------------
 function batteryHalf() {           // from body/structure.py
@@ -267,10 +272,13 @@ function servoBox(axisPt, axisDir, planeNormalSign, dir, name, col) {
 }
 const BLOCK_DIRS = [[-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]];   // back, front, down, up (x, y, z)
 
-function solveLeg(j, state) {
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+const wrapDeg = a => ((a + 180) % 360 + 360) % 360 - 180;
+
+function legKin(j) {
   // leg frame: origin at the yaw axis point (hip height), x forward, y outboard, z up
   const L1 = genes.thigh_len, L2 = genes.shin_len;
-  const th_t = j.thigh * DEG, phi = j.shin * DEG + mech.horn_phase * DEG, delta = j.ankle * DEG;
+  const th_t = j.thigh * DEG, phi = j.shin * DEG + mech.horn_phase * DEG, delta = (j.ankle || 0) * DEG;
   const yT = mech.thigh_plane * MM, yC = yT + mech.coupler_plane * MM * (mech.layout ? -1 : 1);
   const D = mech.pitch_drop * MM;
   const H = v3(0, yT, -D);                                   // hip pitch axis point (thigh plane)
@@ -283,7 +291,7 @@ function solveLeg(j, state) {
   const P2 = [S2[0] + h1 * uH[0], S2[1] + h1 * uH[1]];
   // Q: |Q-K| = h2, |Q-P| = Lc
   const dx = P2[0] - K2[0], dz = P2[1] - K2[1], d = Math.hypot(dx, dz);
-  const info = { reachable: true };
+  const info = { reachable: true, L2, delta, yT, yC, D, H, S2, K2, P2 };
   let Q2;
   // of the two circle intersections take the one on the parallelogram-like branch
   // (crank roughly parallel to the horn); the other is the crossed (anti-parallelogram) assembly
@@ -299,11 +307,11 @@ function solveLeg(j, state) {
     const c1 = [mx + hh * dz / d, mz - hh * dx / d], c2 = [mx - hh * dz / d, mz + hh * dx / d];
     Q2 = Math.hypot(c1[0] - ref[0], c1[1] - ref[1]) <= Math.hypot(c2[0] - ref[0], c2[1] - ref[1]) ? c1 : c2;
   }
-  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
   const th_c = Math.atan2(-(Q2[0] - K2[0]), -(Q2[1] - K2[1]));
   const th_s = wrap(th_c - mech.crank_angle * DEG);
   const uS = u(th_s);
   const A2 = [K2[0] + L2 * uS[0], K2[1] + L2 * uS[1]];
+  info.Q2 = Q2; info.A2 = A2;
   info.thigh = th_t; info.shin = th_s; info.knee = wrap(th_s - th_t);
   // angles of the transmission
   const vPQ = [Q2[0] - P2[0], Q2[1] - P2[1]], vKQ = [Q2[0] - K2[0], Q2[1] - K2[1]], vSP = [P2[0] - S2[0], P2[1] - S2[1]];
@@ -314,8 +322,43 @@ function solveLeg(j, state) {
   const [tn, sn] = nominalAngles();
   info.ankleRest = -sn - genes.ankle_rest;
   info.anklePt = [A2[0], yT, A2[1]];
+  info.footRel = [A2[0], A2[1] + D];            // foot relative to the hip pitch axis (as the sim's IK sees it)
+  info.kneeRel = [K2[0], K2[1] + D];
   const lay = footLayout();
   info.footBottom = A2[1] - (-lay.bottom_z) * Math.cos(delta) - (genes.sole_len / 2) * Math.abs(Math.sin(delta));
+  return info;
+}
+
+// two-link inverse kinematics, foot (x, z) relative to the hip pitch axis (structure.angles_from_foot)
+function ik(x, z) {
+  const L1 = genes.thigh_len, L2 = genes.shin_len;
+  let d = Math.hypot(x, z);
+  const exact = d >= Math.abs(L1 - L2) + 1e-4 && d <= L1 + L2 - 1e-4;
+  d = Math.min(Math.max(d, Math.abs(L1 - L2) + 1e-4), L1 + L2 - 1e-4);
+  let knee = Math.PI - Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2))));
+  knee = Math.min(Math.max(knee, KNEE_RANGE[0] * DEG), KNEE_RANGE[1] * DEG);
+  const phi = Math.atan2(-x, -z), alpha = Math.atan2(L2 * Math.sin(knee), L1 + L2 * Math.cos(knee));
+  return { thigh: phi - alpha, shin: phi - alpha + knee, exact };
+}
+// shin servo command (deg) that puts the shin at shinTarget (rad) for a given thigh (deg)
+function shinCmdFor(thighDeg, shinTarget) {
+  const guess = shinTarget / DEG - mech.horn_phase;
+  if (mech.parallelogram && mech.shin_dx === 0 && mech.shin_dz === 0 && mech.horn_len === mech.crank_len && mech.crank_angle === 0) return guess;
+  const g = c => { const k = legKin({ thigh: thighDeg, shin: c }); return k.reachable ? wrapDeg(k.shin / DEG - shinTarget / DEG) : NaN; };
+  let c0 = guess, c1 = guess + 2, f0 = g(c0), f1 = g(c1);
+  for (let i = 0; i < 25 && Math.abs(f1) > 0.01; i++) {
+    if (!isFinite(f0) || !isFinite(f1) || f1 === f0) break;
+    const c2 = c1 - f1 * (c1 - c0) / (f1 - f0);
+    c0 = c1; f0 = f1; c1 = c2; f1 = g(c1);
+  }
+  return isFinite(f1) && Math.abs(f1) < 0.5 ? c1 : guess;
+}
+
+function solveLeg(j, state) {
+  const info = legKin(j);
+  const { L2, delta, yT, yC, D, H, S2, K2, P2, Q2, A2 } = info;
+  const th_s = info.shin;
+  const lay = footLayout();
 
   // ---- parts -------------------------------------------------------------------------
   const parts = [];
@@ -602,7 +645,7 @@ function legWorld(side) {
 }
 // ---- hard stops: the thigh / shin sliders only reach poses the linkage allows ----------------
 function poseAllowed(j) {
-  const inf = solveLeg(j, {}).info;
+  const inf = legKin(j);
   const k = inf.knee / DEG, hc = inf.hornCoupler / DEG, t = inf.thigh / DEG;
   return inf.reachable && k >= KNEE_RANGE[0] - 1e-6 && k <= KNEE_RANGE[1] + 1e-6
       && hc >= FOLD_MARGIN - 1e-6 && hc <= 180 - FOLD_MARGIN + 1e-6
@@ -640,11 +683,26 @@ function applyHardStops() {
 
 function update() {
   rebuildFloor();
-  if (typeof jointCtl !== 'undefined') applyHardStops();
+  if (typeof jointCtl !== 'undefined') {
+    if (driveMode === 'foot') {
+      const r = ik(joints.fx * MM, joints.fz * MM);
+      joints.thigh = r.thigh / DEG;
+      joints.shin = shinCmdFor(joints.thigh, r.shin);
+      lastMoved = 'shin';
+    }
+    applyHardStops();
+  }
   const L = legWorld('L'), R = legWorld('R');
   const body = bodyParts();
   const { out, flagged } = runChecks(L, R, body);
   lastResult = { L, R, out };
+  // foot target vs what the linkage reached
+  const ach = L.info.footRel;
+  if (driveMode === 'foot') {
+    const miss = Math.hypot(ach[0] - joints.fx * MM, ach[1] - joints.fz * MM);
+    if (miss > 1.5e-3) out.push({ level: 'warn', text: `foot target (${joints.fx.toFixed(0)}, ${joints.fz.toFixed(0)}) mm not reachable: linkage stops at (${(ach[0] * 1e3).toFixed(0)}, ${(ach[1] * 1e3).toFixed(0)}) mm` });
+  } else { joints.fx = ach[0] * 1e3; joints.fz = ach[1] * 1e3; }
+  if (typeof jointCtl !== 'undefined') { for (const k of ['thigh', 'shin', 'fx', 'fz']) jointCtl[k].refresh(); drawMap(L.info); }
   for (const m of meshes.values()) m.visible = false;
   const showOther = document.getElementById('showOther').checked, showBody = document.getElementById('showBody').checked;
   L.parts.forEach((p, i) => placePart('L' + i, p, flagged.has(p), 1));
@@ -683,8 +741,10 @@ function numRow(parent, label, unit, get, set, min, max, step, slider = true, cl
 }
 const jointCtl = {};
 const jointsDiv = document.getElementById('joints');
-for (const [key, label, lo, hi] of JOINT_UI) {
-  const ctl = numRow(jointsDiv, label, '°', () => joints[key], v => { joints[key] = v; lastMoved = key; }, lo, hi, 1, true, 'j');
+for (const [key, label, lo, hi, unit] of JOINT_UI) {
+  const ctl = numRow(jointsDiv, label, unit, () => +joints[key].toFixed(1),
+                     v => { joints[key] = v; lastMoved = key; if (key === 'fx' || key === 'fz') driveMode = 'foot'; else if (key === 'thigh' || key === 'shin') driveMode = 'servo'; },
+                     lo, hi, 1, true, 'j');
   const b = document.createElement('button'); b.className = 'sm'; b.textContent = 'sweep';
   ctl.rng.parentElement.lastChild.replaceWith(b);
   b.onclick = () => sweep(key, stops[key] ? stops[key][0] : lo, stops[key] ? stops[key][1] : hi);
@@ -702,6 +762,7 @@ for (const [key, label, unit, lo, hi] of MECH_UI)
 document.getElementById('nominal').onclick = () => {
   const [t, s] = nominalAngles();
   joints.yaw = 0; joints.thigh = +(t / DEG).toFixed(1); joints.shin = +(s / DEG - mech.horn_phase).toFixed(1); joints.ankle = 0;
+  driveMode = 'servo'; lastMoved = 'shin';
   solveState.L = {}; solveState.R = {};
   for (const c of Object.values(jointCtl)) c.refresh();
   update();
@@ -732,6 +793,7 @@ function sweep(key, lo, hi) {
     const ph = f < 0.5 ? f * 2 : 2 - f * 2;              // lo -> hi -> lo
     joints[key] = lo + (hi - lo) * ph;
     lastMoved = key;
+    if (key === 'fx' || key === 'fz') driveMode = 'foot'; else if (key === 'thigh' || key === 'shin') driveMode = 'servo';
     jointCtl[key].refresh();
     const out = update();
     for (const c of out) if (c.level !== 'ok') {
@@ -752,6 +814,77 @@ function sweep(key, lo, hi) {
   }
   requestAnimationFrame(frame);
 }
+
+// ---- workspace map ---------------------------------------------------------------------------
+const map = document.getElementById('map'), mctx = map.getContext('2d');
+const MAP = { xmin: -0.33, xmax: 0.33, zmax: 0.17 };
+MAP.s = map.width / (MAP.xmax - MAP.xmin);
+MAP.zmin = MAP.zmax - map.height / MAP.s;
+const toPx = (x, z) => [(x - MAP.xmin) * MAP.s, (MAP.zmax - z) * MAP.s];
+const toXZ = (px, py) => [MAP.xmin + px / MAP.s, MAP.zmax - py / MAP.s];
+let mapImg = null, mapKey = '';
+function footAllowed(x, z) {
+  const r = ik(x, z);
+  if (!r.exact) return false;
+  const thigh = r.thigh / DEG;
+  return poseAllowed({ thigh, shin: shinCmdFor(thigh, r.shin) });
+}
+function buildMapImage() {
+  const key = JSON.stringify([genes, mech]);
+  if (key === mapKey && mapImg) return;
+  mapKey = key;
+  const img = mctx.createImageData(map.width, map.height), d = img.data, cell = 2;
+  for (let py = 0; py < map.height; py += cell) for (let px = 0; px < map.width; px += cell) {
+    const [x, z] = toXZ(px + cell / 2, py + cell / 2);
+    const ok = footAllowed(x, z);
+    const v = ok ? 255 : 150;
+    for (let dy = 0; dy < cell; dy++) for (let dx = 0; dx < cell; dx++) {
+      const i = 4 * ((py + dy) * map.width + px + dx);
+      d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = 255;
+    }
+  }
+  mapImg = img;
+}
+function drawMap(info) {
+  buildMapImage();
+  mctx.putImageData(mapImg, 0, 0);
+  // grid every 50 mm, axes through the pitch axis, floor line
+  mctx.save();
+  mctx.strokeStyle = 'rgba(0,0,0,0.12)'; mctx.lineWidth = 1;
+  for (let x = Math.ceil(MAP.xmin / 0.05) * 0.05; x <= MAP.xmax; x += 0.05) { const [px] = toPx(x, 0); mctx.beginPath(); mctx.moveTo(px, 0); mctx.lineTo(px, map.height); mctx.stroke(); }
+  for (let z = Math.ceil(MAP.zmin / 0.05) * 0.05; z <= MAP.zmax; z += 0.05) { const [, py] = toPx(0, z); mctx.beginPath(); mctx.moveTo(0, py); mctx.lineTo(map.width, py); mctx.stroke(); }
+  mctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  { const [px, py] = toPx(0, 0); mctx.beginPath(); mctx.moveTo(px, 0); mctx.lineTo(px, map.height); mctx.moveTo(0, py); mctx.lineTo(map.width, py); mctx.stroke(); }
+  // floor at the nominal crouch
+  { const [, py] = toPx(0, -nominalHeight()); mctx.setLineDash([5, 4]); mctx.strokeStyle = '#8a5a00'; mctx.beginPath(); mctx.moveTo(0, py); mctx.lineTo(map.width, py); mctx.stroke(); mctx.setLineDash([]);
+    mctx.fillStyle = '#8a5a00'; mctx.font = '11px system-ui'; mctx.fillText('floor at nominal crouch', 6, py - 4); }
+  mctx.fillStyle = '#333'; mctx.font = '11px system-ui';
+  mctx.fillText('x fore →', map.width - 52, toPx(0, 0)[1] - 5); mctx.fillText('z', toPx(0, 0)[0] + 5, 12);
+  // the leg
+  const [hx, hy] = toPx(0, 0), [kx, ky] = toPx(...info.kneeRel), [fx, fy] = toPx(...info.footRel);
+  mctx.lineWidth = 4; mctx.lineCap = 'round';
+  mctx.strokeStyle = '#4d7fe6'; mctx.beginPath(); mctx.moveTo(hx, hy); mctx.lineTo(kx, ky); mctx.stroke();
+  mctx.strokeStyle = '#4caf50'; mctx.beginPath(); mctx.moveTo(kx, ky); mctx.lineTo(fx, fy); mctx.stroke();
+  // target (hollow) and achieved foot (filled)
+  if (driveMode === 'foot') { const [tx, ty] = toPx(joints.fx * MM, joints.fz * MM); mctx.strokeStyle = '#dc2626'; mctx.lineWidth = 2; mctx.beginPath(); mctx.arc(tx, ty, 8, 0, 2 * Math.PI); mctx.stroke(); }
+  mctx.fillStyle = '#2563eb'; mctx.beginPath(); mctx.arc(fx, fy, 6, 0, 2 * Math.PI); mctx.fill();
+  mctx.fillStyle = '#222'; mctx.fillText(`(${(info.footRel[0] * 1e3).toFixed(0)}, ${(info.footRel[1] * 1e3).toFixed(0)}) mm   r ${(Math.hypot(...info.footRel) * 1e3).toFixed(0)} mm  θ ${(Math.atan2(-info.footRel[0], -info.footRel[1]) / DEG).toFixed(0)}°`, fx + 10, fy + 4);
+  mctx.restore();
+  document.getElementById('modetag').textContent = driveMode === 'foot' ? 'Driving: foot target (move a thigh/shin slider to drive servos again).' : 'Driving: servos.';
+}
+let mapDrag = false;
+function mapPoint(e) {
+  const r = map.getBoundingClientRect();
+  const px = (e.clientX - r.left) * map.width / r.width, py = (e.clientY - r.top) * map.height / r.height;
+  const [x, z] = toXZ(px, py);
+  joints.fx = Math.round(x * 1e3); joints.fz = Math.round(z * 1e3);
+  driveMode = 'foot'; lastMoved = 'shin';
+  update();
+}
+map.addEventListener('pointerdown', e => { mapDrag = true; map.setPointerCapture(e.pointerId); mapPoint(e); });
+map.addEventListener('pointermove', e => { if (mapDrag) mapPoint(e); });
+map.addEventListener('pointerup', () => mapDrag = false);
+map.addEventListener('pointercancel', () => mapDrag = false);
 
 rebuildFloor();
 resize();
