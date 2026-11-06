@@ -13,11 +13,15 @@ Layers, all gains from the genome, structure fixed:
    v + omega x r_foot; hip yaw points the tread along it (+-45 deg) and the
    tread speed is that velocity's magnitude. Straight ahead both feet are
    exactly parallel.
-4. Legs: each leg is two servos in the hip setting the thigh and shin angles
-   relative to the body (the shin through the parallelogram). The controller
-   picks a foot target (x, z) under the hip and solves the two-link inverse
-   kinematics, so height, lean and roll levelling are foot positions, not
-   joint angles. Servo commands are slew-limited to the servo's rate.
+4. Legs: each leg is two servos in the hip setting the thigh angle and, through
+   the shin drive four-bar (horn -> coupler -> tab on the shin), the shin angle
+   relative to the body. The controller picks a foot target (x, z) under the
+   hip, solves the two-link inverse kinematics, converts the shin angle to a
+   horn angle for that thigh (structure.horn_from_shin), clamps the pair to
+   the drive's hard stops (structure.drive_stops), slew-limits the thigh and
+   horn servos, and sets the knee actuator to the shin angle the four-bar
+   gives for the commanded thigh and horn. So a thigh command with a fixed
+   horn swings the shin as the linkage would.
 5. Balance: the ankle is passive, so pitch is held like a Segway: the treads
    are driven toward the fall (kp_bal, kd_bal) and the feet are shifted under
    the body (kp_foot_x, kd_foot_x). Fans add their pitch PD on top.
@@ -39,7 +43,7 @@ from ..body.hardware import tread_drive_from_params, servo_from_params, fan_from
 from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .structure import (nominal_angles, nominal_height, foot_from_angles, angles_from_foot,
-                        HIP_YAW_RANGE)
+                        horn_from_shin, shin_from_horn, drive_stops, HIP_YAW_RANGE, KNEE_RANGE)
 
 MU_FOOT = 1.2
 G = 9.81
@@ -49,6 +53,8 @@ COM_ABOVE_HIP = 0.08        # rough centre-of-mass height above the hip joint (c
 TREAD_TRACK_GAIN = 10.0     # 1/s, angle-error term of the tread position hold
 AIRBORNE_Z = 0.03           # hip higher than nominal by this -> treat as airborne
 CONTROL_DT = 0.01
+KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
+                                  # closer to a rigid link but the two position loops then chatter (rms accel x3)
 
 
 def quat_to_yaw(q: np.ndarray) -> float:
@@ -79,8 +85,15 @@ class SkaterController:
         thigh, shin = nominal_angles(p)
         self.x_nom, z_nom = foot_from_angles(p, thigh, shin)
         self.h_nom = -z_nom                          # hip-to-ankle drop in the parked crouch
-        self.servo_cmd = {f"{j}_{s}": (thigh if j == "hip_pitch" else shin - thigh if j == "knee" else 0.0)
+        # the shin drive: horn hard stops per thigh angle, and the horn that parks the shin
+        self.stops = drive_stops(p)
+        self.thigh_lim = self.stops.thigh_range()
+        horn = horn_from_shin(p, thigh, shin)
+        self.horn_nom = thigh + p["crouch"] if horn is None else horn
+        self.servo_cmd = {f"{j}_{s}": (thigh if j == "hip_pitch" else self.horn_nom if j == "knee" else 0.0)
                           for s in ("l", "r") for j in ("hip_yaw", "hip_pitch", "knee")}
+        self.thigh_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"hip_pitch_{s}")]
+                        for s in ("l", "r")}
         reach = max(0.005, p["sole_len"] / 2 - p["pulley_radius"])
         self.a_tip = TIP_MARGIN * G * reach / (self.z_ref + COM_ABOVE_HIP)
         self.objective = task["objective"]
@@ -115,6 +128,26 @@ class SkaterController:
         cur += max(-step, min(step, target - cur))
         self.servo_cmd[name] = cur
         return cur
+
+    def _drive_commands(self, s: str, thigh: float, shin: float) -> tuple[float, float]:
+        """Thigh and horn servo commands for a desired (thigh, shin): the thigh is
+        kept where the drive has a working band, the shin is converted to a horn
+        angle through the four-bar and clamped to the band's hard stops, then
+        both are slew-limited."""
+        p = self.p
+        thigh = max(self.thigh_lim[0], min(self.thigh_lim[1], thigh))
+        horn = horn_from_shin(p, thigh, shin)
+        band = self.stops.band(thigh)
+        if band is not None:
+            if horn is None:            # out of reach: the band end whose shin is nearest the request
+                ends = [(abs((r[0] if (r := shin_from_horn(p, thigh, h)) else 1e9) - shin), h) for h in band]
+                horn = min(ends)[1]
+            horn = max(band[0], min(band[1], horn))
+        elif horn is None:
+            horn = self.servo_cmd[f"knee_{s}"]
+        thigh_cmd = self._slew(f"hip_pitch_{s}", thigh)
+        horn_cmd = self._slew(f"knee_{s}", horn)
+        return thigh_cmd, horn_cmd
 
     # ---- main --------------------------------------------------------------------
     def act(self, data: mujoco.MjData, t: float) -> np.ndarray:
@@ -186,8 +219,15 @@ class SkaterController:
         dh_roll = p["kp_roll_lvl"] * roll + p["kd_roll_lvl"] * roll_rate   # left side up -> shorten left
         for s, sign in (("l", +1.0), ("r", -1.0)):
             thigh, shin = angles_from_foot(p, x_f, -(h - sign * dh_roll))
-            c[i[f"hip_pitch_{s}"]] = self._slew(f"hip_pitch_{s}", thigh)
-            c[i[f"knee_{s}"]] = self._slew(f"knee_{s}", shin - thigh)
+            thigh_cmd, horn_cmd = self._drive_commands(s, thigh, shin)
+            c[i[f"hip_pitch_{s}"]] = thigh_cmd
+            # the knee follows the four-bar for the thigh as it actually is
+            thigh_ref = float(data.qpos[self.thigh_q[s]]) if KNEE_FROM_MEASURED_THIGH else thigh_cmd
+            r = shin_from_horn(p, thigh_ref, horn_cmd)
+            if r is None:
+                r = shin_from_horn(p, thigh_cmd, horn_cmd)
+            shin_act = r[0] if r is not None else thigh_cmd + p["crouch"]
+            c[i[f"knee_{s}"]] = max(KNEE_RANGE[0], min(KNEE_RANGE[1], shin_act - thigh_ref))
 
         # 6. fans: two pitch channels
         if self.fans_enabled:

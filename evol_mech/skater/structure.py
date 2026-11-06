@@ -10,8 +10,13 @@ Mass rules from docs/skater_design.md:
 
 Leg kinematics (sagittal plane, angles relative to the body, positive = link
 swung backward): the thigh servo sets the thigh angle, the shin servo sets
-the shin angle through the parallelogram. The knee hinge angle is their
-difference. The ankle is a passive sprung hinge, so the sole is not part of
+the shin angle through a four-bar: horn on the shin servo -> coupler -> pin
+tab on the shin tube. With the shin servo coaxial with the hip pitch axis
+and equal horn / crank it is LEO's parallelogram (shin angle = horn angle);
+the default staggers the shin servo aft (tools/mechanism_checker.html), so
+the shin angle depends a little on the thigh angle too, and the drive has
+hard stops where a link would come within FOLD_MARGIN of straight. The knee
+hinge angle is shin minus thigh. The ankle is a passive sprung hinge, so the sole is not part of
 the servo kinematics: it lies flat under load and rests toe-up when unloaded.
 
 The core, battery and fan placement rules are shared with the biped
@@ -49,6 +54,16 @@ HIP_YAW_RANGE = math.radians(45)     # stage 1: steering only; crab (90 deg) is 
 THIGH_RANGE = (math.radians(-120), math.radians(60))    # negative = thigh forward
 KNEE_RANGE = (math.radians(10), math.radians(150))      # positive = shin back; the shin drive never comes within 10 deg of straight
 ANKLE_RANGE = math.radians(45)
+
+# shin drive: the staggered four-bar of tools/mechanism_checker.html (its defaults)
+SHIN_DRIVE = {
+    "dx": -0.045, "dz": 0.0,          # shin servo axis from the hip pitch axis (x forward, z up)
+    "horn": 0.040, "crank": 0.041,    # servo horn, and knee-to-pin distance along the shin tab
+    "crank_angle": math.radians(15),  # pin tab aft of the shin axis
+    "coupler": None,                  # None = auto: horn parallel to the shin at the nominal crouch
+}
+FOLD_MARGIN = math.radians(10)        # no two links of the shin drive within this of straight
+HORN_RANGE = (math.radians(-130), math.radians(130))
 
 
 class InvalidBody(ValueError):
@@ -117,6 +132,162 @@ def angles_from_foot(p: dict[str, float], x: float, z: float) -> tuple[float, fl
     alpha = math.atan2(L2 * math.sin(knee), L1 + L2 * math.cos(knee))
     thigh = phi - alpha
     return thigh, thigh + knee
+
+
+def _u(th: float) -> tuple[float, float]:
+    """Link direction (x, z) for a body-relative angle (0 = straight down, + = backward)."""
+    return -math.sin(th), -math.cos(th)
+
+
+def coupler_len(p: dict[str, float], mech: dict = SHIN_DRIVE) -> float:
+    """Coupler length: the given value, or (auto) the length that makes the horn
+    parallel to the shin at the nominal crouch. Coaxial servo + equal horn /
+    crank + zero crank angle gives the thigh length: LEO's parallelogram."""
+    if mech.get("coupler"):
+        return float(mech["coupler"])
+    tn, sn = nominal_angles(p)
+    L1, h1, h2 = p["thigh_len"], mech["horn"], mech["crank"]
+    uT, uS, uH = _u(tn), _u(sn + mech["crank_angle"]), _u(sn)
+    qx, qz = L1 * uT[0] + h2 * uS[0], L1 * uT[1] + h2 * uS[1]
+    px, pz = mech["dx"] + h1 * uH[0], mech["dz"] + h1 * uH[1]
+    return math.hypot(qx - px, qz - pz)
+
+
+def shin_from_horn(p: dict[str, float], thigh: float, horn: float,
+                   mech: dict = SHIN_DRIVE) -> tuple[float, float, float] | None:
+    """Solve the shin drive: (shin angle, horn-coupler angle, coupler-crank
+    angle), or None when the coupler cannot reach. Angles body-relative. Of
+    the two circle intersections the one nearest the parallelogram-like pose
+    (horn parallel to the shin) is taken, as the checker does."""
+    L1, h1, h2, Lc = p["thigh_len"], mech["horn"], mech["crank"], coupler_len(p, mech)
+    uT, uH = _u(thigh), _u(horn)
+    kx, kz = L1 * uT[0], L1 * uT[1]
+    px, pz = mech["dx"] + h1 * uH[0], mech["dz"] + h1 * uH[1]
+    dx, dz = px - kx, pz - kz
+    d = math.hypot(dx, dz)
+    if d < 1e-9 or d > h2 + Lc + 1e-9 or d < abs(h2 - Lc) - 1e-9:
+        return None
+    a = (h2 * h2 - Lc * Lc + d * d) / (2 * d)
+    hh = math.sqrt(max(0.0, h2 * h2 - a * a))
+    ex, ez = dx / d, dz / d
+    mx, mz = kx + a * ex, kz + a * ez
+    ug = _u(horn + mech["crank_angle"])
+    gx, gz = kx + h2 * ug[0], kz + h2 * ug[1]
+    best = None
+    for sgn in (1.0, -1.0):
+        qx, qz = mx - sgn * hh * ez, mz + sgn * hh * ex
+        err = math.hypot(qx - gx, qz - gz)
+        if best is None or err < best[0]:
+            best = (err, qx, qz)
+    _, qx, qz = best
+    shin = math.atan2(-(qx - kx), -(qz - kz)) - mech["crank_angle"]
+    shin = math.atan2(math.sin(shin), math.cos(shin))
+
+    def ang(ax, az, bx, bz):
+        c = (ax * bx + az * bz) / (math.hypot(ax, az) * math.hypot(bx, bz) + 1e-12)
+        return math.acos(max(-1.0, min(1.0, c)))
+    horn_coupler = ang(px - mech["dx"], pz - mech["dz"], qx - px, qz - pz)
+    transmission = ang(qx - px, qz - pz, qx - kx, qz - kz)
+    return shin, horn_coupler, transmission
+
+
+def horn_from_shin(p: dict[str, float], thigh: float, shin: float,
+                   mech: dict = SHIN_DRIVE) -> float | None:
+    """Horn angle that puts the shin at `shin` for this thigh angle (Newton from
+    the parallelogram guess horn = shin), or None if the drive cannot reach it."""
+    phi, err = shin, float("inf")
+    r = shin_from_horn(p, thigh, phi, mech)
+    if r is None:                       # the guess itself is unreachable: look for a reachable start nearby
+        for d in (0.2, -0.2, 0.4, -0.4, 0.6, -0.6, 0.8, -0.8):
+            r = shin_from_horn(p, thigh, phi + d, mech)
+            if r is not None:
+                phi += d
+                break
+        else:
+            return None
+    for _ in range(20):
+        err = math.atan2(math.sin(r[0] - shin), math.cos(r[0] - shin))
+        if abs(err) < 1e-6:
+            return phi
+        r2 = shin_from_horn(p, thigh, phi + 1e-4, mech)
+        if r2 is None:
+            r2 = shin_from_horn(p, thigh, phi - 1e-4, mech)
+            if r2 is None:
+                return None
+            slope = (r[0] - r2[0]) / 1e-4
+        else:
+            slope = (r2[0] - r[0]) / 1e-4
+        if abs(slope) < 1e-6:
+            return None
+        step = -max(-0.3, min(0.3, err / slope))
+        for _ in range(6):                  # backtrack if the step leaves the reachable set
+            rn = shin_from_horn(p, thigh, phi + step, mech)
+            if rn is not None:
+                break
+            step *= 0.5
+        else:
+            return None
+        phi, r = phi + step, rn
+    return phi if abs(err) < 1e-3 else None
+
+
+def drive_pose_allowed(p: dict[str, float], thigh: float, horn: float, mech: dict = SHIN_DRIVE) -> bool:
+    """Hard-stop rule of the shin drive: reachable, knee flexion within
+    KNEE_RANGE, thigh within THIGH_RANGE, and neither the horn-coupler nor the
+    coupler-crank angle within FOLD_MARGIN of straight (0 or 180 deg). The
+    checker adds geometric interference on top; this is the angular core."""
+    if not THIGH_RANGE[0] - 1e-9 <= thigh <= THIGH_RANGE[1] + 1e-9:
+        return False
+    r = shin_from_horn(p, thigh, horn, mech)
+    if r is None:
+        return False
+    shin, hc, mu = r
+    knee = shin - thigh
+    lo, hi = FOLD_MARGIN - 1e-9, math.pi - FOLD_MARGIN + 1e-9
+    return (KNEE_RANGE[0] - 1e-9 <= knee <= KNEE_RANGE[1] + 1e-9) and lo <= hc <= hi and lo <= mu <= hi
+
+
+@dataclass(frozen=True)
+class DriveStops:
+    """Horn hard stops per thigh angle: the widest contiguous allowed band of
+    horn angles for each thigh on a 1 deg grid; NaN where the thigh has none."""
+    thigh: tuple          # grid (rad)
+    lo: tuple             # horn band low (rad) per thigh
+    hi: tuple             # horn band high (rad) per thigh
+
+    def band(self, thigh: float) -> tuple[float, float] | None:
+        t = min(max(thigh, self.thigh[0]), self.thigh[-1])
+        k = min(int(round((t - self.thigh[0]) / (self.thigh[1] - self.thigh[0]))), len(self.thigh) - 1)
+        lo, hi = self.lo[k], self.hi[k]
+        return None if math.isnan(lo) else (lo, hi)
+
+    def thigh_range(self) -> tuple[float, float]:
+        ok = [t for t, lo in zip(self.thigh, self.lo) if not math.isnan(lo)]
+        return (ok[0], ok[-1]) if ok else (float("nan"), float("nan"))
+
+
+def drive_stops(p: dict[str, float], mech: dict = SHIN_DRIVE, step_deg: float = 1.0,
+                horn_step_deg: float = 0.5) -> DriveStops:
+    """Scan the (thigh, horn) grid once per body and keep, for each thigh, the
+    widest contiguous band of allowed horn angles."""
+    thighs = [THIGH_RANGE[0] + math.radians(step_deg) * k
+              for k in range(int(round(math.degrees(THIGH_RANGE[1] - THIGH_RANGE[0]) / step_deg)) + 1)]
+    horns = [HORN_RANGE[0] + math.radians(horn_step_deg) * k
+             for k in range(int(round(math.degrees(HORN_RANGE[1] - HORN_RANGE[0]) / horn_step_deg)) + 1)]
+    los, his = [], []
+    for t in thighs:
+        best, cur = None, None
+        for h in horns + [None]:
+            ok = h is not None and drive_pose_allowed(p, t, h, mech)
+            if ok:
+                cur = (cur[0], h) if cur else (h, h)
+            elif cur:
+                if best is None or cur[1] - cur[0] > best[1] - best[0]:
+                    best = cur
+                cur = None
+        los.append(best[0] if best else float("nan"))
+        his.append(best[1] if best else float("nan"))
+    return DriveStops(tuple(thighs), tuple(los), tuple(his))
 
 
 def nominal_height(p: dict[str, float]) -> float:

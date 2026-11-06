@@ -9,7 +9,8 @@ from evol_mech.bodies import get_body
 from evol_mech.skater import (DEFAULT_NORM, N_PARAMS, decode, encode, random_genome, mutate, crossover,
                               structure_from_params, make_model, make_data, rollout, evaluate, InvalidBody)
 from evol_mech.skater.structure import (nominal_angles, foot_from_angles, angles_from_foot, foot_layout,
-                                        LEG_MASS_FRACTION_TARGET)
+                                        LEG_MASS_FRACTION_TARGET, shin_from_horn, horn_from_shin,
+                                        drive_pose_allowed, drive_stops, coupler_len, KNEE_RANGE, FOLD_MARGIN)
 from evol_mech.skater.mjcf import ACTUATOR_NAMES
 from evol_mech.skater.rollout import LEG_MASS_PENALTY
 
@@ -34,6 +35,45 @@ def test_nominal_crouch_and_two_link_ik():
     for xf, zf in ((0.0, z), (0.04, z + 0.02), (-0.05, z - 0.01)):
         t, s = angles_from_foot(p, xf, zf)
         assert np.allclose(foot_from_angles(p, t, s), (xf, zf), atol=1e-6)
+
+
+def test_shin_drive_four_bar():
+    import math
+    p = decode(DEFAULT_NORM)
+    thigh, shin = nominal_angles(p)
+    # auto coupler: the horn is parallel to the shin at the nominal crouch, so horn = shin there
+    horn = horn_from_shin(p, thigh, shin)
+    assert horn is not None and abs(horn - shin) < 1e-6
+    # forward and inverse agree away from nominal
+    for t, h in ((-0.9, 0.7), (-0.3, 1.0), (-0.1, 0.2)):
+        r = shin_from_horn(p, t, h)
+        assert r is not None
+        back = horn_from_shin(p, t, r[0])
+        assert back is not None and abs(back - h) < 1e-5
+    # the staggered drive couples the shin to the thigh: same horn, different thigh -> different shin
+    s1 = shin_from_horn(p, thigh, horn)[0]
+    s2 = shin_from_horn(p, thigh - 0.5, horn)[0]
+    assert abs(s1 - s2) > 0.02
+    # coaxial servo, equal horn / crank, coupler = thigh: LEO's parallelogram, shin = horn for any thigh
+    para = {"dx": 0.0, "dz": 0.0, "horn": 0.03, "crank": 0.03, "crank_angle": 0.0, "coupler": p["thigh_len"]}
+    assert abs(coupler_len(p, para) - p["thigh_len"]) < 1e-12
+    for t in (-1.0, -0.3, 0.2):
+        for h in (-0.3, 0.3, 1.0):
+            assert abs(shin_from_horn(p, t, h, para)[0] - h) < 1e-6
+    # hard stops: the nominal pose is allowed, the band around it is contiguous, and every
+    # pose in it keeps the knee in range and both link angles outside the fold margin
+    assert drive_pose_allowed(p, thigh, horn)
+    stops = drive_stops(p)
+    band = stops.band(thigh)
+    assert band is not None and band[0] < horn < band[1]
+    for k in range(21):
+        h = band[0] + (band[1] - band[0]) * k / 20
+        sh, hc, mu = shin_from_horn(p, thigh, h)
+        assert KNEE_RANGE[0] - 1e-6 <= sh - thigh <= KNEE_RANGE[1] + 1e-6
+        assert FOLD_MARGIN - 1e-6 <= hc <= math.pi - FOLD_MARGIN + 1e-6
+        assert FOLD_MARGIN - 1e-6 <= mu <= math.pi - FOLD_MARGIN + 1e-6
+    lo, hi = stops.thigh_range()
+    assert lo <= thigh <= hi
 
 
 def test_foot_layout_tread_and_wheels():

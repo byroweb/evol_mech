@@ -33,7 +33,7 @@ adds leg yaw for steering, and puts skates on the feet.
 | Each leg at most ~10-12 % of total mass, penalised | `structure.leg_mass_fraction`, `rollout.LEG_MASS_PENALTY` | Default body is 12.9 % per leg (tread drive 78 g, foot 70 g, shin 37 g, thigh 44 g), so it pays 0.09 fitness. The GA can shrink the tread motor and sole; see open questions. |
 | Metal-gear servos, not steppers or QDD | `body/hardware.servo_from_params` | Stall 10-60 kg cm in 5 kg cm steps; mass 25 g + 1.1 g per kg cm; 60 deg in 0.15 s (7 rad/s, slew-limited in the controller); position gain = stall torque over 4 deg. |
 | Hip yaw, thigh, shin (via parallelogram); passive ankle; no hip roll | `mjcf._leg` | Hinges: yaw +-45, thigh -120..+60, knee 10..150 deg (no link of the shin drive comes within 10 deg of straight), ankle rest +-45 deg. Yaw axis vertical through the hip point. |
-| Knee via parallelogram from the shin servo | `mjcf._leg_actuators`, `controller` legs block | Modelled as a position actuator on the knee hinge with target shin_cmd - thigh_cmd, so the servo pair behaves like LEO's: body-relative thigh and shin angles. The coupler link is drawn (thin red capsule) but not simulated as a closed loop. `tools/mechanism_checker.html` carries the manufacturable layout: both horns in the leg plane, servos opposed, shin servo axis 30 mm aft and 10 mm above the hip pitch axis, 40 mm horns, coupler pinned to a tab on the shin (pin 11 mm aft of the tube); in that staggered four-bar the shin angle depends slightly on the thigh angle, which the sim's knee actuator does not yet model. |
+| Knee via the shin-drive four-bar | `structure.shin_from_horn / horn_from_shin / drive_stops`, `controller._drive_commands`, `mjcf._leg_actuators` | The shin servo horn, coupler and a pin tab on the shin form a four-bar (`structure.SHIN_DRIVE`: shin servo 45 mm aft of the hip pitch axis, 40 mm horn, 41 mm tab at 15 deg, coupler length auto so horn and shin are parallel at the nominal crouch; the defaults of `tools/mechanism_checker.html`). The controller converts the IK shin angle to a horn angle for the commanded thigh, clamps it to the drive's hard stops (knee 10..150, no link within 10 deg of straight; a table per thigh angle built once per body), slew-limits thigh and horn, and sets the knee position actuator to the four-bar's shin for the commanded pair. Coaxial servo + equal horn / crank reduces it to LEO's parallelogram. The coupler is still drawn, not simulated as a closed loop; interference (foot vs shin, thigh vs servo) is checked in the browser tool only. |
 | Ankle passive, sprung, toe-up when unloaded | `mjcf._leg` ankle joint | `stiffness = ankle_stiffness` (gene, 0.2-6 N m/rad), `springref` = sole level at the parked crouch plus `ankle_rest` toe-up, damping 10 % of stiffness. Under load the sole flattens; a step lifts the toe first. |
 | Fans pitch only, independent channels | `mjcf._fan`, `controller` fans block | One pitch hinge per fan. Common pitch = allocation tilt + pitch PD; opposite pitch = yaw torque (`fan_kp_yaw`); differential throttle = roll. Sideways push, if ever wanted, is a body roll plus common thrust. |
 | Feet parallel unless steering, one turning centre | `controller.act` treads block | Each foot's ground velocity = v + omega x r_foot; the tread speed difference steers; hip yaw follows the path heading, clipped at +-45 deg. |
@@ -63,9 +63,13 @@ adds leg yaw for steering, and puts skates on the feet.
 4. **Tread force is capped by a tip-over limit, not only by friction.** Pushing
    at ground level with the centre of mass 40 cm up tips a 14 cm sole at about
    1.2 m/s^2. Beyond `TIP_MARGIN` x that the remainder goes to the fans.
-5. **The parallelogram is a joint actuator, not a closed loop.** The knee
-   position actuator with the body-relative target reproduces the kinematics
-   and the servo's torque limit; coupler flex and pin friction are not modelled.
+5. **The shin drive is a joint actuator, not a closed loop.** The knee
+   position actuator with the four-bar's target reproduces the kinematics,
+   the hard stops and the servo's torque limit at the horn; the varying
+   mechanical advantage of the linkage, coupler flex and pin friction are not
+   modelled. Driving the knee from the measured thigh instead of the commanded
+   one is closer to a rigid link but makes the two position loops chatter
+   (RMS hip acceleration tripled), so the commanded thigh is used.
 6. **No lateral tread compliance.** Rigid rollers, so a yawed tread scrubs
    with full friction, which the slalom's scrub cost sees.
 
