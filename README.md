@@ -119,9 +119,13 @@ cranks where the feet are level and centred. Fans run a PD attitude loop:
 roll to differential throttle, pitch to fan pitch. Gains are in the genome.
 
 **Fitness** (`sim/rollout.py`). Every task spawns in the parked stance with
-both feet level. Walk: forward distance scaled by the fraction
+both feet level. Skate: forward distance scaled by the fraction
 of the task spent upright, minus lateral drift,
-fall penalty and fan energy. Stand: fraction of time upright under periodic
+fall penalty and fan energy. Walk: progress of the feet per second of the
+task minus drift, with no ride-quality cost and a small fall penalty (0.1, scaled by the time left) by default (the
+episode ends at a fall, so the distance walked before it is what counts and a
+gait that steps and falls beats one that stands still; `fall_cost` on the task
+overrides). Stand: fraction of time upright under periodic
 shoves, minus drift (`drift_cost` per metre, default 1.0) and fan energy.
 `fan_energy_cost` (0.2 by default) prices fan use so that thrust-propelled
 skating on the feet scores below actual stepping. A fall is a tipped hip or

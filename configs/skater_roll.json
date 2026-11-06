@@ -34,8 +34,7 @@
       "objective": "walk",
       "speed": 0.4,
       "duration": 8.0,
-      "weight": 1.0,
-      "accel_cost": 0.02
+      "weight": 1.0
     },
     {
       "name": "hop",

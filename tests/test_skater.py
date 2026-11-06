@@ -166,7 +166,7 @@ def test_slalom_cones():
 
 def test_legged_cycles():
     import mujoco
-    from evol_mech.skater.controller import WALK_DUTY, SkaterController
+    from evol_mech.skater.controller import SkaterController
     p = decode(DEFAULT_NORM)
     model, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
     walk = SkaterController(model, p, {"objective": "walk", "speed": 0.4, "terrain": "flat"})
@@ -174,6 +174,7 @@ def test_legged_cycles():
     # legs half a cycle apart; the stance foot travels back, the swing foot comes forward lifted
     l0, r0 = walk.gait_offsets(0.0)["l"], walk.gait_offsets(0.0)["r"]
     assert abs(l0[0] - p["step_len"] / 2) < 1e-9 and l0[1] == 0.0
+    WALK_DUTY = p["step_duty"]
     assert walk.gait_offsets(T * WALK_DUTY / 2)["l"][0] < l0[0]
     mid_swing = T * (WALK_DUTY + (1 - WALK_DUTY) / 2)
     assert abs(walk.gait_offsets(mid_swing)["l"][1] - p["step_lift"]) < 1e-9
@@ -197,7 +198,7 @@ def test_legged_cycles():
 
 def test_hip_roll_places_the_feet():
     import mujoco
-    from evol_mech.skater.controller import SkaterController, WALK_DUTY
+    from evol_mech.skater.controller import SkaterController
     from evol_mech.skater.structure import HIP_ROLL_RANGE
     p = decode(DEFAULT_NORM)
     model, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
@@ -223,6 +224,7 @@ def test_hip_roll_places_the_feet():
     # so both legs roll the feet to the left; the opposite half a cycle later
     walk = SkaterController(model, p, {"objective": "walk", "speed": 0.4, "terrain": "flat"})
     T = 1 / p["step_hz"]
+    WALK_DUTY = p["step_duty"]
     mid_swing = T * (WALK_DUTY + (1 - WALK_DUTY) / 2)
     amp = p["walk_shift"] * p["hip_width"] / 2
     assert walk.body_shift(mid_swing) < -0.9 * amp
@@ -231,6 +233,24 @@ def test_hip_roll_places_the_feet():
     assert c[aid("hip_roll_l")] > 0 and c[aid("hip_roll_r")] > 0
     # the default stance is unchanged: zero roll, feet under the hips
     assert SkaterController(model, p, {"objective": "skate", "speed": 0.6, "terrain": "flat"}).body_shift(0.3) == 0.0
+
+
+def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
+    from evol_mech.skater.spec import encode, N_PARAMS
+    from evol_mech.skater.rollout import FALL_COST
+    assert N_PARAMS == 63 and FALL_COST == {"walk": 0.1}
+    phys = json.load(open("configs/archetypes/skater_walker.json"))["phys"]
+    task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0}
+    r = rollout(encode(phys), task, 0)
+    # the hand-picked seed walks: forward progress of the feet, no fall, no fan lift
+    assert not r["fell"] and r["feet_x_m"] > 0.5 and abs(r["feet_x_m"] - r["distance_x"]) < 0.1
+    assert r["fan_energy"] < 0.3
+    # stepping outscores standing still on the walk task (the fixed costs - leg mass, ride
+    # quality, motor energy - make both negative on this heavy-servo seed)
+    r_still = rollout(encode({**phys, "step_len": 0.02, "walk_shift": 0.0}), task, 0)
+    assert r_still["feet_x_m"] < 0.2 and r["fitness"] > r_still["fitness"]
+    r_stand = rollout(encode(phys), {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.0}, 0)
+    assert not r_stand["fell"] and r_stand["time_upright"] >= 0.9
 
 
 def test_all_objectives_run_and_default_stands():

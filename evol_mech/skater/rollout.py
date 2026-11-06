@@ -14,7 +14,17 @@ Fitness (stage-1 tasks from the design doc):
           extremes (x = lambda/4 + n lambda/2), so the skater rounds each one
           on alternate sides
   stand   time upright minus drift, shoved every PERTURB_PERIOD seconds
-  walk    as skate, with the treads locked (the gait cycle moves the feet)
+  walk    progress of the feet (mean foot x) per second of the task, minus
+          lateral drift (no ride-quality cost by default: step impacts are
+          not a fault, and at skate's 0.02 they outweighed the progress of a
+          0.1 m/s walk); treads locked (the gait cycle moves the feet). The
+          fall penalty is small (0.1) and scales with the time left: the
+          episode ends at a fall, so what counts is the distance walked
+          before it, and a gait that steps and falls late outscores one that
+          stands still (the flat -0.5 made standing the attractor), while a
+          fall in the first second pays it all (with no penalty, falling at
+          once avoided every running cost and scored zero). The feet, not
+          the hip, measure the progress so a forward dive earns nothing.
   hop     sum of the three highest ballistic rises of the hip (apex above its
           take-off height) minus drift, so repeatable high hops score and a
           chatter of tiny bounces does not; treads locked
@@ -23,7 +33,9 @@ Fitness (stage-1 tasks from the design doc):
 A flight is both feet off the floor for at least FLIGHT_MIN_S with the hip
 rising at least FLIGHT_MIN_RISE above its take-off height (sole bounce and
 the spawn drop are not flights).
-All tasks: -0.5 for a fall, fan energy, leg + tread motor energy, and the
+All tasks: a fall costs `fall_cost` (task key; default FALL_COST per
+objective: 0.5, walk 0.1 x the fraction of the task left), plus fan energy,
+leg + tread motor energy, and the
 distal-mass penalty (each leg above LEG_MASS_FRACTION_TARGET of total mass).
 A fall is a tipped or dropped hip, or anything but a foot touching the floor.
 """
@@ -46,6 +58,11 @@ from .structure import InvalidBody, nominal_height, leg_mass_fraction, LEG_MASS_
 from .controller import SkaterController
 
 OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "hop", "broad_jump")
+FALL_COST = {"walk": 0.1}       # default fall penalty per objective (0.5 otherwise); on the walk it
+                                # scales with the time left, so an early fall pays it all and a late one little
+ACCEL_COST = {"walk": 0.0}      # default ride-quality cost per objective (0.02 otherwise): a walk's
+                                # step impacts are not a ride-quality fault, and at 0.02 they outweighed
+                                # the progress of a 0.1 m/s walk, so standing still won
 FLIGHT_MIN_S = 0.04             # both feet off the floor at least this long ...
 FLIGHT_MIN_RISE = 0.01          # ... with the hip rising at least this (m) counts as a flight
 HOP_TOP_N = 3                   # hop fitness sums the highest apex rises of this many flights
@@ -140,6 +157,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     duration = float(task["duration"])
     n_ctrl = int(duration / CONTROL_DT)
     x0, y0 = float(data.qpos[0]), float(data.qpos[1])
+    feet_x0 = float(np.mean([data.xpos[b][0] for b in foot_bodies]))
     fan_energy = motor_energy = 0.0
     time_upright = 0.0
     fell = unstable = False
@@ -222,6 +240,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     wall = time.perf_counter() - t_wall
     dx = float(data.qpos[0]) - x0
     dy = float(data.qpos[1]) - y0
+    feet_dx = float(np.mean([data.xpos[b][0] for b in foot_bodies])) - feet_x0
     n = max(1, k + 1)
     rms_accel = math.sqrt(accel_sq / n)
     rms_lat = math.sqrt(lat_err_sq / n)
@@ -229,15 +248,17 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     leg_frac = leg_mass_fraction(p)
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
     energy = fan_energy_cost * fan_energy + motor_energy_cost * motor_energy
-    accel_cost = float(task.get("accel_cost", 0.02))
+    accel_cost = float(task.get("accel_cost", ACCEL_COST.get(objective, 0.02)))
     apexes = sorted((f[0] for f in flights), reverse=True)
     max_apex = apexes[0] if apexes else 0.0
     max_flight = max([f[1] for f in flights], default=0.0)
 
     if unstable:
         fitness = UNSTABLE_FITNESS
-    elif objective in ("skate", "walk"):
+    elif objective == "skate":
         fitness = (dx / duration) * upright_frac - accel_cost * rms_accel - 0.2 * abs(dy)
+    elif objective == "walk":
+        fitness = feet_dx / duration - accel_cost * rms_accel - 0.2 * abs(dy)
     elif objective == "hop":
         fitness = sum(apexes[:HOP_TOP_N]) - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy)
     elif objective == "broad_jump":
@@ -251,12 +272,16 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     else:
         fitness = upright_frac - float(task.get("drift_cost", 1.0)) * math.hypot(dx, dy)
     if not unstable:
-        fitness += -(0.5 if fell else 0.0) - energy - leg_pen
+        fall_cost = float(task.get("fall_cost", FALL_COST.get(objective, 0.5)))
+        if objective == "walk":
+            fall_cost *= 1.0 - upright_frac
+        fitness += -(fall_cost if fell else 0.0) - energy - leg_pen
 
     return {
         "fitness": float(fitness),
         "invalid": False,
         "distance_x": dx,
+        "feet_x_m": feet_dx,
         "drift_y": dy,
         "mean_speed": (dx if objective != "crab" else dy) / duration,
         "time_upright": time_upright,

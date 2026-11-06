@@ -30,7 +30,8 @@ Layers, all gains from the genome, structure fixed:
    are driven toward the fall (kp_bal, kd_bal) and the feet are shifted under
    the body (kp_foot_x, kd_foot_x). Roll is held the same way with the hip
    roll servos: the feet shift sideways toward the fall (kp_roll_y,
-   kd_roll_y) and unequal leg height levels the body (kp_roll_lvl). A wider
+   kd_roll_y) and toward the lateral body motion (kv_foot_y, the capture
+   point), and unequal leg height levels the body (kp_roll_lvl). A wider
    track (stance_w) is an evolved standing / landing margin. Fans add their
    pitch PD and roll differential on top.
 6. Fans: each on its own pitch servo. Common pitch = allocation tilt +
@@ -42,7 +43,8 @@ command is a locked sole: the worm does not back-drive.
 
 Legged objectives (walk, hop, broad_jump) lock the treads and move the foot
 targets instead: a walk cycle (stance foot travels back under the hip at
-step_hz, swing foot returns lifted by step_lift; legs half a cycle apart) or
+step_hz for step_duty of the cycle, swing foot returns lifted by step_lift;
+legs half a cycle apart) or
 a jump cycle (crouch by jump_crouch, thrust to jump_ext above nominal with the
 feet jump_lean behind the hip on the broad jump, tuck,
 settle). Nothing is asked of the treads then (no lean reference); the
@@ -52,7 +54,8 @@ kd_foot_leg, with ki_foot_leg integrating out steady moments such as a fan
 pitch bias or a forward payload) and ahead of it by kv_foot_x per m/s of
 forward speed. In a
 walk the body is also shifted sideways over the stance foot
-(walk_shift, a sinusoid in phase with the step) through the hip roll servos,
+(walk_shift, a sinusoid peaking at shift_phase of the step) through the hip
+roll servos,
 and the fan over the swing foot gets step_fan extra throttle at full lift so
 that side is carried while the foot is off the ground.
 """
@@ -78,8 +81,8 @@ TREAD_TRACK_GAIN = 10.0     # 1/s, angle-error term of the tread position hold
 AIRBORNE_Z = 0.03           # hip higher than nominal by this -> treat as airborne
 CONTROL_DT = 0.01
 LEGGED = ("walk", "hop", "broad_jump")      # objectives with locked treads and moving feet
-WALK_DUTY = 0.6                             # fraction of the cycle a foot is in stance
-WALK_SHIFT_PHASE = 0.3                      # cycle fraction (left foot) at which the body is furthest left
+# walk cycle: stance duty (`step_duty`) and the cycle fraction at which the body is
+# furthest left (`shift_phase`) are genes; the left foot's phase is the cycle reference
 JUMP_PHASES = (0.45, 0.60, 0.80)            # cycle fractions: crouch | thrust | tuck | settle
 KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
                                   # closer to a rigid link but the two position loops then chatter (rms accel x3)
@@ -161,10 +164,11 @@ class SkaterController:
             for s, ph in (("l", 0.0), ("r", 0.5)):
                 u = (p["step_hz"] * t + ph) % 1.0
                 L = p["step_len"]
-                if u < WALK_DUTY:                    # stance: foot travels back under the hip
-                    out[s] = (L / 2 - L * u / WALK_DUTY, 0.0, True)
+                duty = p["step_duty"]
+                if u < duty:                         # stance: foot travels back under the hip
+                    out[s] = (L / 2 - L * u / duty, 0.0, True)
                 else:                                # swing: lifted return
-                    w = (u - WALK_DUTY) / (1 - WALK_DUTY)
+                    w = (u - duty) / (1 - duty)
                     out[s] = (-L / 2 + L * w, p["step_lift"] * math.sin(math.pi * w), True)
             return out
         if self.objective in ("hop", "broad_jump"):
@@ -189,7 +193,7 @@ class SkaterController:
             return 0.0
         u = (self.p["step_hz"] * t) % 1.0
         amp = self.p["walk_shift"] * self.p["hip_width"] / 2          # 1.0 = hip over the stance foot
-        return amp * math.cos(2 * math.pi * (u - WALK_SHIFT_PHASE))
+        return amp * math.cos(2 * math.pi * (u - self.p["shift_phase"]))
 
     def _slew(self, name: str, target: float) -> float:
         step = self.servo.max_rad_s * CONTROL_DT
@@ -290,7 +294,10 @@ class SkaterController:
             x_f = (self.x_nom - d_feet
                    + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)
         dh_roll = p["kp_roll_lvl"] * roll + p["kd_roll_lvl"] * roll_rate   # left side up -> shorten left
-        dy_f = -self.body_shift(t) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
+        # feet toward the fall and toward the lateral motion: with kp_roll_y ~ leg drop and
+        # kv_foot_y ~ sqrt(drop / g) the swing foot lands on the capture point
+        dy_f = (-self.body_shift(t) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
+                + p["kv_foot_y"] * float(v_b[1]))
         gait = self.gait_offsets(t)
         for s, sign in (("l", +1.0), ("r", -1.0)):
             gx, gz, fb = gait[s]

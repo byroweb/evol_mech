@@ -63,7 +63,7 @@ PARAMS: list[Param] = [
     Param("steer_kp",         0.3,  6.0,  1.0,  "steer"),       # yaw rate per rad of heading error (tread differential + fan yaw)
     Param("path_kp",          0.3,  6.0,  0.8,  "steer"),       # heading per m of lateral path error
     # ---- legged gaits (walk, hop, broad jump: treads locked) -----------------
-    Param("step_hz",          0.5,  3.0,  1.5,  "gait"),        # walk: stride frequency per leg
+    Param("step_hz",          0.5,  5.0,  1.5,  "gait"),        # walk: stride frequency per leg (the first evolved walk sat on a 3 Hz cap)
     Param("step_len",         0.02, 0.20, 0.08, "gait"),        # walk: foot travel fore-aft under the hip (m)
     Param("step_lift",        0.01, 0.08, 0.03, "gait"),        # walk: swing-foot clearance (m)
     Param("jump_hz",          0.3,  1.5,  0.8,  "gait"),        # hop / broad jump: cycle rate
@@ -81,13 +81,16 @@ PARAMS: list[Param] = [
     Param("fan_kp_yaw",      -4.0,  4.0,  0.5,  "fan_ctrl"),    # opposite pitch per rad/s of yaw-rate error
     # ---- hip roll: lateral foot placement (appended so older genomes pad) -----
     Param("walk_shift",       0.0,  1.2,  0.5,  "roll"),        # walk: body shift toward the stance foot, fraction of the half hip width
-    Param("kp_roll_y",       -0.3,  0.3,  0.05, "roll"),        # feet shifted toward a roll per rad (m/rad)
-    Param("kd_roll_y",       -0.05, 0.05, 0.005, "roll"),
+    Param("kp_roll_y",        0.0,  1.0,  0.1,  "roll"),        # feet shifted toward a roll per rad (m/rad); ~leg drop = feet under the CoM
+    Param("kd_roll_y",        0.0,  0.3,  0.01, "roll"),        # per rad/s; ~drop x sqrt(drop/g) = capture point
     Param("stance_w",         0.0,  0.06, 0.0,  "roll"),        # feet outboard of the hip points (m), a wider track
     Param("kv_foot_x",        0.0,  0.5,  0.1,  "gait"),        # legged: feet ahead per m/s of forward body speed (s)
     Param("kp_foot_leg",     -0.6,  0.6,  0.0,  "gait"),        # legged: foot fore/aft shift per rad of body pitch (m/rad)
     Param("kd_foot_leg",     -0.1,  0.1,  0.0,  "gait"),
     Param("ki_foot_leg",      0.0,  1.0,  0.2,  "gait"),        # legged: foot shift integral (m/rad/s), clamped at 5 cm
+    Param("kv_foot_y",        0.0,  0.5,  0.1,  "roll"),        # feet shifted per m/s of lateral body speed (s); sqrt(h/g) = capture point
+    Param("step_duty",        0.5,  0.9,  0.6,  "gait"),        # walk: fraction of the cycle a foot is in stance (double support = 2 duty - 1)
+    Param("shift_phase",      0.0,  0.5,  0.3,  "gait"),        # walk: cycle fraction (left foot) at which the body is furthest left
 ]
 
 NAMES = [p.name for p in PARAMS]
