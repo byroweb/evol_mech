@@ -15,11 +15,14 @@ Fitness (stage-1 tasks from the design doc):
           on alternate sides
   stand   time upright minus drift, shoved every PERTURB_PERIOD seconds
   walk    as skate, with the treads locked (the gait cycle moves the feet)
-  hop     highest ballistic rise of the hip (apex above its take-off height)
-          plus a bonus per landed flight, minus drift; treads locked
+  hop     sum of the three highest ballistic rises of the hip (apex above its
+          take-off height) minus drift, so repeatable high hops score and a
+          chatter of tiny bounces does not; treads locked
   broad_jump  longest flight (hip x from take-off to landing) plus a little
           of the total distance; treads locked
-A flight is both feet off the floor for at least FLIGHT_MIN_S.
+A flight is both feet off the floor for at least FLIGHT_MIN_S with the hip
+rising at least FLIGHT_MIN_RISE above its take-off height (sole bounce and
+the spawn drop are not flights).
 All tasks: -0.5 for a fall, fan energy, leg + tread motor energy, and the
 distal-mass penalty (each leg above LEG_MASS_FRACTION_TARGET of total mass).
 A fall is a tipped or dropped hip, or anything but a foot touching the floor.
@@ -43,8 +46,9 @@ from .structure import InvalidBody, nominal_height, leg_mass_fraction, LEG_MASS_
 from .controller import SkaterController
 
 OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "hop", "broad_jump")
-FLIGHT_MIN_S = 0.04             # both feet off the floor at least this long counts as a flight
-HOP_BONUS = 0.1                 # fitness per landed flight on the hop task
+FLIGHT_MIN_S = 0.04             # both feet off the floor at least this long ...
+FLIGHT_MIN_RISE = 0.01          # ... with the hip rising at least this (m) counts as a flight
+HOP_TOP_N = 3                   # hop fitness sums the highest apex rises of this many flights
 LEG_MASS_PENALTY = 5.0          # fitness per unit of leg fraction above target, per leg
 CONE_HEIGHT = 0.30              # a small traffic cone: 30 cm tall, 10 cm base radius
 CONE_BASE_R = 0.10
@@ -192,7 +196,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             apex = max(apex, float(data.qpos[2]))
             airborne_s += CONTROL_DT
         elif off_floor_since is not None:
-            if t - off_floor_since >= FLIGHT_MIN_S:
+            if t - off_floor_since >= FLIGHT_MIN_S and apex - takeoff[1] >= FLIGHT_MIN_RISE:
                 flights.append((apex - takeoff[1], float(data.qpos[0]) - takeoff[0], t - off_floor_since))
             off_floor_since = None
         if objective == "slalom":
@@ -226,7 +230,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
     energy = fan_energy_cost * fan_energy + motor_energy_cost * motor_energy
     accel_cost = float(task.get("accel_cost", 0.02))
-    max_apex = max([f[0] for f in flights], default=0.0)
+    apexes = sorted((f[0] for f in flights), reverse=True)
+    max_apex = apexes[0] if apexes else 0.0
     max_flight = max([f[1] for f in flights], default=0.0)
 
     if unstable:
@@ -234,8 +239,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     elif objective in ("skate", "walk"):
         fitness = (dx / duration) * upright_frac - accel_cost * rms_accel - 0.2 * abs(dy)
     elif objective == "hop":
-        fitness = (max_apex + HOP_BONUS * len(flights)
-                   - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy))
+        fitness = sum(apexes[:HOP_TOP_N]) - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy)
     elif objective == "broad_jump":
         fitness = max_flight + float(task.get("dist_weight", 0.1)) * dx
     elif objective == "crab":
