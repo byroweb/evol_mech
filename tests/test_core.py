@@ -209,3 +209,22 @@ def test_cross_foot_bar_capped_and_counts_as_foot():
     # standing on cross feet with the cranks still must not register as a fall
     r = rollout(encode(dict(p, crank_speed_hz=0.0)), {"terrain": "flat", "objective": "walk", "duration": 1.0}, seed=0, fans_enabled=False)
     assert not r["fell"]
+
+
+def test_store_records_lineage(tmp_path):
+    import json
+    from evol_mech.data.store import RunStore
+    from evol_mech.evolve.ga import KIND_ELITE, KIND_CROSSOVER
+    cfg = json.load(open("configs/default.json"))
+    store = RunStore(tmp_path, "lineage", cfg)
+    genomes = np.random.default_rng(0).random((3, 35))
+    results = [{"fitness": f, "sim_steps": 10, "wall_s": 0.01} for f in (0.1, 0.3, 0.2)]
+    store.log_generation(0, genomes, results, 0.1)
+    store.log_generation(1, genomes, results, 0.1, parents=np.array([[1, -1], [1, 2], [0, -1]]),
+                         kinds=np.array([KIND_ELITE, KIND_CROSSOVER, KIND_CROSSOVER]), gen_seed=42)
+    store.close()
+    z0 = np.load(tmp_path / "lineage" / "population" / "gen_0000.npz")
+    z1 = np.load(tmp_path / "lineage" / "population" / "gen_0001.npz")
+    assert (z0["parents"] == -1).all() and int(z0["gen_seed"]) == -1
+    assert z1["parents"].tolist() == [[1, -1], [1, 2], [0, -1]] and int(z1["gen_seed"]) == 42
+    assert z1["kinds"][0] == KIND_ELITE

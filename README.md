@@ -32,6 +32,7 @@ Two simulators, two stages:
     .venv\Scripts\python -m evol_mech.evolve.run configs\default.json
     .venv\Scripts\python tools\view.py runs\dev\best.json   # interactive viewer
     .venv\Scripts\python tools\plot_linkage.py runs\dev\best.json -o leg.png
+    .venv\Scripts\python tools\evolution_video.py runs\dev    # every individual per generation, best outlined, children branching
 
 ## Skater mech (stage 1)
 

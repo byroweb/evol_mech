@@ -3,7 +3,10 @@
 runs/<run_name>/
     config.json          frozen copy of the config used
     generations.jsonl    one line per generation: summary stats + throughput
-    population/gen_XXXX.npz   genomes + fitness for every individual
+    population/gen_XXXX.npz   genomes + fitness for every individual, plus
+                              parents (index into the previous generation,
+                              -1 = none), kinds (see evolve.ga.KIND_*) and the
+                              generation's terrain seed
     best.json            best-so-far genome (normalised + decoded) and metrics
     videos/              elite replays, if enabled
 """
@@ -30,7 +33,8 @@ class RunStore:
         self.t0 = time.time()
 
     def log_generation(self, gen: int, genomes: np.ndarray, results: list[dict],
-                       wall_s: float) -> dict:
+                       wall_s: float, parents: np.ndarray | None = None,
+                       kinds: np.ndarray | None = None, gen_seed: int | None = None) -> dict:
         fit = np.array([r["fitness"] for r in results])
         steps = sum(r["sim_steps"] for r in results)
         cpu_s = sum(r["wall_s"] for r in results)
@@ -50,8 +54,12 @@ class RunStore:
         }
         self.gen_log.write(json.dumps(row) + "\n")
         self.gen_log.flush()
+        n = len(genomes)
         np.savez_compressed(self.dir / "population" / f"gen_{gen:04d}.npz",
-                            genomes=genomes, fitness=fit)
+                            genomes=genomes, fitness=fit,
+                            parents=np.full((n, 2), -1) if parents is None else parents,
+                            kinds=np.zeros(n, dtype=int) if kinds is None else kinds,
+                            gen_seed=np.int64(-1 if gen_seed is None else gen_seed))
         return row
 
     def save_best(self, gen: int, genome: np.ndarray, result: dict) -> None:
