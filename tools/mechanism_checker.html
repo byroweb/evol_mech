@@ -58,7 +58,7 @@
     <div id="joints"></div>
     <div class="note" style="margin-top:6px">Foot workspace, side view, relative to the hip pitch axis (x fore &rarr;, z up). White = positions the linkage can reach within its stops, grey = not. Drag the dot to pose the leg; both servos follow through the IK. <span id="modetag"></span></div>
     <canvas id="map" width="376" height="300" style="width:100%; display:block; margin:6px 0; border:1px solid var(--line); border-radius:6px; touch-action:none; cursor:crosshair"></canvas>
-    <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it. Thigh and shin sliders hard-stop where the foot would hit the shin, the tread drive or the thigh, or the linkage would reach knee flexion outside 5…150° or the horn within 5° of straight with the coupler; the stops move with the other servo.</div>
+    <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it. Thigh and shin sliders hard-stop where the foot would hit the shin, the tread drive or the thigh, the ankle would leave its ±45° range, or the linkage would reach knee flexion outside 5…150° or the horn within 5° of straight with the coupler; the stops move with the other servo.</div>
     <div id="sweep"></div>
   </div>
   <div class="panel">
@@ -672,6 +672,8 @@ function poseAllowed(j) {
   if (segSeg(S, P, thighA, thighB) - 0.004 - LINK_R < 0) return false;
   const thighTrim = trimCap({ a: thighA, b: thighB }, 0, 0.0);
   if (segSeg(P, Q, thighA, thighB) - 0.003 - LINK_R < 0) return false;
+  // the passive ankle must stay within its range about the spring rest for the posed sole angle
+  if (Math.abs(inf.ankleJoint - inf.ankleRest) / DEG > ANKLE_RANGE + 1e-6) return false;
   // the foot (sole + roller envelope at the posed sole angle) must clear the shin tube, the tread drive and the thigh
   const { A2, delta } = inf;
   const K3 = [K2[0], yT, K2[1]], A3 = [A2[0], yT, A2[1]];
