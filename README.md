@@ -47,6 +47,7 @@ where the build deliberately departs from it, and the open questions.
 
     .venv\Scripts\python tools\skater_snapshot.py                 # stills, summary, 8 s skate clip
     .venv\Scripts\python tools\skater_layout.py                   # annotated servo-layout drawing
+    tools\mechanism_checker.html                                  # open in a browser: pose the servos, horns and links, see range / singularity / interference checks
     .venv\Scripts\python tools\view.py --body skater --speed 0.8   # interactive; --objective slalom|stand
     .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json
     .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json --lock-groups geometry,leg,foot,drivetrain,fan_spec   # gains only

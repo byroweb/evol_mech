@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skater Mechanism Checker</title>
+<style>
+  :root { --bg:#f5f5f7; --fg:#222; --muted:#777; --line:#ddd; --accent:#2563eb; --bad:#dc2626; --warn:#d97706; --ok:#16a34a; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font:13px/1.4 system-ui, sans-serif; color:var(--fg); background:var(--bg); display:flex; flex-direction:column; }
+  header { padding:6px 14px; border-bottom:1px solid var(--line); display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:#fff; }
+  header h1 { font-size:15px; margin:0 10px 0 0; }
+  main { flex:1; display:grid; grid-template-columns: 400px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height:0; }
+  #side { overflow-y:auto; padding:10px; border-right:1px solid var(--line); }
+  #viewwrap { position:relative; min-width:0; min-height:0; overflow:hidden; }
+  #view { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #hud { position:absolute; left:10px; top:8px; background:rgba(255,255,255,.85); padding:6px 8px; border-radius:6px; font-size:12px; pointer-events:none; white-space:pre; }
+  .panel { border:1px solid var(--line); border-radius:6px; background:#fff; padding:8px 10px; margin-bottom:10px; }
+  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 6px; display:flex; justify-content:space-between; align-items:center; }
+  .row { display:grid; grid-template-columns: 128px 1fr 60px 44px; gap:6px; align-items:center; padding:1px 0; }
+  .row.j { grid-template-columns: 110px 1fr 54px 52px; }
+  .row .k { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row .u { color:var(--muted); font-size:11px; }
+  input[type=range] { width:100%; margin:0; }
+  input[type=number] { width:100%; font-size:12px; padding:2px 3px; }
+  select { font-size:12px; }
+  button, label.btn { padding:3px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; cursor:pointer; font-size:12px; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.sm { padding:1px 6px; font-size:11px; }
+  #checks { list-style:none; margin:0; padding:0; }
+  #checks li { padding:2px 0 2px 18px; position:relative; }
+  #checks li::before { content:""; position:absolute; left:2px; top:7px; width:9px; height:9px; border-radius:50%; background:var(--ok); }
+  #checks li.warn::before { background:var(--warn); } #checks li.bad::before { background:var(--bad); }
+  #checks li.bad { color:var(--bad); } #checks li.warn { color:var(--warn); }
+  #status { font-weight:600; } #status.ok { color:var(--ok); } #status.warn { color:var(--warn); } #status.bad { color:var(--bad); }
+  #sweep { font-size:12px; color:var(--muted); white-space:pre-wrap; }
+  .legend span { display:inline-block; width:10px; height:10px; border-radius:2px; margin:0 3px 0 8px; vertical-align:-1px; }
+  details summary { cursor:pointer; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .note { color:var(--muted); font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Skater mechanism checker</h1>
+  <span id="status">—</span>
+  <span style="flex:1"></span>
+  <span class="legend"><span style="background:#4d7fe6"></span>thigh <span style="background:#4caf50"></span>shin <span style="background:#e04a4a"></span>coupler / horns / crank <span style="background:#555"></span>servo blocks <span style="background:#222"></span>foot <span style="background:#f0a"></span>interference</span>
+  <button id="vSide">Side</button><button id="vFront">Front</button><button id="vTop">Top</button><button id="vIso">Iso</button>
+  <label class="btn"><input type="checkbox" id="ortho"> ortho</label>
+  <label class="btn"><input type="checkbox" id="showOther" checked> other leg</label>
+  <label class="btn"><input type="checkbox" id="showBody" checked> hip / core</label>
+</header>
+<main>
+<div id="side">
+  <div class="panel">
+    <h2>Actuate <span><button class="sm" id="nominal">nominal crouch</button> <label><input type="checkbox" id="both" checked> both legs</label></span></h2>
+    <div id="joints"></div>
+    <div class="note">Angles: 0 = link straight down, + = swung backward (as in the sim). Shin servo = commanded horn angle; the shin follows through the coupler. Ankle = sole angle from level (+ toe down); the real ankle is passive, this just poses it.</div>
+    <div id="sweep"></div>
+  </div>
+  <div class="panel">
+    <h2>Checks (left leg) <span id="readout" class="note"></span></h2>
+    <ul id="checks"></ul>
+  </div>
+  <div class="panel">
+    <h2>Body genes <span><label class="btn">load best.json <input type="file" id="load" accept=".json" hidden></label></span></h2>
+    <div id="genes"></div>
+  </div>
+  <div class="panel">
+    <h2>Mechanism <span><button class="sm" id="export">export JSON</button></span></h2>
+    <div id="mech"></div>
+    <div class="note">Servo: L x W along the body, H along the shaft, shaft offset from one end. Thigh servo drives the thigh directly through its horn. Shin servo horn &rarr; coupler &rarr; crank on the shin (coaxial with the hip pitch axis and equal horn / crank with coupler = thigh length gives the LEO parallelogram).</div>
+  </div>
+</div>
+<div id="viewwrap"><canvas id="view"></canvas><div id="hud"></div></div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+const DEG = Math.PI / 180, MM = 1e-3;
+
+// ---- parameters -------------------------------------------------------------------
+// body genes (metres / radians), the skater defaults
+const genes = {
+  hip_width: 0.18, core_height: 0.14, thigh_len: 0.15, shin_len: 0.15, crouch: 40 * DEG, ankle_rest: 0,
+  sole_len: 0.14, pulley_radius: 0.018, battery_mah: 2200, payload_x: 0,
+};
+const GENE_UI = [
+  ["hip_width", "hip width", "mm", 1e3, 80, 320], ["core_height", "core height", "mm", 1e3, 50, 300],
+  ["thigh_len", "thigh length", "mm", 1e3, 80, 260], ["shin_len", "shin length", "mm", 1e3, 80, 260],
+  ["crouch", "nominal knee flexion", "deg", 1 / DEG, 10, 100], ["ankle_rest", "ankle toe-up rest", "deg", 1 / DEG, 0, 20],
+  ["sole_len", "sole length", "mm", 1e3, 80, 260], ["pulley_radius", "roller radius", "mm", 1e3, 10, 35],
+];
+// body constants from evol_mech/body/structure.py (metres)
+const HIP_HALF_X = 0.05, HIP_HALF_Z = 0.035, CORE_HALF_XY = 0.05, CORE_SIDE_GAP = 0.012, LINK_RADIUS_BIPED = 0.006, LEG_SIDE_GAP = 0.002;
+const LINK_R = 0.008, SOLE_HALF_W = 0.02, SOLE_HALF_T = 0.004, ANKLE_PLATE_GAP = 0.006, ROLLER_GAP = 0.002, MAX_ROLLERS = 6, IDLER_RISE = 0.6;
+const HIP_YAW_RANGE = 45, THIGH_RANGE = [-120, 60], KNEE_RANGE = [5, 150], ANKLE_RANGE = 45;
+
+// mechanism parameters (mm / deg) – the physical layout the sim abstracts away
+const mech = {
+  servo_L: 40.5, servo_W: 20, servo_H: 38, shaft_off: 10, horn_gap: 6,
+  pitch_drop: 32, thigh_plane: 0, coupler_plane: 14,
+  horn_len: 25, crank_len: 25, coupler_len: 150, parallelogram: 1, crank_angle: 0, horn_phase: 0,
+  shin_dx: 0, shin_dz: 0, layout: 0, thigh_block: 0, shin_block: 0, yaw_block: 0,
+  tread_dx: -18, tread_dz: -30, tread_dy: 0, tread_hx: 12, tread_hy: 12, tread_hz: 20,
+  clearance: 2,
+};
+const MECH_UI = [
+  ["servo_L", "servo length L", "mm", 20, 70], ["servo_W", "servo width W", "mm", 10, 40], ["servo_H", "servo height H (shaft axis)", "mm", 20, 60],
+  ["shaft_off", "shaft from servo end", "mm", 0, 35], ["horn_gap", "horn face gap", "mm", 2, 20],
+  ["pitch_drop", "pitch axis below yaw horn", "mm", 0, 80], ["thigh_plane", "thigh plane from yaw axis (+out)", "mm", -40, 40],
+  ["coupler_plane", "coupler plane from thigh (+out)", "mm", -40, 40],
+  ["horn_len", "shin servo horn", "mm", 8, 60], ["crank_len", "knee crank", "mm", 8, 60], ["coupler_len", "coupler length", "mm", 60, 300],
+  ["parallelogram", "coupler = thigh length (parallelogram)", "0/1", 0, 1],
+  ["crank_angle", "crank angle on shin (0 = along shin)", "deg", -180, 180], ["horn_phase", "horn phase vs command", "deg", -180, 180],
+  ["shin_dx", "shin servo axis x from hip pitch", "mm", -60, 60], ["shin_dz", "shin servo axis z from hip pitch", "mm", -60, 60],
+  ["layout", "shin servo side: 0 outboard (facing), 1 inboard (stacked)", "0/1", 0, 1],
+  ["thigh_block", "thigh servo block: 0 back 1 front 2 down 3 up", "", 0, 3], ["shin_block", "shin servo block: 0 back 1 front 2 down 3 up", "", 0, 3],
+  ["yaw_block", "yaw servo block: 0 back 1 front", "", 0, 1],
+  ["tread_dx", "tread drive x from knee", "mm", -60, 60], ["tread_dz", "tread drive z from knee", "mm", -120, 0], ["tread_dy", "tread drive y from shin (+out)", "mm", -40, 40],
+  ["tread_hx", "tread drive half x", "mm", 4, 30], ["tread_hy", "tread drive half y", "mm", 4, 30], ["tread_hz", "tread drive half z", "mm", 4, 40],
+  ["clearance", "clearance to flag as tight", "mm", 0, 10],
+];
+// joints (deg)
+const joints = { yaw: 0, thigh: -20, shin: 20, ankle: 0 };
+const JOINT_UI = [
+  ["yaw", "hip yaw", -60, 60], ["thigh", "thigh servo", -130, 70], ["shin", "shin servo", -130, 130], ["ankle", "ankle (sole)", -60, 60],
+];
+
+// ---- derived body geometry ------------------------------------------------------------
+function batteryHalf() {           // from body/structure.py
+  const vol = 4.9e-8 * genes.battery_mah;        // BATTERY_M3_PER_MAH
+  const [lo, mi, sh] = [3.5, 1.13, 1.0];           // BATTERY_ASPECT
+  const unit = Math.cbrt(vol / (8 * lo * mi * sh));
+  return [lo * unit, mi * unit, sh * unit];
+}
+function coreHalfX() { return Math.max(CORE_HALF_XY, batteryHalf()[0] + Math.abs(genes.payload_x) + 0.005); }
+function coreHalfY() { return Math.max(batteryHalf()[1] + 0.005, Math.min(CORE_HALF_XY, genes.hip_width / 2 - CORE_SIDE_GAP)); }
+function hipHalfY() { return genes.hip_width / 2 - LINK_RADIUS_BIPED - LEG_SIDE_GAP; }
+function nominalAngles() {
+  const L1 = genes.thigh_len, L2 = genes.shin_len, k = genes.crouch;
+  const thigh = -Math.atan2(L2 * Math.sin(k), L1 + L2 * Math.cos(k));
+  return [thigh, thigh + k];
+}
+function footLayout() {
+  const L = genes.sole_len, r = genes.pulley_radius;
+  let n = Math.min(MAX_ROLLERS, Math.floor((L - 2 * r) / (2 * r + ROLLER_GAP)) + 1);
+  if (L < 4 * r + ROLLER_GAP) n = 1;
+  const xs = []; for (let k = 0; k < n; k++) xs.push(n > 1 ? -(L / 2 - r) + (L - 2 * r) * k / (n - 1) : 0);
+  const plate_z = -(ANKLE_PLATE_GAP + SOLE_HALF_T), roller_z = plate_z - SOLE_HALF_T - r;
+  return { r, xs, idler: [L / 2 + r + ROLLER_GAP, IDLER_RISE * r], plate_z, roller_z, bottom_z: roller_z - r };
+}
+function nominalHeight() {
+  const [t, s] = nominalAngles();
+  return genes.thigh_len * Math.cos(t) + genes.shin_len * Math.cos(s) - footLayout().bottom_z;
+}
+const u = th => [-Math.sin(th), -Math.cos(th)];          // link direction (x, z) for angle th
+
+// ---- vector helpers --------------------------------------------------------------------
+const v3 = (x, y, z) => [x, y, z];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const norm = a => Math.sqrt(dot(a, a));
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const rotY = th => [[Math.cos(th), 0, Math.sin(th)], [0, 1, 0], [-Math.sin(th), 0, Math.cos(th)]];   // about +y
+const rotZ = th => [[Math.cos(th), -Math.sin(th), 0], [Math.sin(th), Math.cos(th), 0], [0, 0, 1]];
+const I3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+const mv = (R, a) => [dot(R[0], a), dot(R[1], a), dot(R[2], a)];
+const mm3 = (A, B) => A.map(r => [0, 1, 2].map(j => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+const tr = R => [[R[0][0], R[1][0], R[2][0]], [R[0][1], R[1][1], R[2][1]], [R[0][2], R[1][2], R[2][2]]];
+
+// parts: {kind:'cap', a, b, r, name, col, grp} or {kind:'box', c, h, R, name, col, grp}
+function xformPart(p, R, t, mirror) {
+  const M = mirror ? [[1, 0, 0], [0, -1, 0], [0, 0, 1]] : I3;
+  const RR = mm3(R, M);
+  if (p.kind === 'cap') return { ...p, a: add(mv(RR, p.a), t), b: add(mv(RR, p.b), t) };
+  return { ...p, c: add(mv(RR, p.c), t), R: mm3(RR, p.R) };
+}
+
+// ---- distances ---------------------------------------------------------------------------
+function segSeg(p1, q1, p2, q2) {
+  const d1 = sub(q1, p1), d2 = sub(q2, p2), r = sub(p1, p2);
+  const a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
+  let s, t;
+  const EPS = 1e-12;
+  if (a <= EPS && e <= EPS) return norm(r);
+  if (a <= EPS) { s = 0; t = Math.min(1, Math.max(0, f / e)); }
+  else {
+    const c = dot(d1, r);
+    if (e <= EPS) { t = 0; s = Math.min(1, Math.max(0, -c / a)); }
+    else {
+      const b = dot(d1, d2), den = a * e - b * b;
+      s = den !== 0 ? Math.min(1, Math.max(0, (b * f - c * e) / den)) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) { t = 0; s = Math.min(1, Math.max(0, -c / a)); }
+      else if (t > 1) { t = 1; s = Math.min(1, Math.max(0, (b - c) / a)); }
+    }
+  }
+  return norm(sub(add(p1, mul(d1, s)), add(p2, mul(d2, t))));
+}
+function pointBox(p, box) {                 // signed: negative inside
+  const l = mv(tr(box.R), sub(p, box.c));
+  let out = 0, inside = Infinity;
+  for (let i = 0; i < 3; i++) {
+    const e = Math.abs(l[i]) - box.h[i];
+    if (e > 0) out += e * e; else inside = Math.min(inside, -e);
+  }
+  return out > 0 ? Math.sqrt(out) : -inside;
+}
+function capBox(cap, box, n = 24) {
+  let best = Infinity;
+  for (let i = 0; i <= n; i++) best = Math.min(best, pointBox(add(cap.a, mul(sub(cap.b, cap.a), i / n)), box));
+  return best - cap.r;
+}
+function boxSamples(box) {
+  const pts = [], h = box.h, ax = tr(box.R);
+  const corner = (sx, sy, sz) => add(box.c, add(add(mul(ax[0], sx * h[0]), mul(ax[1], sy * h[1])), mul(ax[2], sz * h[2])));
+  const S = [-1, 1];
+  for (const sx of S) for (const sy of S) for (const sz of S) pts.push(corner(sx, sy, sz));
+  // edge midpoints and quarter points
+  for (const k of [0.5, -0.5, 0]) {
+    for (const sy of S) for (const sz of S) pts.push(corner(k, sy, sz));
+    for (const sx of S) for (const sz of S) pts.push(corner(sx, k, sz));
+    for (const sx of S) for (const sy of S) pts.push(corner(sx, sy, k));
+  }
+  for (const i of [0, 1, 2]) for (const s of S) { const v = [0, 0, 0]; v[i] = s; pts.push(corner(v[0], v[1], v[2])); }
+  return pts;
+}
+function boxBox(A, B) {
+  let best = Infinity;
+  for (const p of boxSamples(A)) best = Math.min(best, pointBox(p, B));
+  for (const p of boxSamples(B)) best = Math.min(best, pointBox(p, A));
+  return best;
+}
+function partDist(p, q) {
+  if (p.kind === 'cap' && q.kind === 'cap') return segSeg(p.a, p.b, q.a, q.b) - p.r - q.r;
+  if (p.kind === 'cap') return capBox(p, q);
+  if (q.kind === 'cap') return capBox(q, p);
+  return boxBox(p, q);
+}
+function trimCap(c, fromA, fromB) {      // shorten a capsule away from a shared joint
+  const d = sub(c.b, c.a), L = norm(d);
+  if (L <= fromA + fromB + 1e-6) return null;
+  const e = mul(d, 1 / L);
+  return { ...c, a: add(c.a, mul(e, fromA)), b: sub(c.b, mul(e, fromB)) };
+}
+
+// ---- one leg: solve + parts -------------------------------------------------------------
+function servoBox(axisPt, axisDir, planeNormalSign, dir, name, col) {
+  // block with the shaft along axisDir (unit, +y in the leg frame = outboard); the block sits on
+  // the side of the horn plane given by planeNormalSign (which way along the axis), extending
+  // H along the axis; L runs in direction `dir` (unit, in the plane) with the shaft shaft_off from one end.
+  const L = mech.servo_L * MM, W = mech.servo_W * MM, H = mech.servo_H * MM, so = mech.shaft_off * MM, g = mech.horn_gap * MM;
+  const ay = mul(axisDir, planeNormalSign);
+  const centreAlongAxis = add(axisPt, mul(ay, g + H / 2));
+  const c = add(centreAlongAxis, mul(dir, L / 2 - so));
+  const third = cross(dir, ay);                       // W direction
+  const R = tr([dir, ay, third]);                     // columns = local axes: x=L, y=H, z=W
+  return { kind: 'box', c, h: [L / 2, H / 2, W / 2], R, name, col, grp: 'servo' };
+}
+const BLOCK_DIRS = [[-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]];   // back, front, down, up (x, y, z)
+
+function solveLeg(j, state) {
+  // leg frame: origin at the yaw axis point (hip height), x forward, y outboard, z up
+  const L1 = genes.thigh_len, L2 = genes.shin_len;
+  const th_t = j.thigh * DEG, phi = j.shin * DEG + mech.horn_phase * DEG, delta = j.ankle * DEG;
+  const yT = mech.thigh_plane * MM, yC = yT + mech.coupler_plane * MM * (mech.layout ? -1 : 1);
+  const D = mech.pitch_drop * MM;
+  const H = v3(0, yT, -D);                                   // hip pitch axis point (thigh plane)
+  const S2 = [mech.shin_dx * MM, -D + mech.shin_dz * MM];   // shin servo axis (x, z)
+  const uT = u(th_t);
+  const K2 = [L1 * uT[0], -D + L1 * uT[1]];                  // knee (x, z)
+  const h1 = mech.horn_len * MM, h2 = mech.crank_len * MM;
+  const Lc = (mech.parallelogram ? genes.thigh_len * 1e3 : mech.coupler_len) * MM;
+  const uH = u(phi);
+  const P2 = [S2[0] + h1 * uH[0], S2[1] + h1 * uH[1]];
+  // Q: |Q-K| = h2, |Q-P| = Lc
+  const dx = P2[0] - K2[0], dz = P2[1] - K2[1], d = Math.hypot(dx, dz);
+  const info = { reachable: true };
+  let Q2;
+  // of the two circle intersections take the one on the parallelogram-like branch
+  // (crank roughly parallel to the horn); the other is the crossed (anti-parallelogram) assembly
+  const uG = u(phi + mech.crank_angle * DEG);
+  const ref = [K2[0] + h2 * uG[0], K2[1] + h2 * uG[1]];
+  if (d > h2 + Lc + 1e-9 || d < Math.abs(h2 - Lc) - 1e-9 || d < 1e-9) {
+    info.reachable = false;
+    Q2 = ref;
+  } else {
+    const dd = Math.min(h2 + Lc, Math.max(Math.abs(h2 - Lc), d));
+    const a = (h2 * h2 - Lc * Lc + dd * dd) / (2 * dd), hh = Math.sqrt(Math.max(0, h2 * h2 - a * a));
+    const mx = K2[0] + a * dx / d, mz = K2[1] + a * dz / d;
+    const c1 = [mx + hh * dz / d, mz - hh * dx / d], c2 = [mx - hh * dz / d, mz + hh * dx / d];
+    Q2 = Math.hypot(c1[0] - ref[0], c1[1] - ref[1]) <= Math.hypot(c2[0] - ref[0], c2[1] - ref[1]) ? c1 : c2;
+  }
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const th_c = Math.atan2(-(Q2[0] - K2[0]), -(Q2[1] - K2[1]));
+  const th_s = wrap(th_c - mech.crank_angle * DEG);
+  const uS = u(th_s);
+  const A2 = [K2[0] + L2 * uS[0], K2[1] + L2 * uS[1]];
+  info.thigh = th_t; info.shin = th_s; info.knee = wrap(th_s - th_t);
+  // angles of the transmission
+  const vPQ = [Q2[0] - P2[0], Q2[1] - P2[1]], vKQ = [Q2[0] - K2[0], Q2[1] - K2[1]], vSP = [P2[0] - S2[0], P2[1] - S2[1]];
+  const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, (a[0] * b[0] + a[1] * b[1]) / (Math.hypot(...a) * Math.hypot(...b) + 1e-12))));
+  info.transmission = ang(vPQ, vKQ);            // coupler vs crank: want ~90
+  info.hornCoupler = ang(vSP, vPQ);             // horn vs coupler: 0/180 = dead point
+  info.ankleJoint = delta - th_s;
+  const [tn, sn] = nominalAngles();
+  info.ankleRest = -sn - genes.ankle_rest;
+  info.anklePt = [A2[0], yT, A2[1]];
+  const lay = footLayout();
+  info.footBottom = A2[1] - (-lay.bottom_z) * Math.cos(delta) - (genes.sole_len / 2) * Math.abs(Math.sin(delta));
+
+  // ---- parts -------------------------------------------------------------------------
+  const parts = [];
+  const cap = (a, b, r, name, col, grp) => parts.push({ kind: 'cap', a, b, r, name, col, grp });
+  const box = (c, h, R, name, col, grp) => parts.push({ kind: 'box', c, h, R, name, col, grp });
+  const K = v3(K2[0], yT, K2[1]), A = v3(A2[0], yT, A2[1]);
+  const S = v3(S2[0], yC, S2[1]), P = v3(P2[0], yC, P2[1]), Q = v3(Q2[0], yC, Q2[1]), Kc = v3(K2[0], yC, K2[1]);
+  const C_THIGH = 0x4d7fe6, C_SHIN = 0x4caf50, C_RED = 0xe04a4a, C_SERVO = 0x555555, C_FOOT = 0x222222, C_CARRIER = 0x8a8a8a;
+  cap(H, K, LINK_R, 'thigh', C_THIGH, 'link');
+  cap(K, A, LINK_R, 'shin', C_SHIN, 'link');
+  cap(S, P, 0.004, 'shin horn', C_RED, 'horn');
+  cap(P, Q, 0.003, 'coupler', C_RED, 'link');
+  cap(K, Kc, 0.003, 'knee crank stub', C_RED, 'crank');
+  cap(Kc, Q, 0.003, 'knee crank', C_RED, 'crank');
+  // thigh servo horn: a disc inboard of the thigh tube
+  const hornSide = -1;   // thigh servo always on the inboard side of the thigh plane
+  box(v3(0, yT + hornSide * (LINK_R + 0.003), -D), [0.011, 0.002, 0.011], I3, 'thigh horn', 0xeeeeee, 'horn');
+  // servos
+  const yAxis = [0, 1, 0];
+  const tServo = servoBox(v3(0, yT + hornSide * (LINK_R + 0.005), -D), yAxis, hornSide, BLOCK_DIRS[mech.thigh_block], 'thigh servo', C_SERVO);
+  const sSide = mech.layout ? -1 : 1;
+  const sServo = servoBox(S, yAxis, sSide, BLOCK_DIRS[mech.shin_block], 'shin servo', C_SERVO);
+  parts.push(tServo, sServo);
+  // shin horn hub
+  box(v3(S2[0], yC + sSide * 0.003, S2[1]), [0.010, 0.002, 0.010], I3, 'shin horn hub', 0xeeeeee, 'horn');
+  // yaw servo: shaft down through the origin, block above
+  const yawDir = BLOCK_DIRS[mech.yaw_block];
+  const yServo = servoBox(v3(0, 0, 0), [0, 0, 1], 1, yawDir, 'yaw servo', C_SERVO);
+  yServo.grp = 'yawservo';
+  parts.push(yServo);
+  box(v3(0, 0, 0.003), [0.011, 0.011, 0.002], I3, 'yaw horn', 0xeeeeee, 'horn');
+  // carrier: plate under the yaw horn spanning both servos, two side plates
+  const yMin = Math.min(tServo.c[1] - tServo.h[1], sServo.c[1] - sServo.h[1], yT - 0.012);
+  const yMax = Math.max(tServo.c[1] + tServo.h[1], sServo.c[1] + sServo.h[1], yC + 0.012);
+  const zBot = Math.min(tServo.c[2] - mech.servo_W * MM / 2, sServo.c[2] - mech.servo_W * MM / 2, -D) - 0.004;
+  box(v3(0, (yMin + yMax) / 2, -0.0035), [0.026, (yMax - yMin) / 2 + 0.003, 0.0015], I3, 'carrier plate', C_CARRIER, 'carrier');
+  box(v3(0, yMin - 0.0015, (zBot - 0.005) / 2), [0.026, 0.0015, (0.005 - zBot) / 2], I3, 'carrier side (in)', C_CARRIER, 'carrier');
+  box(v3(0, yMax + 0.0015, (zBot - 0.005) / 2), [0.026, 0.0015, (0.005 - zBot) / 2], I3, 'carrier side (out)', C_CARRIER, 'carrier');
+  // tread drive on the shin
+  const Rs = rotY(th_s);    // link frame: local -z along the link; u(th) = Ry(th) * (0, 0, -1)
+  const tdLocal = [mech.tread_dx * MM, mech.tread_dy * MM, mech.tread_dz * MM];
+  box(add(K, mv(Rs, tdLocal)), [mech.tread_hx * MM, mech.tread_hy * MM, mech.tread_hz * MM], Rs, 'tread drive', C_RED, 'drive');
+  // foot: sole plate + roller envelope, rotated by the sole angle
+  const Rf = rotY(delta);   // + = toe down
+  const xi = lay.idler[0] + lay.r;
+  const envC = [(xi - genes.sole_len / 2) / 2, 0, (lay.plate_z + SOLE_HALF_T + lay.bottom_z) / 2];
+  const envH = [(xi + genes.sole_len / 2) / 2, SOLE_HALF_W, (lay.plate_z + SOLE_HALF_T - lay.bottom_z) / 2];
+  box(add(A, mv(Rf, envC)), envH, Rf, 'foot', C_FOOT, 'foot');
+  info.rollers = lay.xs.map(x => ({ c: add(A, mv(Rf, [x, 0, lay.roller_z])), r: lay.r, R: Rf }));
+  info.rollers.push({ c: add(A, mv(Rf, [lay.idler[0], 0, lay.roller_z + lay.idler[1]])), r: lay.r, R: Rf });
+  info.sole = { c: add(A, mv(Rf, [0, 0, lay.plate_z])), h: [genes.sole_len / 2, SOLE_HALF_W, SOLE_HALF_T], R: Rf };
+  info.points = { H, K, A, S, P, Q };
+  return { parts, info };
+}
+
+// body parts (hip frame)
+function bodyParts() {
+  const hy = hipHalfY();
+  const core_z = HIP_HALF_Z + genes.core_height / 2;
+  return [
+    { kind: 'box', c: [0, 0, 0], h: [HIP_HALF_X, hy, HIP_HALF_Z], R: I3, name: 'hip box', col: 0x9a9a9a, grp: 'body' },
+    { kind: 'box', c: [0, 0, core_z], h: [coreHalfX(), coreHalfY(), genes.core_height / 2], R: I3, name: 'core', col: 0xb86a6a, grp: 'body' },
+  ];
+}
+
+// ---- checks --------------------------------------------------------------------------------
+const PAIR_SKIP = new Set([
+  'thigh|thigh horn', 'thigh|thigh servo', 'shin horn|shin horn hub', 'shin horn|shin servo', 'shin horn hub|shin servo',
+  'knee crank stub|knee crank', 'knee crank stub|thigh', 'knee crank stub|shin', 'knee crank|shin', 'knee crank stub|tread drive',
+  'coupler|knee crank', 'shin horn|coupler', 'thigh|carrier plate', 'thigh horn|carrier plate', 'yaw horn|carrier plate', 'yaw servo|yaw horn',
+  'thigh servo|carrier plate', 'shin servo|carrier plate', 'thigh servo|carrier side (in)', 'shin servo|carrier side (out)',
+  'thigh servo|carrier side (out)', 'shin servo|carrier side (in)', 'carrier plate|carrier side (in)', 'carrier plate|carrier side (out)',
+  'thigh horn|thigh servo', 'shin horn hub|shin horn', 'yaw horn|yaw servo',
+  'thigh horn|carrier side (in)', 'shin horn hub|carrier side (out)', 'shin horn hub|carrier side (in)', 'thigh horn|carrier side (out)',
+  'coupler|shin horn hub', 'shin|tread drive',
+]);
+// pairs sharing a joint: trim before measuring (name -> [trim at a, trim at b])
+// [trim at a, trim at b] for the first-named part, then for the second (metres)
+const TRIM = { 'thigh|shin': [[0, 0.03], [0.03, 0]], 'coupler|shin': [[0, 0.02], [0.02, 0]],
+               'shin|knee crank': [[0.03, 0], [0.01, 0]], 'thigh|knee crank': [[0, 0.03], [0.01, 0]],
+               'shin|foot': [[0, 0.012], [0, 0]] };
+
+function runChecks(L, R, body) {
+  const out = [];
+  const clr = mech.clearance * MM;
+  const add_ = (level, text) => out.push({ level, text });
+  const inf = L.info;
+  // ranges
+  const yaw = joints.yaw;
+  add_(Math.abs(yaw) > HIP_YAW_RANGE ? 'bad' : 'ok', `hip yaw ${yaw.toFixed(0)}° (limit ±${HIP_YAW_RANGE}°)`);
+  const tdeg = inf.thigh / DEG;
+  add_(tdeg < THIGH_RANGE[0] || tdeg > THIGH_RANGE[1] ? 'bad' : 'ok', `thigh ${tdeg.toFixed(0)}° (range ${THIGH_RANGE[0]}…${THIGH_RANGE[1]}°)`);
+  const kdeg = inf.knee / DEG;
+  add_(!inf.reachable ? 'bad' : (kdeg < KNEE_RANGE[0] || kdeg > KNEE_RANGE[1] ? 'bad' : (kdeg < KNEE_RANGE[0] + 10 ? 'warn' : 'ok')),
+       inf.reachable ? `knee flexion ${kdeg.toFixed(0)}° (range ${KNEE_RANGE[0]}…${KNEE_RANGE[1]}°)` : 'coupler cannot reach: mechanism locks here');
+  const mu = inf.transmission / DEG;
+  add_(mu < 15 || mu > 165 ? 'bad' : (mu < 30 || mu > 150 ? 'warn' : 'ok'),
+       `coupler–crank transmission angle ${mu.toFixed(0)}° (coupler force = knee torque / (crank × sin): ×${(1 / Math.max(1e-3, Math.sin(inf.transmission))).toFixed(1)})`);
+  const hc = inf.hornCoupler / DEG;
+  add_(hc < 12 || hc > 168 ? 'bad' : (hc < 25 || hc > 155 ? 'warn' : 'ok'), `shin horn–coupler angle ${hc.toFixed(0)}° (0° / 180° = horn in line with coupler: dead point)`);
+  const aj = inf.ankleJoint / DEG, ar = inf.ankleRest / DEG;
+  add_(Math.abs(aj - ar) > ANKLE_RANGE ? 'bad' : 'ok', `ankle joint ${aj.toFixed(0)}° vs spring rest ${ar.toFixed(0)}° (±${ANKLE_RANGE}°)`);
+  // geometry notes
+  const ap = inf.anklePt;
+  const caster = Math.hypot(ap[0], ap[1]) * 1e3;
+  add_(caster > 5 ? 'warn' : 'ok', `ankle ${(ap[0] * 1e3).toFixed(0)} mm fore / ${(ap[1] * 1e3).toFixed(0)} mm out of the yaw axis (design wants 0: no caster)`);
+  const floor = -nominalHeight() - mech.pitch_drop * MM;
+  add_((inf.footBottom - floor) < -0.002 ? 'warn' : 'ok', `foot bottom ${((inf.footBottom - floor) * 1e3).toFixed(0)} mm above the nominal floor`);
+  // interference within the left leg, with the body, and with the right leg
+  const hits = [];
+  const check = (p, q, label) => {
+    const k1 = p.name + '|' + q.name, k2 = q.name + '|' + p.name;
+    let pp = p, qq = q;
+    if (label === 'same' && (PAIR_SKIP.has(k1) || PAIR_SKIP.has(k2))) return;
+    const trim = label === 'same' ? (TRIM[k1] || (TRIM[k2] ? [TRIM[k2][1], TRIM[k2][0]] : null)) : null;
+    if (trim) {
+      pp = p.kind === 'cap' ? trimCap(p, ...trim[0]) : p;
+      qq = q.kind === 'cap' ? trimCap(q, ...trim[1]) : q;
+      if (!pp || !qq) return;
+    }
+    const d = partDist(pp, qq);
+    if (d < clr) hits.push({ d, a: p, b: q, label });
+  };
+  for (let i = 0; i < L.parts.length; i++) for (let k = i + 1; k < L.parts.length; k++) check(L.parts[i], L.parts[k], 'same');
+  for (const p of L.parts) {
+    if (p.grp === 'servo' || p.grp === 'carrier' || p.grp === 'horn' || p.grp === 'yawservo') continue;   // hip hardware lives in / on the box
+    for (const b of body) check(p, b, 'body');
+  }
+  for (const p of L.parts) for (const q of R.parts) check(p, q, 'other leg');
+  hits.sort((a, b) => a.d - b.d);
+  const flagged = new Set();
+  for (const h of hits) {
+    const bad = h.d < 0;
+    add_(bad ? 'bad' : 'warn', `${bad ? 'INTERFERENCE' : 'tight'}: ${h.a.name} ↔ ${h.b.name}${h.label === 'other leg' ? ' (right leg)' : ''}: ${(h.d * 1e3).toFixed(1)} mm`);
+    if (bad) { flagged.add(h.a); flagged.add(h.b); }
+  }
+  if (!hits.length) add_('ok', `no interference, all clearances ≥ ${mech.clearance} mm`);
+  // design-level notes
+  const yawTop = (mech.horn_gap + mech.servo_H) * MM;
+  if (yawTop > HIP_HALF_Z) add_('warn', `yaw servo top ${((yawTop - HIP_HALF_Z) * 1e3).toFixed(0)} mm above the hip box top (box is ±${HIP_HALF_Z * 1e3} mm about the hip point)`);
+  const legPlane = genes.hip_width / 2;
+  const hipSide = hipHalfY();
+  if (legPlane - LINK_R < hipSide + clr) add_(legPlane - LINK_R < hipSide ? 'bad' : 'warn', `thigh tube ${((legPlane - LINK_R - hipSide) * 1e3).toFixed(1)} mm from the hip box side face`);
+  return { out, flagged };
+}
+
+// ---- three.js scene ------------------------------------------------------------------------
+const canvas = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf5f5f7);
+const root = new THREE.Group(); root.rotation.x = -Math.PI / 2; scene.add(root);   // model z-up -> three y-up
+scene.add(new THREE.HemisphereLight(0xffffff, 0x777788, 0.9));
+const dl = new THREE.DirectionalLight(0xffffff, 0.7); dl.position.set(1, 2, 1.5); scene.add(dl);
+const persp = new THREE.PerspectiveCamera(40, 1, 0.01, 10);
+const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
+let cam = persp;
+const orbit = { az: 35 * DEG, el: 18 * DEG, dist: 1.1, target: new THREE.Vector3(0.02, -0.2, 0) };
+function updateCamera() {
+  const t = orbit.target;
+  const x = t.x + orbit.dist * Math.cos(orbit.el) * Math.sin(orbit.az);
+  const y = t.y + orbit.dist * Math.sin(orbit.el);
+  const z = t.z + orbit.dist * Math.cos(orbit.el) * Math.cos(orbit.az);
+  cam.position.set(x, y, z); cam.up.set(0, 1, 0); cam.lookAt(t);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (cam === orthoCam) {
+    const half = orbit.dist * 0.42, asp = w / h;
+    orthoCam.left = -half * asp; orthoCam.right = half * asp; orthoCam.top = half; orthoCam.bottom = -half;
+  } else persp.aspect = w / h;
+  cam.updateProjectionMatrix();
+}
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false); updateCamera();
+}
+window.addEventListener('resize', resize);
+// mouse orbit
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, b: e.button }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointerup', () => drag = null);
+canvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if (drag.b === 2 || e.shiftKey) {
+    const s = orbit.dist * 0.0015;
+    const right = new THREE.Vector3().subVectors(cam.position, orbit.target).cross(cam.up).normalize();
+    const upv = new THREE.Vector3(0, 1, 0);
+    orbit.target.addScaledVector(right, dx * s).addScaledVector(upv, dy * s);
+  } else { orbit.az -= dx * 0.006; orbit.el = Math.max(-1.5, Math.min(1.5, orbit.el + dy * 0.006)); }
+  updateCamera(); render();
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => { e.preventDefault(); orbit.dist *= Math.exp(e.deltaY * 0.001); orbit.dist = Math.max(0.1, Math.min(4, orbit.dist)); updateCamera(); render(); }, { passive: false });
+const setView = (az, el) => { orbit.az = az; orbit.el = el; updateCamera(); render(); };
+document.getElementById('vSide').onclick = () => setView(0, 0);             // camera on model -y: forward = screen right
+document.getElementById('vFront').onclick = () => setView(Math.PI / 2, 0);   // camera on model +x
+document.getElementById('vTop').onclick = () => setView(0, 1.5);
+document.getElementById('vIso').onclick = () => setView(35 * DEG, 18 * DEG);
+document.getElementById('ortho').onchange = e => { cam = e.target.checked ? orthoCam : persp; updateCamera(); render(); };
+document.getElementById('showOther').onchange = () => update();
+document.getElementById('showBody').onchange = () => update();
+
+// floor grid (model z = -nominal height)
+const floorGroup = new THREE.Group(); root.add(floorGroup);
+function rebuildFloor() {
+  floorGroup.clear();
+  const g = new THREE.GridHelper(1.2, 24, 0xcccccc, 0xe3e3e3);
+  g.rotation.x = Math.PI / 2;            // GridHelper lies in three XZ; in model frame we want XY
+  g.position.z = -nominalHeight() - mech.pitch_drop * MM;
+  floorGroup.add(g);
+  const ax = new THREE.AxesHelper(0.06); floorGroup.add(ax);   // x red (forward), y green (left), z blue (up)
+}
+// part meshes
+const meshes = new Map();
+const unitCyl = new THREE.CylinderGeometry(1, 1, 1, 20), unitSph = new THREE.SphereGeometry(1, 16, 12), unitBox = new THREE.BoxGeometry(2, 2, 2);
+const partsGroup = new THREE.Group(); root.add(partsGroup);
+function getMesh(key, kind, col) {
+  let m = meshes.get(key);
+  if (!m) {
+    const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, metalness: 0.1 });
+    if (kind === 'cap') {
+      m = new THREE.Group();
+      m.add(new THREE.Mesh(unitCyl, mat)); m.add(new THREE.Mesh(unitSph, mat)); m.add(new THREE.Mesh(unitSph, mat));
+    } else m = new THREE.Mesh(unitBox, mat);
+    m.userData.mat = mat; m.userData.col = col;
+    partsGroup.add(m); meshes.set(key, m);
+  }
+  return m;
+}
+const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), yUp = new THREE.Vector3(0, 1, 0);
+function placePart(key, p, flagged, alpha) {
+  const m = getMesh(key, p.kind, p.col);
+  m.visible = true;
+  m.userData.mat.color.set(flagged ? 0xff00aa : p.col);
+  m.userData.mat.transparent = alpha < 1; m.userData.mat.opacity = alpha; m.userData.mat.depthWrite = alpha >= 1;
+  if (p.kind === 'cap') {
+    const a = new THREE.Vector3(...p.a), b = new THREE.Vector3(...p.b), d = new THREE.Vector3().subVectors(b, a), L = d.length();
+    const [cyl, s1, s2] = m.children;
+    cyl.position.copy(a).addScaledVector(d, 0.5); cyl.scale.set(p.r, Math.max(L, 1e-6), p.r);
+    cyl.quaternion.setFromUnitVectors(yUp, L > 1e-9 ? d.clone().normalize() : yUp);
+    s1.position.copy(a); s1.scale.setScalar(p.r); s2.position.copy(b); s2.scale.setScalar(p.r);
+  } else {
+    m.position.set(...p.c); m.scale.set(...p.h);
+    const R = p.R;
+    tmpM.set(R[0][0], R[0][1], R[0][2], 0, R[1][0], R[1][1], R[1][2], 0, R[2][0], R[2][1], R[2][2], 0, 0, 0, 0, 1);
+    m.quaternion.setFromRotationMatrix(tmpM);
+  }
+}
+function placeRollers(rollers, sole, prefix) {
+  rollers.forEach((ro, i) => {
+    const key = prefix + 'roller' + i;
+    let m = meshes.get(key);
+    if (!m) {
+      m = new THREE.Mesh(unitCyl, new THREE.MeshStandardMaterial({ color: 0x303030, roughness: 0.9 }));
+      partsGroup.add(m); meshes.set(key, m);
+    }
+    m.visible = true;
+    m.position.set(...ro.c); m.scale.set(ro.r, 2 * SOLE_HALF_W * 0.75, ro.r);
+    const R = ro.R;    // cylinder axis = model y: unit cyl axis is local y; rotate by R
+    tmpM.set(R[0][0], R[0][1], R[0][2], 0, R[1][0], R[1][1], R[1][2], 0, R[2][0], R[2][1], R[2][2], 0, 0, 0, 0, 1);
+    m.quaternion.setFromRotationMatrix(tmpM);
+  });
+  placePart(prefix + 'sole', { kind: 'box', c: sole.c, h: sole.h, R: sole.R, col: 0x1a1a1a }, false, 1);
+}
+
+// ---- update ----------------------------------------------------------------------------------
+const solveState = { L: {}, R: {} };
+let lastResult = null;
+function legWorld(side) {
+  const s = side === 'L' ? 1 : -1;
+  const j = { ...joints };
+  if (side === 'R' && !document.getElementById('both').checked) { j.yaw = 0; const [t, sh] = nominalAngles(); j.thigh = t / DEG; j.shin = sh / DEG - mech.horn_phase; j.ankle = 0; }
+  const sol = solveLeg(j, solveState[side]);
+  const Ryaw = rotZ(j.yaw * DEG);
+  const t = [0, s * genes.hip_width / 2, 0];
+  const parts = sol.parts.map(p => xformPart(p, Ryaw, t, side === 'R'));
+  const xf = v => add(mv(mm3(Ryaw, side === 'R' ? [[1, 0, 0], [0, -1, 0], [0, 0, 1]] : I3), v), t);
+  const RR = mm3(Ryaw, side === 'R' ? [[1, 0, 0], [0, -1, 0], [0, 0, 1]] : I3);
+  const rollers = sol.info.rollers.map(r => ({ c: xf(r.c), r: r.r, R: mm3(RR, r.R) }));
+  const sole = { c: xf(sol.info.sole.c), h: sol.info.sole.h, R: mm3(RR, sol.info.sole.R) };
+  const info = { ...sol.info, anklePt: sol.info.anklePt };   // ankle offset stays in the leg frame (relative to the yaw axis)
+  return { parts, rollers, sole, info };
+}
+function update() {
+  rebuildFloor();
+  const L = legWorld('L'), R = legWorld('R');
+  const body = bodyParts();
+  const { out, flagged } = runChecks(L, R, body);
+  lastResult = { L, R, out };
+  for (const m of meshes.values()) m.visible = false;
+  const showOther = document.getElementById('showOther').checked, showBody = document.getElementById('showBody').checked;
+  L.parts.forEach((p, i) => placePart('L' + i, p, flagged.has(p), 1));
+  placeRollers(L.rollers, L.sole, 'L');
+  if (showOther) { R.parts.forEach((p, i) => placePart('R' + i, p, flagged.has(p), 0.55)); placeRollers(R.rollers, R.sole, 'R'); }
+  if (showBody) body.forEach((p, i) => placePart('B' + i, p, flagged.has(p), 0.25));
+  // checks list
+  const ul = document.getElementById('checks'); ul.innerHTML = '';
+  let worst = 'ok';
+  for (const c of out) { const li = document.createElement('li'); li.className = c.level; li.textContent = c.text; ul.appendChild(li); if (c.level === 'bad') worst = 'bad'; else if (c.level === 'warn' && worst === 'ok') worst = 'warn'; }
+  const st = document.getElementById('status'); st.className = worst;
+  st.textContent = worst === 'ok' ? 'OK' : worst === 'warn' ? 'tight / check' : 'PROBLEM';
+  const inf = L.info;
+  document.getElementById('readout').textContent = `knee ${(inf.knee / DEG).toFixed(0)}°  shin ${(inf.shin / DEG).toFixed(0)}°`;
+  const [tn, sn] = nominalAngles();
+  document.getElementById('hud').textContent =
+    `nominal crouch: thigh ${(tn / DEG).toFixed(0)}°, shin ${(sn / DEG).toFixed(0)}°, hip ${(nominalHeight() * 1e3).toFixed(0)} mm\n` +
+    `left: thigh ${(inf.thigh / DEG).toFixed(0)}°  shin ${(inf.shin / DEG).toFixed(0)}°  knee ${(inf.knee / DEG).toFixed(0)}°  transmission ${(inf.transmission / DEG).toFixed(0)}°\n` +
+    `drag: orbit   shift/right-drag: pan   wheel: zoom`;
+  render();
+  return out;
+}
+function render() { renderer.render(scene, cam); }
+
+// ---- UI builders -------------------------------------------------------------------------------
+function numRow(parent, label, unit, get, set, min, max, step, slider = true, cls = '') {
+  const row = document.createElement('div'); row.className = 'row ' + cls;
+  const k = document.createElement('span'); k.className = 'k'; k.textContent = label; k.title = label;
+  const rng = document.createElement('input'); rng.type = 'range'; rng.min = min; rng.max = max; rng.step = step; rng.value = get();
+  const num = document.createElement('input'); num.type = 'number'; num.min = min; num.max = max; num.step = step; num.value = get();
+  const un = document.createElement('span'); un.className = 'u'; un.textContent = unit;
+  rng.oninput = () => { num.value = rng.value; set(parseFloat(rng.value)); update(); };
+  num.onchange = () => { rng.value = num.value; set(parseFloat(num.value)); update(); };
+  row.append(k, rng, num, un); parent.appendChild(row);
+  return { rng, num, refresh: () => { rng.value = get(); num.value = get(); } };
+}
+const jointCtl = {};
+const jointsDiv = document.getElementById('joints');
+for (const [key, label, lo, hi] of JOINT_UI) {
+  const ctl = numRow(jointsDiv, label, '°', () => joints[key], v => joints[key] = v, lo, hi, 1, true, 'j');
+  const b = document.createElement('button'); b.className = 'sm'; b.textContent = 'sweep';
+  ctl.rng.parentElement.lastChild.replaceWith(b);
+  b.onclick = () => sweep(key, lo, hi);
+  jointCtl[key] = ctl;
+}
+const geneCtl = {};
+const genesDiv = document.getElementById('genes');
+for (const [key, label, unit, scale, lo, hi] of GENE_UI)
+  geneCtl[key] = numRow(genesDiv, label, unit, () => +(genes[key] * scale).toFixed(2), v => genes[key] = v / scale, lo, hi, unit === 'deg' ? 1 : 1);
+const mechCtl = {};
+const mechDiv = document.getElementById('mech');
+for (const [key, label, unit, lo, hi] of MECH_UI)
+  mechCtl[key] = numRow(mechDiv, label, unit, () => mech[key], v => mech[key] = v, lo, hi, (hi - lo) <= 3 ? 1 : (unit === 'deg' ? 1 : 0.5));
+
+document.getElementById('nominal').onclick = () => {
+  const [t, s] = nominalAngles();
+  joints.yaw = 0; joints.thigh = +(t / DEG).toFixed(1); joints.shin = +(s / DEG - mech.horn_phase).toFixed(1); joints.ankle = 0;
+  solveState.L = {}; solveState.R = {};
+  for (const c of Object.values(jointCtl)) c.refresh();
+  update();
+};
+document.getElementById('load').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const obj = JSON.parse(await f.text());
+  const phys = obj.phys || obj;
+  for (const k of Object.keys(genes)) if (k in phys) genes[k] = phys[k];
+  for (const c of Object.values(geneCtl)) c.refresh();
+  rebuildFloor(); document.getElementById('nominal').click();
+};
+document.getElementById('export').onclick = () => {
+  const blob = new Blob([JSON.stringify({ genes, mechanism: mech, joints }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'skater_mechanism.json'; a.click();
+};
+
+// ---- sweep: drive one joint through its slider range and collect everything flagged -----------
+let sweeping = null;
+function sweep(key, lo, hi) {
+  if (sweeping) return;
+  const start = joints[key], log = new Map(), t0 = performance.now(), T = 4000;
+  let frames = 0;
+  const el = document.getElementById('sweep');
+  sweeping = key;
+  function frame(now) {
+    const f = Math.min(1, (now - t0) / T);
+    const ph = f < 0.5 ? f * 2 : 2 - f * 2;              // lo -> hi -> lo
+    joints[key] = lo + (hi - lo) * ph;
+    jointCtl[key].refresh();
+    const out = update();
+    for (const c of out) if (c.level !== 'ok') {
+      const k = c.text.replace(/-?\d+(\.\d+)?/g, '#');
+      const e = log.get(k) || { lo: Infinity, hi: -Infinity, level: c.level, sample: c.text, n: 0, worst: c.text };
+      e.lo = Math.min(e.lo, joints[key]); e.hi = Math.max(e.hi, joints[key]); e.n++;
+      if (c.level === 'bad' && e.level !== 'bad') { e.level = 'bad'; e.worst = c.text; }
+      log.set(k, e);
+    }
+    frames++;
+    el.textContent = `sweeping ${key}: ${joints[key].toFixed(0)}°`;
+    if (f < 1) requestAnimationFrame(frame);
+    else {
+      joints[key] = start; jointCtl[key].refresh(); update(); sweeping = null;
+      const lines = [...log.values()].map(e => `${e.level === 'bad' ? '✗' : '!'} ${e.worst}  [${key} ${e.lo.toFixed(0)}…${e.hi.toFixed(0)}°, ${Math.round(100 * e.n / frames)}% of the sweep]`);
+      el.textContent = `sweep of ${key} over ${lo}…${hi}°: ` + (lines.length ? '\n' + lines.join('\n') : 'clean');
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+rebuildFloor();
+resize();
+update();
+</script>
+</body>
+</html>
