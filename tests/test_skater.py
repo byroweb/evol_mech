@@ -85,8 +85,12 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     from evol_mech.body.hardware import servo_from_params
     p0 = decode(DEFAULT_NORM)
     assert not is_pantograph(p0) and leg_reach(p0) == p0["thigh_len"] + p0["shin_len"]
-    p = decode(encode({**p0, "leg_drive": 1.0, "hip_width": 0.10}))
-    assert is_pantograph(p)
+    # the leg lengths of the 25 mm horn seed (a horn that short reaches a step only with
+    # short rods and long extensions, so the spec's defaults are not a buildable set with it)
+    seed = json.load(open("configs/archetypes/skater_walker_panto5_seed.json"))["phys"]
+    leg = {k: seed[k] for k in ("horn_len", "rod_len", "rod_ext", "strut_len", "servo_dx", "crouch")}
+    p = decode(encode({**p0, **leg, "leg_drive": 1.0, "hip_width": 0.10}))
+    assert is_pantograph(p) and p["horn_len"] == pytest.approx(0.025)
     # the parked crouch: ankle straight below the hip point at reach x cos(crouch / 2)
     hf, hr = panto_nominal(p)
     k = panto_points(p, hf, hr)
@@ -110,7 +114,7 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     assert not panto_pose_allowed(p, HORN_RANGE[1] + 0.1, hr)
     check_buildable(p)
     with pytest.raises(InvalidBody):                       # rods too short to meet across the servo spacing
-        check_buildable({**p, "rod_len": 0.08, "servo_dx": 0.10, "horn_len": 0.02})
+        check_buildable({**p, "rod_len": 0.08, "servo_dx": 0.10, "horn_len": 0.01, "rod_ext": 0.03})
     # the lever and the flexing horns reflect onto the hinge actuators. Pantograph body: the
     # pivots are at the hip centre and the bracket is the arm, so the ratio is derived and the
     # roll_ratio gene is ignored; four-bar body: the gene
@@ -150,15 +154,14 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     assert r["time_upright"] == 3.0 and r["pitch_rms"] < 0.1
     # a walk task charges standing still like a fall at the start: the pantograph's first round was won by a stander
     from evol_mech.skater.rollout import STAND_COST
-    stander = json.load(open("configs/archetypes/skater_walker_panto.json"))["phys"]
+    stander = {**seed, "step_len": 0.0, "step_lift": 0.0}                # the seed parked
     task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 3.0, "step_hz_max": 2.5}
     r1, r0 = rollout(encode(stander), task, 0), rollout(encode(stander), {**task, "stand_cost": 0.0}, 0)
     gate = min(1.0, (r1["feet_x_m"] / 3.0) / 0.15)
     assert r1["time_upright"] == 3.0 and abs((r0["fitness"] - r1["fitness"]) - STAND_COST * (1 - gate)) < 1e-6
-    # the soft-horn walker walks forward on it (the un-evolved seed is a knife edge that the
-    # drawn roll linkage's 0.2 g tipped, so it is not the check)
-    walker = json.load(open("configs/archetypes/skater_walker_panto3.json"))["phys"]
-    r = rollout(encode(walker), {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 6.0,
+    # the 25 mm horn seed walks forward on it (the older 6 cm horn archetypes are history
+    # under the 25 mm cap: encode clamps their horn and the leg no longer reaches a step)
+    r = rollout(encode(seed), {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 6.0,
                                  "step_hz_max": 2.5}, 0)
     assert r["time_upright"] == 6.0 and r["feet_x_m"] > 0.5
 

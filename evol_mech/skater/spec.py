@@ -110,9 +110,9 @@ PARAMS: list[Param] = [
     # ---- pantograph leg drive (leg_drive 1; see structure.py "pantograph") ----
     Param("leg_drive",        0,    1,    0,    "leg", 1),      # 0 = thigh servo + four-bar shin drive; 1 = two horns, crossed rods pinned at the knee node, parallelogram to the ankle
     Param("servo_dx",         0.0,  0.10, 0.04, "leg"),         # pantograph: fore-aft spacing of the two leg servo axes (m), 0 = coaxial
-    Param("horn_len",         0.02, 0.06, 0.035, "leg"),        # pantograph: servo horn length (m)
+    Param("horn_len",         0.010, 0.025, 0.020, "leg"),       # pantograph: servo horn length (m); capped at 25 mm (a short horn bends more and gears the rods)
     Param("rod_len",          0.08, 0.30, 0.12, "leg"),         # pantograph: rod from the horn tip to the crossing pin (m)
-    Param("rod_ext",          0.03, 0.20, 0.06, "leg"),         # pantograph: rod continued past the pin, and the parallelogram's short sides (m)
+    Param("rod_ext",          0.03, 0.25, 0.06, "leg"),         # pantograph: rod continued past the pin, and the parallelogram's short sides (m)
     Param("strut_len",        0.02, 0.15, 0.05, "leg"),         # pantograph: lower node to the ankle, along the rear rod's direction (m)
     Param("roll_ratio",       1.0,  5.0,  1.0,  "drivetrain"),  # four-bar leg only: hip roll lever, bracket arm in horn lengths (torque x, speed and range / ratio). On the pantograph the arm is the bracket itself (structure.roll_arm) and this gene is ignored
     Param("horn_k_log10",     0.0,  3.0,  3.0,  "drivetrain"),  # log10 of a horn's in-plane flexural stiffness about its servo axis (N m/rad), in series with the servo; one part, so one value for all three horns

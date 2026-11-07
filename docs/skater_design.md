@@ -94,7 +94,17 @@ sweep plane with stiffness `10^horn_k_log10` N m/rad about the servo axis
 series elasticity: the servo's position stiffness (stall torque over a 4 deg
 deadband) and the horn's spring act in series, and the actuator's stiffness
 is their series sum. One stiffness for all three keeps the bill of materials
-to one horn; independent values are a later experiment.
+to one horn; independent values are a later experiment. The horn is capped
+at 25 mm (gene range 10-25 mm, since 2026-11-07): a short horn is a real
+hobby-servo horn, bends further for the same stiffness, and leaves the lever
+ratio to the rods. With it the pantograph reaches a 12 cm step only as short
+rods (8-10 cm) with long extensions (16-20 cm) that gear the horn up, and the
+leg comes out long (40-50 cm reach); the foot-per-horn gearing lands near the
+6 cm horn's (~0.06 m/rad), so the foot's stiffness and the servo's load are
+about the same and it is the body's geometry that changes. The earlier
+pantograph archetypes (6 cm horns, `skater_walker_panto*.json` up to 4) are
+history under the cap: `encode` clamps their horn and the leg no longer
+reaches a step, so they do not build.
 
 ## Foot: tread
 
