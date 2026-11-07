@@ -164,9 +164,16 @@ for; a velocity integral in the controller is the alternative.
   horn sweep, and the 7 rad/s servo is the limit. Against the 6 cm horn's
   round 3 (fitness -0.02, grace 0.30, saturation 12 %) the 25 mm horn is
   behind on everything but stride length; the cap turns the servo's speed,
-  not its torque, into the constraint. Next: a faster servo spec or the
-  gearing (longer extensions, which the leg-mass penalty fights) as a round
-  of its own.
+  not its torque, into the constraint. Round 6
+  (`configs/skater_walk_panto6.json`, `leg_mass_penalty` 0: the distal-mass
+  penalty switched off for the round, from walker_panto5) tested whether
+  that penalty was what kept the extensions short. It was not: the GA
+  number rose by exactly the penalty it no longer paid (0.57 against
+  -0.16) and the body stayed where it was (extensions 9.5 cm, strut 6 cm,
+  leg 15.5 % of the mass against 15.4 %), with the same 16 cm strides at
+  1 Hz, 4.6 cm of clearance, roll 5.8 deg, saturation 57 %, grace 0.19
+  on four tilted starts. The gearing is set by the servo's slew, not by
+  the mass, so a faster servo spec is the round that can move it.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %

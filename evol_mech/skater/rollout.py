@@ -214,8 +214,8 @@ def _fallen(z: float, roll: float, pitch: float, h_nom: float) -> bool:
 
 def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             fans_enabled: bool = True, fan_energy_cost: float = 0.2,
-            motor_energy_cost: float = 0.002, frame_cb=None, stop_on_fall: bool = True,
-            **_ignored) -> dict:
+            motor_energy_cost: float = 0.002, leg_mass_penalty: float | None = None,
+            frame_cb=None, stop_on_fall: bool = True, **_ignored) -> dict:
     rng = np.random.default_rng(seed)
     objective = task["objective"]
     if objective not in OBJECTIVES:
@@ -401,7 +401,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
                              flights, clearances, (roll_hist, z_hist, vx_hist, thr_hist, y_hist, track_hist)) if objective == "course" else {})
     clear_bonus = float(task.get("clear_weight", CLEAR_WEIGHT.get(objective, 0.0))) * max(0.0, min(swing_clear, CLEAR_CAP))
     leg_frac = leg_mass_fraction(p)
-    leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
+    # the config may price the distal mass itself (`leg_mass_penalty`, 0 to ignore it for a round)
+    leg_pen = (LEG_MASS_PENALTY if leg_mass_penalty is None else leg_mass_penalty) * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
     energy = fan_energy_cost * fan_energy + motor_energy_cost * motor_energy
     accel_cost = float(task.get("accel_cost", ACCEL_COST.get(objective, 0.02)))
     apexes = sorted((f[0] for f in flights), reverse=True)
@@ -623,7 +624,8 @@ def evaluate(genome: np.ndarray, cfg: dict, seed: int) -> dict:
         runs = [rollout(genome, task, seed=seed * 1000 + ti + 100 * rep,
                         fans_enabled=cfg.get("fans_enabled", True),
                         fan_energy_cost=cfg.get("fan_energy_cost", 0.2),
-                        motor_energy_cost=cfg.get("motor_energy_cost", 0.002))
+                        motor_energy_cost=cfg.get("motor_energy_cost", 0.002),
+                        leg_mass_penalty=cfg.get("leg_mass_penalty"))
                 for rep in range(int(task.get("repeats", 1)))]
         mean_fit = float(np.mean([r["fitness"] for r in runs]))
         m = min(runs, key=lambda r: (r["time_upright"], r["fitness"]))
