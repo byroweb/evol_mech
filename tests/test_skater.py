@@ -111,19 +111,26 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     check_buildable(p)
     with pytest.raises(InvalidBody):                       # rods too short to meet across the servo spacing
         check_buildable({**p, "rod_len": 0.08, "servo_dx": 0.10, "horn_len": 0.02})
-    # the lever and the flexing horns reflect onto the hinge actuators
-    assert hip_roll_range(p) == pytest.approx(math.radians(30)) and hip_roll_range({**p, "roll_ratio": 5.0}) == pytest.approx(math.radians(26))
+    # the lever and the flexing horns reflect onto the hinge actuators. Pantograph body: the
+    # pivots are at the hip centre and the bracket is the arm, so the ratio is derived and the
+    # roll_ratio gene is ignored; four-bar body: the gene
+    from evol_mech.skater.structure import roll_arm, roll_ratio, ROLL_PIVOT_Y
+    assert roll_arm(p0) == 0.0 and roll_ratio({**p0, "roll_ratio": 5.0}) == 5.0 and hip_roll_range({**p0, "roll_ratio": 5.0}) == pytest.approx(math.radians(26))
+    assert roll_arm(p) == pytest.approx(0.05 - ROLL_PIVOT_Y) and roll_ratio(p) == pytest.approx((0.05 - ROLL_PIVOT_Y) / p["horn_len"])
+    assert roll_ratio({**p, "roll_ratio": 5.0}) == roll_ratio(p) and hip_roll_range(p) == pytest.approx(math.radians(30))
+    wide = {**p, "hip_width": 0.32, "horn_len": 0.02}                      # arm 0.148 / horn 0.02 = 7.4: the horn's sweep caps the roll
+    assert hip_roll_range(wide) == pytest.approx(math.radians(130) / 7.4)
     assert horn_stiffness(p) == pytest.approx(1000.0) and series_kp(50.0, 50.0) == pytest.approx(25.0)
-    pl = {**p, "roll_ratio": 3.0, "horn_k_log10": 1.0}
+    pl = {**p, "horn_k_log10": 1.0}
     model, pm = make_model(encode(pl), "flat", np.random.default_rng(0))
     servo = servo_from_params(pm)
     act = lambda n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
     kp_leg = series_kp(servo.kp, 10.0)
-    kp_roll = kp_leg * 9.0
+    kp_roll = kp_leg * roll_ratio(pm) ** 2
     assert model.actuator_gainprm[act("hip_pitch_l"), 0] == pytest.approx(kp_leg, rel=1e-3)
     assert model.actuator_biasprm[act("knee_l"), 2] == pytest.approx(-kp_leg * SERVO_KV_FRAC, rel=1e-2)
     assert model.actuator_gainprm[act("hip_roll_l"), 0] == pytest.approx(kp_roll, rel=1e-3)
-    assert model.actuator_forcerange[act("hip_roll_l"), 1] == pytest.approx(3 * servo.torque_nm, rel=1e-3)
+    assert model.actuator_forcerange[act("hip_roll_l"), 1] == pytest.approx(roll_ratio(pm) * servo.torque_nm, rel=1e-3)
     # built as a real closed chain: the loops close at the crouch, the sim's ankle is the kinematics' ankle
     model, pm = make_model(encode(p), "flat", np.random.default_rng(0))
     assert model.neq >= 4 and all(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_EQUALITY, i) in
@@ -133,6 +140,8 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     body = lambda n: data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n)]
     rel = body("foot_l") - body("hip")
     assert rel[0] == pytest.approx(k["ankle"][0], abs=1e-4) and rel[2] == pytest.approx(k["ankle"][1], abs=1e-4)
+    assert rel[1] == pytest.approx(0.05, abs=1e-4)                        # the leg hangs at the leg plane, the pivot at the centre
+    assert body("hip_roll_l")[1] - body("hip")[1] == pytest.approx(ROLL_PIVOT_Y, abs=1e-6)
     assert np.abs(data.efc_pos[:model.neq * 3]).max() < 1e-6 if data.nefc else True
     # ... and it stands on it, the loops holding, with the same actuator set as the four-bar leg
     names = {mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in range(model.nu)}

@@ -33,8 +33,15 @@ the two rod extensions. A strut of `strut_len` continues the rear rod's
 direction from the ankle node to the ankle, the same passive sprung foot as
 the four-bar leg. The two horn angles set where the pin sits (a five-bar)
 and the pantograph carries that to the foot: both servos share every load.
-The hip roll is a lever: the roll servo's horn drives a link to the bracket
-`roll_ratio` horn lengths from the roll axis. All three horns are one part
+The hip roll is a lever. On the pantograph body the two roll pivots sit at
+the hip centre (ROLL_PIVOT_Y apart, the sketch's two bolts) and each bracket
+runs out to its leg plane, so the bracket is the lever arm (hip_width / 2 -
+ROLL_PIVOT_Y, `roll_arm`) and the roll ratio is that over the horn length
+(`roll_ratio`, derived); the roll servos sit at the centre, horn horizontal
+and a vertical link down to the bracket's outboard end. Rolling the leg also
+raises or lowers the leg point by arm x sin(roll), which the controller's
+roll solve accounts for. On the four-bar body the pivot is at the leg plane
+and the `roll_ratio` gene stands in for an arm. All three horns are one part
 (`horn_len`) and flex in their sweep plane (`horn_k_log10`), a torsion spring
 in series with the servo, stiff out of plane so the kinematics stay planar.
 
@@ -96,6 +103,7 @@ SHIN_DRIVE = {
 FOLD_MARGIN = math.radians(10)        # no two links of the shin drive within this of straight
 HORN_RANGE = (math.radians(-130), math.radians(130))
 HORN_KG = 0.010                       # pantograph: a servo horn with its rod-end bearing
+ROLL_PIVOT_Y = 0.012                  # pantograph body: each roll pivot this far from the hip centre (two bolts side by side)
 PIN_KG = 0.008                        # pantograph: a pinned node (bolt, bushing, spacer)
 
 
@@ -487,9 +495,19 @@ def nominal_foot(p: dict[str, float]) -> tuple[float, float]:
     return foot_from_angles(p, *nominal_angles(p))
 
 
+def roll_arm(p: dict[str, float]) -> float:
+    """Roll pivot to leg plane: the bracket's length on the pantograph body, 0 on the four-bar (pivot at the leg plane)."""
+    return max(0.0, p["hip_width"] / 2 - ROLL_PIVOT_Y) if is_pantograph(p) else 0.0
+
+
+def roll_ratio(p: dict[str, float]) -> float:
+    """Roll lever ratio, bracket arm over horn: derived on the pantograph, the gene on the four-bar."""
+    return roll_arm(p) / p["horn_len"] if is_pantograph(p) else float(p.get("roll_ratio", 1.0))
+
+
 def hip_roll_range(p: dict[str, float]) -> float:
     """The hip roll's half range: the roll servo's horn sweep through the lever, capped at HIP_ROLL_RANGE."""
-    return min(HIP_ROLL_RANGE, HORN_RANGE[1] / float(p.get("roll_ratio", 1.0)))
+    return min(HIP_ROLL_RANGE, HORN_RANGE[1] / max(1e-6, roll_ratio(p)))
 
 
 def horn_stiffness(p: dict[str, float]) -> float:

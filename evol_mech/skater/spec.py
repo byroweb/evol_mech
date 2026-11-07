@@ -114,7 +114,7 @@ PARAMS: list[Param] = [
     Param("rod_len",          0.08, 0.30, 0.12, "leg"),         # pantograph: rod from the horn tip to the crossing pin (m)
     Param("rod_ext",          0.03, 0.20, 0.06, "leg"),         # pantograph: rod continued past the pin, and the parallelogram's short sides (m)
     Param("strut_len",        0.02, 0.15, 0.05, "leg"),         # pantograph: lower node to the ankle, along the rear rod's direction (m)
-    Param("roll_ratio",       1.0,  5.0,  1.0,  "drivetrain"),  # hip roll lever: bracket arm in horn lengths (torque x, speed and range / ratio); the roll horn is the same part as the leg horns
+    Param("roll_ratio",       1.0,  5.0,  1.0,  "drivetrain"),  # four-bar leg only: hip roll lever, bracket arm in horn lengths (torque x, speed and range / ratio). On the pantograph the arm is the bracket itself (structure.roll_arm) and this gene is ignored
     Param("horn_k_log10",     0.0,  3.0,  3.0,  "drivetrain"),  # log10 of a horn's in-plane flexural stiffness about its servo axis (N m/rad), in series with the servo; one part, so one value for all three horns
 ]
 

@@ -71,7 +71,7 @@ from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .structure import (nominal_angles, nominal_height, nominal_foot, angles_from_foot,
                         horn_from_shin, shin_from_horn, drive_stops, KNEE_RANGE, hip_roll_range,
-                        is_pantograph, panto_nominal, panto_ik, panto_pose_allowed)
+                        roll_ratio, roll_arm, is_pantograph, panto_nominal, panto_ik, panto_pose_allowed)
 
 MU_FOOT = 1.2
 G = 9.81
@@ -129,7 +129,7 @@ class SkaterController:
         self.z_ref = nominal_height(p)
         self.x_nom, z_nom = nominal_foot(p)
         self.h_nom = -z_nom                          # hip-to-ankle drop in the parked crouch
-        self.roll_range, self.roll_ratio = hip_roll_range(p), float(p.get("roll_ratio", 1.0))
+        self.roll_range, self.roll_ratio, self.roll_arm = hip_roll_range(p), roll_ratio(p), roll_arm(p)
         self.panto = is_pantograph(p)
         qadr = lambda name: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)]
         if self.panto:
@@ -506,19 +506,30 @@ class SkaterController:
             gx, gz, fb = gait[s]
             h = max(0.02, self.h_nom + (h_fb * hfb_scale if fb else 0.0) + gz - sign * dh_roll)
             dy = dy_f + sign * p["stance_w"]                      # + = foot to the left, both legs
-            roll_cmd = max(-self.roll_range, min(self.roll_range, math.atan2(dy, h)))
+            # the roll that puts the ankle dy to the left and h below the leg's hip point: with
+            # the pivot roll_arm inboard of that point (pantograph body) the leg point itself
+            # swings, so the roll is the target's angle about the pivot less the leg's own, and
+            # the leg's length in its plane follows from the pivot distance
+            L = self.roll_arm
+            if L == 0.0:
+                roll_cmd, drop = math.atan2(dy, h), math.hypot(h, dy)
+            else:
+                yt = sign * L + dy
+                drop = math.sqrt(max(1e-4, yt * yt + h * h - L * L))
+                roll_cmd = math.atan2(yt, h) - math.atan2(sign * L, drop)
+            roll_cmd = max(-self.roll_range, min(self.roll_range, roll_cmd))
             c[i[f"hip_roll_{s}"]] = self._slew(f"hip_roll_{s}", roll_cmd)
             if self.panto:
                 # both horns from the ankle target; an unreachable target gives the nearest pose
                 # clear of the folds, a failed solve holds the last one
-                hf, hr, res = panto_ik(p, x_f + gx, -math.hypot(h, dy), self.ik_guess[s])
+                hf, hr, res = panto_ik(p, x_f + gx, -drop, self.ik_guess[s])
                 if math.isfinite(res) and panto_pose_allowed(p, hf, hr):
                     self.ik_guess[s] = (hf, hr)
                 hf, hr = self.ik_guess[s]
                 c[i[f"hip_pitch_{s}"]] = self._slew(f"hip_pitch_{s}", hf)
                 c[i[f"knee_{s}"]] = self.horn_cmd[s] = self._slew(f"knee_{s}", hr)
                 continue
-            thigh, shin = angles_from_foot(p, x_f + gx, -math.hypot(h, dy))
+            thigh, shin = angles_from_foot(p, x_f + gx, -drop)
             thigh_cmd, horn_cmd = self._drive_commands(s, thigh, shin)
             self.horn_cmd[s] = horn_cmd                      # the shin servo's own angle, for traces
             c[i[f"hip_pitch_{s}"]] = thigh_cmd
