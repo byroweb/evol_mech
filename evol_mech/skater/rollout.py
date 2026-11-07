@@ -184,6 +184,15 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     except InvalidBody as e:
         return _invalid_result(str(e))
     data = make_data(model, p)
+    if task.get("pose_noise_deg"):
+        # a random initial tilt (roll and pitch, uniform within +-pose_noise_deg): a gait that only
+        # works from one exact start is on a knife edge (a 1e-16 genome change flipped the first
+        # course best from a 36 s completion into a fall at 16 s), and this is what widens it
+        rx, ry = np.radians(rng.uniform(-1, 1, 2) * float(task["pose_noise_deg"]))
+        q = np.array([1.0, rx / 2, ry / 2, 0.0])
+        data.qpos[3:7] = q / np.linalg.norm(q)
+        data.qpos[2] += 0.005
+        mujoco.mj_forward(model, data)
     ctrl = SkaterController(model, p, task, fans_enabled)
     hip_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hip")
     foot_bodies = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in ("l", "r")]
@@ -498,12 +507,20 @@ def _course_scores(task: dict, p: dict, n_done: int, time_upright: float, feet, 
 
 
 def evaluate(genome: np.ndarray, cfg: dict, seed: int) -> dict:
+    """Weighted sum of the tasks' fitness. A task with `repeats` n is rolled out n times on
+    different seeds (its pose noise, terrain and shoves differ) and scores the mean of them,
+    the metrics of the worst-upright one: robustness to the start, not one lucky start."""
     out = {"fitness": 0.0, "sim_steps": 0, "wall_s": 0.0, "invalid": False}
     for ti, task in enumerate(cfg["tasks"]):
-        m = rollout(genome, task, seed=seed * 1000 + ti,
-                    fans_enabled=cfg.get("fans_enabled", True),
-                    fan_energy_cost=cfg.get("fan_energy_cost", 0.2),
-                    motor_energy_cost=cfg.get("motor_energy_cost", 0.002))
+        runs = [rollout(genome, task, seed=seed * 1000 + ti + 100 * rep,
+                        fans_enabled=cfg.get("fans_enabled", True),
+                        fan_energy_cost=cfg.get("fan_energy_cost", 0.2),
+                        motor_energy_cost=cfg.get("motor_energy_cost", 0.002))
+                for rep in range(int(task.get("repeats", 1)))]
+        mean_fit = float(np.mean([r["fitness"] for r in runs]))
+        m = min(runs, key=lambda r: (r["time_upright"], r["fitness"]))
+        m = {**m, "fitness": mean_fit, "fitness_min": min(r["fitness"] for r in runs),
+             "sim_steps": sum(r["sim_steps"] for r in runs), "wall_s": sum(r["wall_s"] for r in runs)}
         out["fitness"] += task.get("weight", 1.0) * m["fitness"]
         out["sim_steps"] += m["sim_steps"]
         out["wall_s"] += m["wall_s"]

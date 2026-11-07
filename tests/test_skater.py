@@ -358,3 +358,14 @@ def test_course_blends_one_cycle_between_the_gaits_and_scores_each_segment():
     r0 = rollout(encode(phys), {**task, "trans_weight": 0.0}, 0, motor_energy_cost=0.0005)
     expect = sum(r[f"trans{k}_{g}.score"] for k, g in ((1, "walk"), (2, "run"), (3, "walk"), (4, "stand")))
     assert expect > 0.5 and abs((r["fitness"] - r0["fitness"]) - expect) < 1e-6
+
+
+def test_repeats_average_tilted_starts():
+    from evol_mech.skater.rollout import evaluate
+    task = {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.0, "pose_noise_deg": 3.0}
+    a, b = (rollout(DEFAULT_NORM, task, sd) for sd in (0, 100))
+    assert a["fitness"] != b["fitness"]                      # the tilt differs with the seed
+    assert rollout(DEFAULT_NORM, task, 0)["fitness"] == a["fitness"]   # and is reproducible
+    e = evaluate(DEFAULT_NORM, {"tasks": [{**task, "repeats": 2}]}, 0)
+    assert abs(e["fitness"] - (a["fitness"] + b["fitness"]) / 2) < 1e-9
+    assert e["stand.fitness_min"] == min(a["fitness"], b["fitness"])

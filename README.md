@@ -142,7 +142,10 @@ stand by default) and scores every segment and every gait change on its own
 the stops; peak pitch over the 2 s after each change, plus the time to 90 % of
 the new speed); the controller blends one stepping cycle's parameters between
 the walk and the run over the `trans_s` gene, so a change is a continuous foot
-path. A long course is the stability test a short task is not. Stand: fraction of time upright under periodic
+path. A long course is the stability test a short task is not; `repeats` and
+`pose_noise_deg` on a task average the fitness over several rollouts from a
+randomly tilted start, since a gait that works from one exact start only is on a
+knife edge (a 1e-16 genome change flipped the first course best into a fall). Stand: fraction of time upright under periodic
 shoves, minus drift (`drift_cost` per metre, default 1.0) and fan energy.
 `fan_energy_cost` (0.2 by default) prices fan use so that thrust-propelled
 skating on the feet scores below actual stepping. A fall is a tipped hip or
