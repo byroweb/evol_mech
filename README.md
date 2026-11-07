@@ -129,7 +129,15 @@ overrides), plus the realized stride (progress per step, capped at 0.75 x leg
 length) and minus servo chatter and rate-limit costs; `step_hz_max` on a walk
 task caps the cadence, which is how the walk gets longer, slower steps (the GA
 will not trade speed for stride on its own, the servo slew rate sets the
-stride at any cadence). Run: a bounding gait (crouched stance, retracted
+stride at any cadence). A walk is judged on grace rather than speed: its gait
+score is the stride (weight 3) plus a little speed (0.3), multiplied by a
+grace factor 1 / (1 + sway/0.2 rad + bob/2 cm + surge/0.15 m/s
++ servo saturation/2) from the body's pitch and roll RMS, hip height and
+forward-speed standard deviation and the share of the time a leg servo is at
+its slew limit, and the fans' mean throttle is charged on top of their energy
+(`fan_duty_cost` 1.0), with the clearance bonus (weight 4 on a walk) added
+outside the factor, so the smoothest, stillest, fan-free walk with the longest
+strides and its feet picked up wins (the course's walk segments are scored the same way). Run: a bounding gait (crouched stance, retracted
 swing, fan push in flight) scored on feet speed, stride and time in real
 flights; the first bounds with real flights came once the sole was levelled (a
 parallelogram at the passive ankle keeps the sole parallel to the body at any

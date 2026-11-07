@@ -246,9 +246,19 @@ def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     # the evolved gait walks: forward progress of the feet, no fall, fans near idle, feet picked up
     assert not r["fell"] and r["feet_x_m"] > 2.5 and abs(r["feet_x_m"] - r["distance_x"]) < 0.3
     assert r["fan_energy"] < 0.3 and 0.1 < r["stride_m"] < 0.25 and r["swing_clear_m"] > 0.02
-    # stepping outscores standing still on the walk task by a wide margin
+    # stepping outscores standing still on the walk task by a clear margin, through the grace
+    # factor (the walk is judged on stride x grace, not speed): a stander's gait score is nil
+    assert 0.3 < r["grace"] < 0.5 and r["fan_duty"] < 0.1 and r["sway_rad"] < 0.15 and r["bob_m"] < 0.01
     r_still = rollout(encode({**phys, "step_len": 0.02, "walk_shift": 0.0}), task, 0, **kw)
-    assert r_still["feet_x_m"] < 0.3 and r["fitness"] > r_still["fitness"] + 0.3
+    assert r_still["feet_x_m"] < 0.3 and r["fitness"] > r_still["fitness"] + 0.15
+    # the same walk with the fans off scores higher: no fan duty, no fan energy, quieter pitch servos
+    r_off = rollout(encode(phys), task, 0, fans_enabled=False, **kw)
+    assert not r_off["fell"] and r_off["fan_duty"] == 0.0 and r_off["fitness"] > r["fitness"]
+    # a smoother body is worth more of the same stride: the grace factor is 1 / (1 + sum of ratios)
+    from evol_mech.skater.rollout import _grace, SWAY_REF
+    q = {"sway_rad": SWAY_REF, "bob_m": 0.0, "surge_ms": 0.0}
+    assert abs(_grace(task, q, 0.0) - 0.5) < 1e-9 and _grace(task, {**q, "sway_rad": 0.0}, 0.0) == 1.0
+    assert abs(_grace({**task, "sway_ref": 2 * SWAY_REF}, q, 0.0) - 2 / 3) < 1e-9
     r_stand = rollout(encode(phys), {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.0}, 0)
     assert not r_stand["fell"] and r_stand["time_upright"] >= 0.9
 
