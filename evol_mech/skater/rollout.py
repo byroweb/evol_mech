@@ -36,10 +36,10 @@ Fitness (stage-1 tasks from the design doc):
           once avoided every running cost and scored zero). The feet, not
           the hip, measure the progress so a forward dive earns nothing.
   run     a bounding gait (controller.gait_offsets: stance sweep run_len at
-          run_hz with run_duty in stance, the hip run_crouch low and run_ext
-          of that recovered by toe-off, swing foot retracted run_lift; the
-          fans spin to run_fan while no foot is down and push forward): feet
-          progress per second + `stride_weight` (0.5) x the realized stride
+          controller.gait_offsets: stance sweep run_len at run_hz with run_duty
+          in stance, the hip run_crouch low and run_ext of that recovered by
+          toe-off, swing foot retracted run_lift; the fans spin to run_fan
+          while no foot is down and push forward) + `stride_weight` (0.5) x the realized stride
           (capped at RUN_STRIDE_CAP_FRAC of the leg) + `flight_weight` (0.3)
           x the share of the upright time in real flights (both feet off for
           FLIGHT_MIN_S with the hip rising FLIGHT_MIN_RISE; a fast walk loses
@@ -330,7 +330,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
                    - accel_cost * rms_accel - 0.2 * abs(dy))
     elif objective == "run":
         # speed of the feet, long strides, and time in the air (a bound, not a fast walk)
-        fitness = (feet_dx / duration + float(task.get("stride_weight", 0.5)) * stride_eff
+        fitness = (float(task.get("speed_weight", 1.0)) * feet_dx / duration + float(task.get("stride_weight", 0.5)) * stride_eff
                    + float(task.get("flight_weight", 0.3)) * min(flight_frac, FLIGHT_FRAC_CAP) + clear_bonus
                    - accel_cost * rms_accel - 0.2 * abs(dy))
     elif objective == "hop":
