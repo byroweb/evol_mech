@@ -149,6 +149,24 @@ for; a velocity integral in the controller is the alternative.
   one-lever result holds on this body too: the narrow hip is the roll fix,
   and `hip_width` 0.10 stays locked in later rounds (the wide hip's fitness
   came from the tilted-start seed, not from a better walk; check the winner).
+  The horn was then capped at 25 mm (a real servo horn; the lever ratio is
+  the rods' to find). Under the cap the 6 cm horn archetypes do not build;
+  a random re-search of the balance genes on a short-rod, long-extension
+  body gave `skater_walker_panto5_seed.json` (2.4 m in 12 s, 14.8 cm
+  strides, roll 3.0 deg, grace 0.37 on the two un-tilted starts, but it
+  falls on two of four tilted starts). Round 5 (`skater_walk_panto5.json`,
+  hip locked at 10 cm, horns soft, leg lengths and gait free) gives
+  `skater_walker_panto5.json`: the GA shortened the extensions (16 -> 9 cm)
+  and the strut, walks all four tilted starts, 1.9 m in 12 s with 15.8 cm
+  strides at 1.0 Hz (the longest, slowest walk yet), 3.8 cm of clearance,
+  roll 5.7 deg, fitness -0.16, but a leg servo at its slew limit 62 % of
+  the time and grace 0.20: with the shorter extensions each step is more
+  horn sweep, and the 7 rad/s servo is the limit. Against the 6 cm horn's
+  round 3 (fitness -0.02, grace 0.30, saturation 12 %) the 25 mm horn is
+  behind on everything but stride length; the cap turns the servo's speed,
+  not its torque, into the constraint. Next: a faster servo spec or the
+  gearing (longer extensions, which the leg-mass penalty fights) as a round
+  of its own.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %
