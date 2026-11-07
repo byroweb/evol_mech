@@ -141,9 +141,12 @@ def main() -> None:
     ap.add_argument("--duration", type=float, default=4.0)
     ap.add_argument("--speed", type=float, default=0.4)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--step-hz-max", type=float, help="cap the walk cadence as a task may (step_hz_max)")
     ap.add_argument("--out", default="joint_trace.png")
     a = ap.parse_args()
     task = {"name": a.objective, "objective": a.objective, "terrain": a.terrain, "duration": a.duration, "speed": a.speed}
+    if a.step_hz_max:
+        task["step_hz_max"] = a.step_hz_max
     log = trace(load_genome(a.source), task, a.seed)
     p = log.pop("p")
     for k, v in smoothness(log, p).items():

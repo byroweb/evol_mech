@@ -256,6 +256,16 @@ def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     assert not r_stand["fell"] and r_stand["time_upright"] >= 0.9
 
 
+def test_walk_task_can_cap_the_cadence():
+    from evol_mech.skater.spec import encode
+    phys = json.load(open("configs/archetypes/skater_walker_evolved5.json"))["phys"]   # evolved under a 2.5 Hz cap
+    task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0, "step_hz_max": 2.5}
+    r = rollout(encode(phys), task, 0, motor_energy_cost=0.0005)
+    assert not r["fell"] and r["feet_x_m"] > 3.0 and r["stride_m"] > 0.17 and r["servo_sat_frac"] < 0.8
+    # stride_m divides the feet progress by the capped step count, so a lower cap shows there
+    r2 = rollout(encode(phys), {**task, "duration": 2.0, "step_hz_max": 2.0}, 0, motor_energy_cost=0.0005)
+    assert abs(r2["stride_m"] - r2["feet_x_m"] / (2.0 * r2["time_upright"])) < 1e-6
+
 def test_all_objectives_run_and_default_stands():
     for obj, extra in (("skate", {"speed": 0.6}), ("crab", {"speed": 0.3}), ("slalom", {"speed": 0.6}), ("stand", {}),
                        ("walk", {"speed": 0.4}), ("hop", {}), ("broad_jump", {"speed": 0.5})):

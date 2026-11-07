@@ -125,7 +125,11 @@ fall penalty and fan energy. Walk: progress of the feet per second of the
 task minus drift, with no ride-quality cost and a small fall penalty (0.1, scaled by the time left) by default (the
 episode ends at a fall, so the distance walked before it is what counts and a
 gait that steps and falls beats one that stands still; `fall_cost` on the task
-overrides). Stand: fraction of time upright under periodic
+overrides), plus the realized stride (progress per step, capped at 0.75 x leg
+length) and minus servo chatter and rate-limit costs; `step_hz_max` on a walk
+task caps the cadence, which is how the walk gets longer, slower steps (the GA
+will not trade speed for stride on its own, the servo slew rate sets the
+stride at any cadence). Stand: fraction of time upright under periodic
 shoves, minus drift (`drift_cost` per metre, default 1.0) and fan energy.
 `fan_energy_cost` (0.2 by default) prices fan use so that thrust-propelled
 skating on the feet scores below actual stepping. A fall is a tipped hip or

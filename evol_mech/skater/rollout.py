@@ -17,7 +17,8 @@ Fitness (stage-1 tasks from the design doc):
   walk    progress of the feet (mean foot x) per second of the task, plus
           `stride_weight` (1.0) x the realized stride (progress per step,
           capped at STRIDE_CAP_FRAC of the leg length so the splits do not
-          pay: larger, realistic steps for the same speed), minus a servo
+          pay: larger, realistic steps for the same speed; a task may also
+          cap the cadence with `step_hz_max`), minus a servo
           chatter cost (`chatter_cost`, CHATTER_COST per objective, x the
           RMS angular acceleration of the eight servo commands: hip roll,
           thigh, shin horn and fan pitch on each side; the fans count so a
@@ -67,7 +68,7 @@ from .structure import InvalidBody, nominal_height, leg_mass_fraction, LEG_MASS_
 from .controller import SkaterController
 
 OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "hop", "broad_jump")
-STRIDE_CAP_FRAC = 0.6           # realized stride rewarded up to this fraction of thigh + shin
+STRIDE_CAP_FRAC = 0.75          # realized stride rewarded up to this fraction of thigh + shin (human step/leg ~0.7-0.8)
 CHATTER_COST = {"walk": 1e-4}   # fitness per rad/s^2 of servo command acceleration RMS (0 elsewhere)
 SAT_COST = {"walk": 0.1}        # fitness x the fraction of control steps with a leg servo at its rate limit
 FALL_COST = {"walk": 0.1}       # default fall penalty per objective (0.5 otherwise); on the walk it
@@ -112,6 +113,8 @@ def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, 
     """Compile a model. Raises InvalidBody for un-buildable genomes. With a slalom
     task the cones are placed in the scene."""
     p = decode(genome)
+    if task and "step_hz_max" in task:            # a task may cap the cadence (slower, longer steps)
+        p["step_hz"] = min(p["step_hz"], float(task["step_hz_max"]))
     asset, geom, hdata = terrain_mod.build(terrain_kind, rng)
     zmax = TERRAIN_ZMAX.get(terrain_kind, 0.0)
     scene = _cones_xml(slalom_cones(task), hdata, zmax) if task and task.get("objective") == "slalom" else ""
