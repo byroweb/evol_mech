@@ -14,10 +14,12 @@ The parallelogram knee drive is not built as links: the knee hinge carries a
 position actuator whose target is set by the controller as (shin command -
 thigh command), which is what the parallelogram does geometrically. The
 coupler's mass is in the thigh. The six servos are drawn (pink) where they
-sit, the two roll servos on the hip with their axes forward and each leg's two
-servos on a bracket (purple) on the roll body, so they swing with the leg
-plane as the sketch's front view has it; their mass stays in the hip box (see
-_bracket).
+sit, the two roll servos at the hip centre with their axes forward, one behind
+the other, each with its horn and a link down to its leg's bracket (a light
+passive loop that follows the roll), and each leg's two servos on a bracket
+(purple) on the roll body, so they swing with the leg plane as the sketch's
+front view has it; the servo mass stays in the hip box (see _bracket), which
+is drawn translucent so the cluster shows.
 
 Pantograph leg (leg_drive 1, structure.py "Pantograph leg"): built as the real
 closed chain. Under the roll bracket, horn_f (joint hip_pitch, the front servo)
@@ -123,23 +125,63 @@ def _ankle(side: str, p: dict[str, float], st, ankle_rest: float, ref: float = 0
 SERVO_HALF = (0.020, 0.010, 0.020)      # a 40 x 20 x 40 mm hobby servo, its output shaft at the bottom of its long face
 
 
+BRACKET_Z = -0.02                       # the bracket bar below the leg servo axes
+VIS_KG = 1e-4                           # the roll drive's drawn horn and link (they must move, so they must weigh something)
+
+
+def _roll_arm(p: dict[str, float]) -> float:
+    """The roll lever: the bracket's tab hangs this far below the roll pivot, roll_ratio horn lengths."""
+    return float(p.get("roll_ratio", 1.0)) * p["horn_len"]
+
+
 def _bracket(side: str, sign: float, p: dict[str, float], st) -> str:
-    """The leg bracket on the roll body: a bar across the leg plane and the two leg
-    servos, which swing with the leg (the sketch's front view). Drawn, not weighed:
+    """The leg bracket on the roll body: the two leg servos at the leg plane, a bar under
+    them and a tab hanging roll_ratio horn lengths below the roll pivot, where the roll
+    drive's link pushes (the sketch's front view, turned so the horn is vertical and the
+    link horizontal at rest: no dead centre); they swing with the leg. Drawn, not weighed:
     the servo mass stays lumped in the hip box as every evolved gait was tuned to
     (moving 4 x 65 g onto the brackets dropped the walker, runner and courser), so
     moving it is a body change for a re-evolution, not a rendering fix."""
     xs = (p["servo_dx"] / 2, -p["servo_dx"] / 2) if is_pantograph(p) else (0.0, SHIN_DRIVE["dx"])
-    span = max(0.03, abs(xs[0] - xs[1]) / 2 + SERVO_HALF[0])
     yi = -sign * 0.014                                  # servo bodies just inboard of the leg plane, the horns in it
+    arm = _roll_arm(p)
     servos = "".join(
         f"""
         <geom name="servo_{side}{k}" type="box" pos="{x:.4f} {yi:.4f} {SERVO_HALF[2]:.4f}" size="{SERVO_HALF[0]} {SERVO_HALF[1]} {SERVO_HALF[2]}"
               mass="0" rgba="1 0.6 0.75 1" {NOCOL}/>"""
         for k, x in enumerate(xs))
     return f"""
-        <geom name="bracket_{side}" type="box" pos="{(xs[0] + xs[1]) / 2:.4f} {yi / 2:.4f} 0.046" size="{span:.4f} 0.012 0.004"
+        <geom name="bracket_{side}" type="box" pos="{(xs[0] + xs[1]) / 2:.4f} {yi / 2:.4f} {BRACKET_Z}" size="{max(0.03, abs(xs[0] - xs[1]) / 2 + SERVO_HALF[0]):.4f} 0.012 0.004"
+              mass="0" rgba="0.55 0.2 0.6 1" {NOCOL}/>
+        <geom name="tab_{side}" type="box" pos="{sign * 0.022:.4f} 0 {-arm / 2:.4f}" size="0.006 0.004 {arm / 2:.4f}"
               mass="0" rgba="0.55 0.2 0.6 1" {NOCOL}/>{servos}"""
+
+
+def _roll_drive(side: str, sign: float, p: dict[str, float]) -> str:
+    """The roll servo on the hip (the two sit at the hip centre, one behind the other on
+    their common forward axis), its horn hanging down and a horizontal link from the horn
+    tip out to the end of the bracket's tab, roll_ratio horn lengths below the roll
+    pivot: roll the leg by a degree and the horn turns roll_ratio degrees. Passive, light
+    and loop-closed by a connect equality, so it follows the leg's roll: the real
+    lever's motion, drawn. Its force on the leg is the actuator's business (reflected
+    on the roll hinge), not this linkage's."""
+    h, arm, hw = p["horn_len"], _roll_arm(p), p["hip_width"] / 2
+    x_s = sign * 0.022
+    z_s = h - arm                                       # horn tip level with the tab's end
+    return f"""
+      <geom name="roll_servo_{side}" type="box" pos="{x_s:.4f} 0 {z_s + 0.01:.4f}" size="0.02 0.01 0.02" mass="0" rgba="1 0.6 0.75 1" {NOCOL}/>
+      <body name="roll_horn_{side}" pos="{x_s:.4f} 0 {z_s:.4f}">
+        <joint name="roll_horn_{side}" type="hinge" axis="1 0 0" damping="0.001"/>
+        <geom type="capsule" fromto="0 0 0 0 0 {-h:.4f}" size="0.004" mass="{VIS_KG}" rgba="0.95 0.85 0.1 1" {NOCOL}/>
+        <body name="roll_link_{side}" pos="0 0 {-h:.4f}">
+          <joint name="roll_link_{side}" type="hinge" axis="1 0 0" damping="0.001"/>
+          <geom type="capsule" fromto="0 0 0 0 {sign * hw:.4f} 0" size="0.003" mass="{VIS_KG}" rgba="0.9 0.2 0.2 1" {NOCOL}/>
+        </body>
+      </body>"""
+
+
+def _roll_loops(side: str, sign: float, p: dict[str, float]) -> str:
+    return f'<connect name="roll_{side}" body1="roll_link_{side}" body2="hip_roll_{side}" anchor="0 {sign * p["hip_width"] / 2:.4f} 0"/>'
 
 
 def _panto_leg(side: str, sign: float, p: dict[str, float], st) -> str:
@@ -295,9 +337,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
     <body name="hip" pos="0 0 {z0:.4f}">
       <freejoint name="root"/>
       <geom name="hip" type="box" size="{HIP_HALF_X} {hy:.4f} {HIP_HALF_Z}" mass="{st.hip_kg:.4f}"
-            rgba="0.6 0.6 0.6 1"/>
-      <geom name="roll_servo_l" type="box" pos="0 {p['hip_width']/2 + 0.02:.4f} {HIP_HALF_Z + 0.01:.4f}" size="0.02 0.02 0.01" mass="0" rgba="1 0.6 0.75 1" {NOCOL}/>
-      <geom name="roll_servo_r" type="box" pos="0 {-p['hip_width']/2 - 0.02:.4f} {HIP_HALF_Z + 0.01:.4f}" size="0.02 0.02 0.01" mass="0" rgba="1 0.6 0.75 1" {NOCOL}/>
+            rgba="0.6 0.6 0.6 0.35"/>{_roll_drive('l', +1.0, p)}{_roll_drive('r', -1.0, p)}
       <body name="core" pos="0 0 {core_z:.4f}">
         <geom name="core" type="box" size="{st.core_half_x:.4f} {st.core_half_y:.4f} {p['core_height']/2:.4f}"
               mass="{st.core_kg:.4f}" rgba="0.7 0.3 0.3 0.6"/>
@@ -315,6 +355,8 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
     {_roller_couplings('r', p)}
     {_panto_loops('l', p)}
     {_panto_loops('r', p)}
+    {_roll_loops('l', +1.0, p)}
+    {_roll_loops('r', -1.0, p)}
   </equality>
   <actuator>
     {_leg_actuators('l', p)}

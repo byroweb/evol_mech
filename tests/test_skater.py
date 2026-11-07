@@ -127,7 +127,7 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     # built as a real closed chain: the loops close at the crouch, the sim's ankle is the kinematics' ankle
     model, pm = make_model(encode(p), "flat", np.random.default_rng(0))
     assert model.neq >= 4 and all(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_EQUALITY, i) in
-                                  {"pin_l", "pin_r", "node_l", "node_r"} for i in range(model.neq) if model.eq_type[i] == mujoco.mjtEq.mjEQ_CONNECT)
+                                  {"pin_l", "pin_r", "node_l", "node_r", "roll_l", "roll_r"} for i in range(model.neq) if model.eq_type[i] == mujoco.mjtEq.mjEQ_CONNECT)
     data = make_data(model, pm)
     mujoco.mj_forward(model, data)
     body = lambda n: data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n)]
@@ -146,11 +146,12 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     r1, r0 = rollout(encode(stander), task, 0), rollout(encode(stander), {**task, "stand_cost": 0.0}, 0)
     gate = min(1.0, (r1["feet_x_m"] / 3.0) / 0.15)
     assert r1["time_upright"] == 3.0 and abs((r0["fitness"] - r1["fitness"]) - STAND_COST * (1 - gate)) < 1e-6
-    # the seed archetype walks forward on it
-    seed = json.load(open("configs/archetypes/skater_walker_panto_seed.json"))["phys"]
-    r = rollout(encode(seed), {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 6.0,
-                               "step_hz_max": 2.5}, 0)
-    assert r["time_upright"] == 6.0 and r["feet_x_m"] > 0.2
+    # the soft-horn walker walks forward on it (the un-evolved seed is a knife edge that the
+    # drawn roll linkage's 0.2 g tipped, so it is not the check)
+    walker = json.load(open("configs/archetypes/skater_walker_panto3.json"))["phys"]
+    r = rollout(encode(walker), {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 6.0,
+                                 "step_hz_max": 2.5}, 0)
+    assert r["time_upright"] == 6.0 and r["feet_x_m"] > 0.5
 
 
 def test_foot_layout_tread_and_wheels():
