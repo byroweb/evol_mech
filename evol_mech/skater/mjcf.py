@@ -13,7 +13,11 @@ Topology (fixed):
 The parallelogram knee drive is not built as links: the knee hinge carries a
 position actuator whose target is set by the controller as (shin command -
 thigh command), which is what the parallelogram does geometrically. The
-coupler's mass is in the thigh.
+coupler's mass is in the thigh. The six servos are drawn (pink) where they
+sit, the two roll servos on the hip with their axes forward and each leg's two
+servos on a bracket (purple) on the roll body, so they swing with the leg
+plane as the sketch's front view has it; their mass stays in the hip box (see
+_bracket).
 
 Pantograph leg (leg_drive 1, structure.py "Pantograph leg"): built as the real
 closed chain. Under the roll bracket, horn_f (joint hip_pitch, the front servo)
@@ -60,7 +64,7 @@ from .structure import (structure_from_params, foot_layout, nominal_angles, spaw
                         roller_half_len, sole_half_w, HIP_ROLL_RANGE, THIGH_RANGE, KNEE_RANGE, ANKLE_RANGE,
                         ANKLE_ROLL_RANGE, ANKLE_ROLL_STIFF, HORN_RANGE, HORN_KG, PIN_KG, JOINT_BRACKET_KG,
                         LINK_KG_PER_M, is_pantograph, panto_nominal, panto_points, hip_roll_range,
-                        horn_stiffness, series_kp)
+                        horn_stiffness, series_kp, SHIN_DRIVE)
 
 SIM_DT = 0.002
 FAN_PITCH_RANGE = math.radians(90)
@@ -116,6 +120,28 @@ def _ankle(side: str, p: dict[str, float], st, ankle_rest: float, ref: float = 0
             </body>"""
 
 
+SERVO_HALF = (0.020, 0.010, 0.020)      # a 40 x 20 x 40 mm hobby servo, its output shaft at the bottom of its long face
+
+
+def _bracket(side: str, sign: float, p: dict[str, float], st) -> str:
+    """The leg bracket on the roll body: a bar across the leg plane and the two leg
+    servos, which swing with the leg (the sketch's front view). Drawn, not weighed:
+    the servo mass stays lumped in the hip box as every evolved gait was tuned to
+    (moving 4 x 65 g onto the brackets dropped the walker, runner and courser), so
+    moving it is a body change for a re-evolution, not a rendering fix."""
+    xs = (p["servo_dx"] / 2, -p["servo_dx"] / 2) if is_pantograph(p) else (0.0, SHIN_DRIVE["dx"])
+    span = max(0.03, abs(xs[0] - xs[1]) / 2 + SERVO_HALF[0])
+    yi = -sign * 0.014                                  # servo bodies just inboard of the leg plane, the horns in it
+    servos = "".join(
+        f"""
+        <geom name="servo_{side}{k}" type="box" pos="{x:.4f} {yi:.4f} {SERVO_HALF[2]:.4f}" size="{SERVO_HALF[0]} {SERVO_HALF[1]} {SERVO_HALF[2]}"
+              mass="0" rgba="1 0.6 0.75 1" {NOCOL}/>"""
+        for k, x in enumerate(xs))
+    return f"""
+        <geom name="bracket_{side}" type="box" pos="{(xs[0] + xs[1]) / 2:.4f} {yi / 2:.4f} 0.046" size="{span:.4f} 0.012 0.004"
+              mass="0" rgba="0.55 0.2 0.6 1" {NOCOL}/>{servos}"""
+
+
 def _panto_leg(side: str, sign: float, p: dict[str, float], st) -> str:
     """The pantograph leg under its roll bracket (see the module docstring)."""
     y = sign * p["hip_width"] / 2
@@ -132,7 +158,7 @@ def _panto_leg(side: str, sign: float, p: dict[str, float], st) -> str:
     return f"""
       <body name="hip_roll_{side}" pos="0 {y:.4f} 0">
         <joint name="hip_roll_{side}" type="hinge" axis="1 0 0" range="{-roll:.4f} {roll:.4f}" damping="0.05"/>
-        <geom type="sphere" size="0.012" mass="0.001" rgba="0.5 0.5 0.5 1" {NOCOL}/>
+        <geom type="sphere" size="0.012" mass="0.001" rgba="0.5 0.5 0.5 1" {NOCOL}/>{_bracket(side, sign, p, st)}
         <body name="horn_f_{side}" pos="{d/2:.4f} 0 0" euler="0 {hf:.5f} 0">
           <joint name="hip_pitch_{side}" type="hinge" axis="0 1 0" ref="{hf:.5f}" range="{HORN_RANGE[0]:.4f} {HORN_RANGE[1]:.4f}" damping="0.05"/>
           <geom type="capsule" fromto="0 0 0 0 0 {-h:.4f}" size="0.004" mass="{HORN_KG:.4f}" rgba="0.95 0.85 0.1 1" {NOCOL}/>
@@ -185,7 +211,7 @@ def _leg(side: str, sign: float, p: dict[str, float], st) -> str:
     return f"""
       <body name="hip_roll_{side}" pos="0 {y:.4f} 0">
         <joint name="hip_roll_{side}" type="hinge" axis="1 0 0" range="{-roll:.4f} {roll:.4f}" damping="0.05"/>
-        <geom type="sphere" size="0.012" mass="0.001" rgba="0.5 0.5 0.5 1" {NOCOL}/>
+        <geom type="sphere" size="0.012" mass="0.001" rgba="0.5 0.5 0.5 1" {NOCOL}/>{_bracket(side, sign, p, st)}
         <body name="thigh_{side}">
           <joint name="hip_pitch_{side}" type="hinge" axis="0 1 0" range="{THIGH_RANGE[0]:.4f} {THIGH_RANGE[1]:.4f}" damping="0.05"/>
           <geom type="capsule" fromto="0 0 0 0 0 {-L1:.4f}" size="{LINK_RADIUS}" mass="{st.thigh_kg*0.6:.4f}"
@@ -270,6 +296,8 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
       <freejoint name="root"/>
       <geom name="hip" type="box" size="{HIP_HALF_X} {hy:.4f} {HIP_HALF_Z}" mass="{st.hip_kg:.4f}"
             rgba="0.6 0.6 0.6 1"/>
+      <geom name="roll_servo_l" type="box" pos="0 {p['hip_width']/2 + 0.02:.4f} {HIP_HALF_Z + 0.01:.4f}" size="0.02 0.02 0.01" mass="0" rgba="1 0.6 0.75 1" {NOCOL}/>
+      <geom name="roll_servo_r" type="box" pos="0 {-p['hip_width']/2 - 0.02:.4f} {HIP_HALF_Z + 0.01:.4f}" size="0.02 0.02 0.01" mass="0" rgba="1 0.6 0.75 1" {NOCOL}/>
       <body name="core" pos="0 0 {core_z:.4f}">
         <geom name="core" type="box" size="{st.core_half_x:.4f} {st.core_half_y:.4f} {p['core_height']/2:.4f}"
               mass="{st.core_kg:.4f}" rgba="0.7 0.3 0.3 0.6"/>
