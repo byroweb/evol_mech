@@ -132,14 +132,18 @@ will not trade speed for stride on its own, the servo slew rate sets the
 stride at any cadence). A walk is judged on grace rather than speed: its gait
 score is the stride (weight 3) plus a little speed (0.3), multiplied by a
 grace factor 1 / (1 + sway/0.2 rad + bob/2 cm + surge/0.15 m/s
-+ servo saturation/2) from the body's pitch and roll RMS, hip height and
-forward-speed standard deviation and the share of the time a leg servo is at
-its slew limit, and the fans' mean throttle is charged on top of their energy
++ weave/2 cm + servo saturation/2) from the body's pitch and roll RMS, hip
+height and forward-speed standard deviations, lateral excursion about a 1.5 s
+moving average and the share of the time a leg servo is at its slew limit,
+and by min(1, speed / 0.15 m/s) so that a walk still goes somewhere, and the fans' mean throttle is charged on top of their energy
 (`fan_duty_cost` 1.0), with the clearance bonus (weight 4 on a walk) added
 outside the factor, so the smoothest, stillest, fan-free walk with the longest
 strides and its feet picked up wins (the course's walk segments are scored the same way). Run: a bounding gait (crouched stance, retracted
-swing, fan push in flight) scored on feet speed, stride and time in real
-flights; the first bounds with real flights came once the sole was levelled (a
+swing, the sweep `run_lean` behind the hip so the push-off goes forward, fan
+push in flight) scored on feet speed (weight 2), stride and mean flight length,
+all gated by the share of time in real flights (full credit from 15 %: flight
+is the ticket, not the prize, since paying for flight time bred a hop in
+place), minus the hip's bob; the first bounds with real flights came once the sole was levelled (a
 parallelogram at the passive ankle keeps the sole parallel to the body at any
 knee angle) and the feet placed under the CoM (`stance_x`). Walk and run both
 earn a swing-foot clearance bonus (`clear_weight`, up to 5 cm), so the gait
@@ -150,7 +154,11 @@ stand by default) and scores every segment and every gait change on its own
 the stops; peak pitch over the 2 s after each change, plus the time to 90 % of
 the new speed); the controller blends one stepping cycle's parameters between
 the walk and the run over the `trans_s` gene, so a change is a continuous foot
-path. A long course is the stability test a short task is not; `repeats` and
+path. Every start is a left step (the cycle parks at the left foot's swing
+start) and every stop is a braking step: from the left foot's next touchdown
+the cycle rate decays to zero over about `trans_s` while the right foot's last
+swing lands beside the left, then the stepping amplitude fades with the feet
+together. A long course is the stability test a short task is not; `repeats` and
 `pose_noise_deg` on a task average the fitness over several rollouts from a
 randomly tilted start, since a gait that works from one exact start only is on a
 knife edge (a 1e-16 genome change flipped the first course best into a fall). Stand: fraction of time upright under periodic

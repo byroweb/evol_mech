@@ -105,6 +105,7 @@ PARAMS: list[Param] = [
     Param("run_kv_x",         0.0,  0.5,  0.1,  "gait"),        # run: kv_foot_x for the bound
     Param("run_kp_leg",      -0.6,  0.6,  0.0,  "gait"),        # run: kp_foot_leg for the bound
     Param("trans_s",          0.3,  3.0,  1.0,  "gait"),        # course: a gait change (stepping amplitude, walk <-> run mix) takes this long (s)
+    Param("run_lean",         0.0,  0.10, 0.0,  "gait"),        # run: the stance sweep shifted behind the hip (m), so the extension at toe-off pushes forward, not up
 ]
 
 NAMES = [p.name for p in PARAMS]

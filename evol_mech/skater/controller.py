@@ -91,6 +91,10 @@ LEGGED = ("walk", "run", "course", "hop", "broad_jump")      # objectives with l
 COURSE_PROFILE = (("stand", 2.0), ("walk", 10.0), ("run", 10.0), ("walk", 10.0), ("stand", 4.0))
 # walk cycle: stance duty (`step_duty`) and the cycle fraction at which the body is
 # furthest left (`shift_phase`) are genes; the left foot's phase is the cycle reference
+# (u = 0 its touchdown, u = duty its swing). Every gait starts at u = duty, so the left
+# foot takes the first step, and a course stop ends with the right foot's swing landing
+# beside the left (the closing step) before the stepping amplitude fades: start and stop
+# are the same every time.
 JUMP_PHASES = (0.45, 0.60, 0.80)            # cycle fractions: crouch | thrust | tuck | settle
 KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
                                   # closer to a rigid link but the two position loops then chatter (rms accel x3)
@@ -154,7 +158,9 @@ class SkaterController:
         self.air_since = None                        # legged: time the feet left the floor
         # course state (see _course_update); cycles counts the shared phase for every objective
         self.profile = [(str(g), float(d)) for g, d in task.get("profile", COURSE_PROFILE)]
-        self.amp, self.cycles, self.phase = 0.0, 0.0, 0.0
+        self.amp, self.cycles, self.phase = 0.0, p["step_duty"], p["step_duty"]
+        self.closing = None          # course stop: None | "wait" (for the left touchdown) | "swing" (braking, the right foot closing last) | "hold" (feet together, amplitude fading)
+        self._brake = (0.0, 0.5)     # (cycles at the braking start, cycles the brake lasts: a whole number plus a half)
         self.blend = 1.0 if self.profile[0][0] == "run" else 0.0    # a course that opens with a run is a run from t = 0
         self._t_prev = None
         self.floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
@@ -204,17 +210,23 @@ class SkaterController:
 
     def _run_leg(self, u: float, ramp: float) -> tuple[float, float]:
         """The run's amplitudes (sweep, crouch, lift) scaled by ramp. The parked stance is
-        nearly straight-legged (no room to extend), so the run lives run_crouch lower."""
+        nearly straight-legged (no room to extend), so the run lives run_crouch lower, and
+        the whole sweep sits run_lean behind the hip so the toe-off extension pushes forward."""
         p = self.p
-        return self._leg(u, ramp * p["run_len"], p["run_duty"], ramp * p["run_lift"], ramp * p["run_crouch"], p["run_ext"])
+        x, z = self._leg(u, ramp * p["run_len"], p["run_duty"], ramp * p["run_lift"], ramp * p["run_crouch"], p["run_ext"])
+        return x - ramp * p["run_lean"], z
 
     def _course_leg(self, u: float) -> tuple[float, float]:
         """The course's cycle: the walk's and the run's parameters mixed by the blend, the
         amplitudes (sweep, lift, crouch) scaled by the stepping amplitude."""
         p, a, b = self.p, self.amp, self.blend
         mix = lambda w, r: (1 - b) * p[w] + b * p[r]
-        return self._leg(u, a * mix("step_len", "run_len"), mix("step_duty", "run_duty"), a * mix("step_lift", "run_lift"),
+        x, z = self._leg(u, a * mix("step_len", "run_len"), mix("step_duty", "run_duty"), a * mix("step_lift", "run_lift"),
                          a * b * p["run_crouch"], b * p["run_ext"])
+        return x - a * b * p["run_lean"], z
+
+    def _course_duty(self) -> float:
+        return (1 - self.blend) * self.p["step_duty"] + self.blend * self.p["run_duty"]
 
     def course_gait(self, t: float) -> str:
         """The gait the course profile commands at time t."""
@@ -230,33 +242,74 @@ class SkaterController:
         stepping amplitude (0 standing, 1 stepping) and of the walk/run mix, both slewed
         over trans_s (a stand is a walk of zero amplitude, so a stop after a run also
         brings the walk's balance genes and height feedback back); the shared phase runs
-        at the blended cadence and is held at a left touchdown while stopped, so every
-        start begins there."""
+        at the blended cadence and is held at the left foot's swing start while stopped,
+        so every start begins with a left step. A stop is a closing step: the gait keeps
+        its amplitude until the left foot's next touchdown ("wait"); from there the phase
+        rate decays linearly to zero over about trans_s (rounded to a whole number of cycles
+        plus the half that ends with the right foot's landing; the stance sweep is the body's
+        speed, so the body decelerates over its planted feet) and the right foot's last swing
+        lands beside the left instead of ahead of it ("swing"); then the phase freezes with
+        the feet together and the amplitude fades ("hold")."""
         dt = 0.0 if self._t_prev is None else max(0.0, t - self._t_prev)
         self._t_prev = t
         g = self.course_gait(t)
         amp_t = 0.0 if g == "stand" else 1.0
         blend_t = 1.0 if g == "run" else 0.0                           # a stand is a walk of zero amplitude
         step = dt / self.p["trans_s"]
+        duty = self._course_duty()
+        if amp_t > 0.0:
+            self.closing = None
+        elif self.amp > 0.0 and self.closing is None:
+            self.closing = "wait"
+        if self.closing in ("wait", "swing"):
+            amp_t = self.amp                                           # keep stepping until the closing step has landed
         self.amp += max(-step, min(step, amp_t - self.amp))
         self.blend += max(-step, min(step, blend_t - self.blend))
         hz = (1 - self.blend) * self.p["step_hz"] + self.blend * self.p["run_hz"]
-        self.cycles = self.cycles + hz * dt if self.amp > 0.0 else 0.0
-        self.phase = self.cycles % 1.0
+        if self.amp <= 0.0:
+            self.cycles, self.closing = duty, None                     # parked at the left swing start
+        elif self.closing == "swing":
+            # braking: the rate hz * sqrt(1 - done / length) is a linear decay in time from hz at
+            # the left touchdown to zero after `length` cycles, at phase 0.5, the right foot landed
+            c0, length = self._brake
+            self.cycles += hz * math.sqrt(max(0.0, 1.0 - (self.cycles - c0) / length)) * dt
+            if self.cycles - c0 >= length - 1e-3:
+                self.cycles, self.closing = c0 + length, "hold"
+        elif self.closing != "hold":
+            self.cycles += hz * dt
+        prev, self.phase = self.phase, self.cycles % 1.0
+        if self.closing == "wait" and self._crossed(prev, self.phase, 0.0):
+            self.closing = "swing"                                     # the left foot has landed: the brake begins
+            self.cycles, self.phase = math.floor(self.cycles + 0.5), 0.0
+            self._brake = (self.cycles, max(0, round(hz * self.p["trans_s"] / 2 - 0.5)) + 0.5)
+
+    @staticmethod
+    def _crossed(prev: float, now: float, mark: float) -> bool:
+        """Did the phase pass `mark` going from prev to now (mod 1)?"""
+        return now != prev and ((mark - prev) % 1.0) <= ((now - prev) % 1.0)
 
     def gait_offsets(self, t: float) -> dict[str, tuple[float, float, bool]]:
         """Per side: (foot x offset, foot lift, height feedback on) for the legged
         objectives; zero for the others."""
         p = self.p
-        if self.objective == "walk":
-            self.cycles = p["step_hz"] * t
-            return {s: (*self._walk_leg((p["step_hz"] * t + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
+        if self.objective == "walk":                   # the cycle starts at the left foot's swing: the left steps first
+            self.cycles = p["step_hz"] * t + p["step_duty"]
+            return {s: (*self._walk_leg((self.cycles + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
         if self.objective == "run":
-            self.cycles = p["run_hz"] * t
+            self.cycles = p["run_hz"] * t + p["run_duty"]
             ramp = min(1.0, t / RUN_RAMP_S)            # from the parked stance, not a 9 cm drop at t = 0
-            return {s: (*self._run_leg((p["run_hz"] * t + ph) % 1.0, ramp), False) for s, ph in (("l", 0.0), ("r", 0.5))}
+            return {s: (*self._run_leg((self.cycles + ph) % 1.0, ramp), False) for s, ph in (("l", 0.0), ("r", 0.5))}
         if self.objective == "course":
-            return {s: (*self._course_leg((self.phase + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
+            out = {s: (*self._course_leg((self.phase + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
+            c0, length = self._brake
+            if self.closing == "hold" or (self.closing == "swing" and self.cycles - c0 >= length - 0.5):
+                # the closing step: the right foot's last swing lands beside the left
+                duty = self._course_duty()
+                u_r = (self.phase + 0.5) % 1.0
+                w = 1.0 if self.closing == "hold" else max(0.0, min(1.0, (u_r - duty) / max(1e-6, 1.0 - duty)))
+                xl, (xr, zr, fb) = out["l"][0], out["r"]
+                out["r"] = ((1 - w) * xr + w * xl, zr, fb)
+            return out
         if self.objective in ("hop", "broad_jump"):
             u = (p["jump_hz"] * t) % 1.0
             c, th, tk = JUMP_PHASES
@@ -276,9 +329,9 @@ class SkaterController:
         """Walk: lateral body offset (+ = left) over the feet, furthest toward the
         stance side mid-swing of the other foot; zero for the other objectives."""
         if self.objective == "walk":
-            u, scale = (self.p["step_hz"] * t) % 1.0, 1.0
+            u, scale = (self.p["step_hz"] * t + self.p["step_duty"]) % 1.0, 1.0
         elif self.objective == "run":
-            u, scale = (self.p["run_hz"] * t) % 1.0, 1.0
+            u, scale = (self.p["run_hz"] * t + self.p["run_duty"]) % 1.0, 1.0
         elif self.objective == "course":
             u, scale = self.phase, min(1.0, self.amp / 0.2)              # the sway is there as soon as the feet move
         else:
