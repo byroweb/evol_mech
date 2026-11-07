@@ -147,6 +147,8 @@ WEAVE_REF = 0.02                # m of lateral hip excursion (standard deviation
                                 # a slow drift is not a weave), likewise (the swagger: the first grace round walked a
                                 # 5 cm track with a 0.75 weight shift, a cowboy)
 WEAVE_WIN_S = 1.5
+TRACK_REF = 0.05                # m of track (the feet's lateral separation) beyond the hip width, likewise: the wide stance
+                                # is the other half of the cowboy; the grace rounds walked a 24 cm track on a 14 cm hip
 SAT_REF = 2.0                   # fraction of the time a leg servo is at its slew limit, likewise (1 = always: a quarter off)
 FAN_DUTY_COST = {"walk": 1.0, "course": 1.0}   # fitness x the fans' mean throttle (0-1) on a walk (course: per walk segment)
 HOP_TOP_N = 3                   # hop fitness sums the highest apex rises of this many flights
@@ -264,7 +266,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     sat_hist, acc_hist = np.zeros(n_ctrl), np.zeros(n_ctrl)
     # ... and for the walk's quality terms: body roll, hip height, forward hip speed, fan throttle
     roll_hist, z_hist, vx_hist, thr_hist = np.zeros(n_ctrl), np.zeros(n_ctrl), np.zeros(n_ctrl), np.zeros(n_ctrl)
-    y_hist = np.zeros(n_ctrl)
+    y_hist, track_hist = np.zeros(n_ctrl), np.zeros(n_ctrl)       # hip y; the feet's lateral separation (the track)
     x0, y0 = float(data.qpos[0]), float(data.qpos[1])
     feet_x0 = float(np.mean([data.xpos[b][0] for b in foot_bodies]))
     servo_prev: list[np.ndarray] = []                 # last two servo command vectors (chatter metric)
@@ -318,6 +320,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             servo_acc_sq += acc_hist[k]
             servo_sat += int(sat_hist[k])
         feet_hist[k] = float(np.mean([data.xpos[b][0] for b in foot_bodies]))
+        track_hist[k] = abs(float(data.xpos[foot_bodies[0]][1]) - float(data.xpos[foot_bodies[1]][1]))
         cyc_hist[k] = ctrl.cycles
         servo_prev = (servo_prev + [servo_cmd])[-2:]
         motor_energy += float(np.sum(np.abs(data.actuator_force[motor_acts] * data.actuator_velocity[motor_acts]))) * CONTROL_DT
@@ -391,10 +394,10 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     # without the hip ever rising, and that flicker is not a bound
     flight_frac = sum(f[2] for f in flights) / max(time_upright, CONTROL_DT)
     swing_clear = float(np.median([c for _, c in clearances])) if clearances else 0.0
-    quality = _gait_quality(pitch_hist, roll_hist, z_hist, vx_hist, thr_hist, y_hist, 0, max(2, min(n, int(time_upright / CONTROL_DT))))
+    quality = _gait_quality(pitch_hist, roll_hist, z_hist, vx_hist, thr_hist, y_hist, track_hist, 0, max(2, min(n, int(time_upright / CONTROL_DT))))
     flight_len = float(np.mean([f[1] for f in flights])) if flights else 0.0
     course = (_course_scores(task, p, k + 1, time_upright, feet_hist, pitch_hist, cyc_hist, sat_hist, acc_hist,
-                             flights, clearances, (roll_hist, z_hist, vx_hist, thr_hist, y_hist)) if objective == "course" else {})
+                             flights, clearances, (roll_hist, z_hist, vx_hist, thr_hist, y_hist, track_hist)) if objective == "course" else {})
     clear_bonus = float(task.get("clear_weight", CLEAR_WEIGHT.get(objective, 0.0))) * max(0.0, min(swing_clear, CLEAR_CAP))
     leg_frac = leg_mass_fraction(p)
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
@@ -412,9 +415,11 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         # grace over speed: the gait score scaled by how smoothly the body rides, the fans charged by duty
         gait_score = (float(task.get("speed_weight", WALK_SPEED_WEIGHT)) * feet_dx / duration
                       + float(task.get("stride_weight", WALK_STRIDE_WEIGHT)) * stride_eff)
-        quality["grace"] = _grace(task, quality, servo_sat_frac)
-        gait_score *= min(1.0, (feet_dx / duration) / float(task.get("speed_gate", WALK_SPEED_GATE)))
-        fitness = (gait_score * quality["grace"] + clear_bonus - accel_cost * rms_accel - 0.2 * abs(dy)
+        quality["grace"] = _grace(task, quality, servo_sat_frac, p["hip_width"])
+        speed_gate = min(1.0, (feet_dx / duration) / float(task.get("speed_gate", WALK_SPEED_GATE)))
+        # the clearance bonus is gated by progress too: left outside the gate, the first track round
+        # marched in place with its feet lifted 6 cm (2 cm of progress in 12 s) and won on clearance
+        fitness = (gait_score * quality["grace"] * speed_gate + clear_bonus * speed_gate - accel_cost * rms_accel - 0.2 * abs(dy)
                    - float(task.get("fan_duty_cost", FAN_DUTY_COST["walk"])) * quality["fan_duty"] * upright_frac)
     elif objective == "run":
         # speed of the feet, long strides and long flights, all gated by having real flights at all
@@ -488,27 +493,29 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     }
 
 
-def _gait_quality(pitch, roll, z, vx, thr, y, i0: int, i1: int) -> dict:
+def _gait_quality(pitch, roll, z, vx, thr, y, track, i0: int, i1: int) -> dict:
     """How smoothly the body rides over [i0, i1): the sway (body pitch and roll RMS, rad), the
     bob (hip height standard deviation, m), the surge (forward hip speed standard deviation,
-    m/s), the weave (lateral hip excursion about its WEAVE_WIN_S moving average, m) and the
-    fan duty (mean throttle of the two fans, 0-1). A graceful walk keeps all five small; a
-    speedy one need not."""
+    m/s), the weave (lateral hip excursion about its WEAVE_WIN_S moving average, m), the
+    fan duty (mean throttle of the two fans, 0-1) and the track (mean lateral separation of
+    the feet, m). A graceful walk keeps all of them small; a speedy one need not."""
     if i1 - i0 < 2:
-        return {"sway_rad": 0.0, "pitch_rms": 0.0, "roll_rms": 0.0, "bob_m": 0.0, "surge_ms": 0.0, "weave_m": 0.0, "fan_duty": 0.0}
+        return {"sway_rad": 0.0, "pitch_rms": 0.0, "roll_rms": 0.0, "bob_m": 0.0, "surge_ms": 0.0, "weave_m": 0.0, "fan_duty": 0.0, "track_m": 0.0}
     pr, rr = float(np.sqrt(np.mean(pitch[i0:i1] ** 2))), float(np.sqrt(np.mean(roll[i0:i1] ** 2)))
     yy = np.asarray(y[i0:i1], dtype=float)
     w = max(1, min(len(yy), int(round(WEAVE_WIN_S / CONTROL_DT))))
     trend = np.convolve(np.pad(yy, (w // 2, w - 1 - w // 2), mode="edge"), np.ones(w) / w, mode="valid")
     return {"sway_rad": pr + rr, "pitch_rms": pr, "roll_rms": rr, "bob_m": float(np.std(z[i0:i1])),
-            "surge_ms": float(np.std(vx[i0:i1])), "weave_m": float(np.std(yy - trend)), "fan_duty": float(np.mean(thr[i0:i1]))}
+            "surge_ms": float(np.std(vx[i0:i1])), "weave_m": float(np.std(yy - trend)), "fan_duty": float(np.mean(thr[i0:i1])),
+            "track_m": float(np.mean(track[i0:i1]))}
 
 
-def _grace(task: dict, q: dict, sat_frac: float) -> float:
+def _grace(task: dict, q: dict, sat_frac: float, track_free: float = 0.0) -> float:
     """The grace factor of a walk, 1 for a body that glides on quiet servos and 1/2 at one
-    reference's worth of sway, bob, surge, weave or servo saturation; task keys sway_ref /
-    bob_ref / surge_ref / weave_ref / sat_ref move the references."""
-    return 1.0 / (1.0 + q["sway_rad"] / float(task.get("sway_ref", SWAY_REF)) + q["bob_m"] / float(task.get("bob_ref", BOB_REF))
+    reference's worth of sway, bob, surge, weave, servo saturation or track beyond track_free
+    (the hip width: feet under the hips are free, feet splayed outboard are charged); task keys
+    sway_ref / bob_ref / surge_ref / weave_ref / sat_ref / track_ref move the references."""
+    return 1.0 / (1.0 + max(0.0, q.get("track_m", 0.0) - track_free) / float(task.get("track_ref", TRACK_REF)) + q["sway_rad"] / float(task.get("sway_ref", SWAY_REF)) + q["bob_m"] / float(task.get("bob_ref", BOB_REF))
                   + q["surge_ms"] / float(task.get("surge_ref", SURGE_REF)) + q["weave_m"] / float(task.get("weave_ref", WEAVE_REF))
                   + sat_frac / float(task.get("sat_ref", SAT_REF)))
 
@@ -533,7 +540,7 @@ def _course_scores(task: dict, p: dict, n_done: int, time_upright: float, feet, 
     profile = task["profile"]
     leg = p["thigh_len"] + p["shin_len"]
     win, smooth = int(round(TRANS_WIN_S / dt)), int(round(T90_SMOOTH_S / dt))
-    roll, z, vx, thr, y = body
+    roll, z, vx, thr, y, track = body
     gate_ref, w_len = float(task.get("flight_gate", FLIGHT_GATE)), float(task.get("flight_len_weight", FLIGHT_LEN_WEIGHT))
     bob_cost = float(task.get("bob_cost", RUN_BOB_COST))
     speed_gate = float(task.get("speed_gate", WALK_SPEED_GATE))
@@ -556,7 +563,7 @@ def _course_scores(task: dict, p: dict, n_done: int, time_upright: float, feet, 
         n = i1 - j0
         seg = {"upright_s": max(0.0, min(time_upright, e) - s), "progress_m": 0.0, "speed": 0.0, "stride_m": 0.0,
                "flight_frac": 0.0, "flight_len_m": 0.0, "swing_clear_m": 0.0, "sat_frac": 0.0, "chatter_rms": 0.0, "grace": 1.0,
-               **_gait_quality(pitch, roll, z, vx, thr, y, j0, i1)}
+               **_gait_quality(pitch, roll, z, vx, thr, y, track, j0, i1)}
         if n > 1:
             T = n * dt
             prog = float(feet[i1 - 1] - feet[j0])
@@ -568,7 +575,7 @@ def _course_scores(task: dict, p: dict, n_done: int, time_upright: float, feet, 
                        swing_clear_m=float(np.median(cl)) if cl else 0.0,
                        sat_frac=float(np.mean(sat[j0:i1])),
                        chatter_rms=float(np.sqrt(np.mean(acc[j0:i1]))) / dt ** 2)
-            seg["grace"] = _grace(task, seg, seg["sat_frac"])
+            seg["grace"] = _grace(task, seg, seg["sat_frac"], p["hip_width"])
         if g == "stand":
             score = (-stop_cost * abs(seg["progress_m"]) - SETTLE_COST * seg["pitch_rms"]) if n > 1 else 0.0
         else:
@@ -579,7 +586,10 @@ def _course_scores(task: dict, p: dict, n_done: int, time_upright: float, feet, 
             else:                                            # the run: gated by flight, paid for flight length, charged the bob
                 gait_score = (min(1.0, seg["flight_frac"] / gate_ref) * (gait_score + w_len * min(seg["flight_len_m"], FLIGHT_LEN_CAP))
                               + w_flight * min(seg["flight_frac"], FLIGHT_FRAC_CAP) - bob_cost * seg["bob_m"])
-            score = (d / gait_total) * (gait_score + w_clear[g] * max(0.0, min(seg["swing_clear_m"], CLEAR_CAP)))
+            clear = w_clear[g] * max(0.0, min(seg["swing_clear_m"], CLEAR_CAP))
+            if g == "walk":
+                clear *= min(1.0, seg["speed"] / speed_gate)        # no credit for marching in place
+            score = (d / gait_total) * (gait_score + clear)
         seg["score"] = score
         total += score
         out.update({f"seg{k}_{g}.{m}": v for m, v in seg.items()})

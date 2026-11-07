@@ -132,12 +132,16 @@ will not trade speed for stride on its own, the servo slew rate sets the
 stride at any cadence). A walk is judged on grace rather than speed: its gait
 score is the stride (weight 3) plus a little speed (0.3), multiplied by a
 grace factor 1 / (1 + sway/0.2 rad + bob/2 cm + surge/0.15 m/s
-+ weave/2 cm + servo saturation/2) from the body's pitch and roll RMS, hip
-height and forward-speed standard deviations, lateral excursion about a 1.5 s
-moving average and the share of the time a leg servo is at its slew limit,
++ weave/2 cm + servo saturation/2 + track beyond the hip width/5 cm) from the
+body's pitch and roll RMS, hip height and forward-speed standard deviations,
+lateral excursion about a 1.5 s moving average, the share of the time a leg
+servo is at its slew limit and the feet's lateral separation (feet under the
+hips are free, feet splayed outboard are charged: the wide stance is the other
+half of the cowboy walk),
 and by min(1, speed / 0.15 m/s) so that a walk still goes somewhere, and the fans' mean throttle is charged on top of their energy
 (`fan_duty_cost` 1.0), with the clearance bonus (weight 4 on a walk) added
-outside the factor, so the smoothest, stillest, fan-free walk with the longest
+outside the factor but inside the progress gate (marching in place earns
+nothing for lifting its feet), so the smoothest, stillest, fan-free walk with the longest
 strides and its feet picked up wins (the course's walk segments are scored the same way). Run: a bounding gait (crouched stance, retracted
 swing, the sweep `run_lean` behind the hip so the push-off goes forward, fan
 push in flight) scored on feet speed (weight 2), stride and mean flight length,

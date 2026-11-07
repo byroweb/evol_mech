@@ -254,7 +254,7 @@ def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     assert r["fan_energy"] < 0.3 and 0.1 < r["stride_m"] < 0.25 and r["swing_clear_m"] > 0.02
     # stepping outscores standing still on the walk task by a clear margin, through the grace
     # factor (the walk is judged on stride x grace, not speed): a stander's gait score is nil
-    assert 0.3 < r["grace"] < 0.5 and r["fan_duty"] < 0.1 and r["sway_rad"] < 0.15 and r["bob_m"] < 0.01
+    assert 0.25 < r["grace"] < 0.5 and r["fan_duty"] < 0.1 and r["sway_rad"] < 0.15 and r["bob_m"] < 0.01
     r_still = rollout(encode({**phys, "step_len": 0.02, "walk_shift": 0.0}), task, 0, **kw)
     assert r_still["feet_x_m"] < 0.3 and r["fitness"] > r_still["fitness"] + 0.15
     # a walk slower than the speed gate earns a share of its gait score: the gate is what it says
@@ -270,6 +270,10 @@ def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     q = {"sway_rad": SWAY_REF, "bob_m": 0.0, "surge_ms": 0.0, "weave_m": 0.0}
     assert abs(_grace(task, q, 0.0) - 0.5) < 1e-9 and _grace(task, {**q, "sway_rad": 0.0}, 0.0) == 1.0
     assert abs(_grace({**task, "sway_ref": 2 * SWAY_REF}, q, 0.0) - 2 / 3) < 1e-9
+    # ... and the track beyond the hip width is charged the same way (feet under the hips are free)
+    from evol_mech.skater.rollout import TRACK_REF
+    assert _grace(task, {**q, "track_m": 0.14}, 0.0, 0.14) == 0.5 and abs(_grace(task, {**q, "track_m": 0.14 + TRACK_REF}, 0.0, 0.14) - 1 / 3) < 1e-9
+    assert phys["hip_width"] - 0.01 < r["track_m"] < phys["hip_width"] + 2 * phys["stance_w"] + 0.03   # the measured track is the feet's separation
     r_stand = rollout(encode(phys), {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.0}, 0)
     assert not r_stand["fell"] and r_stand["time_upright"] >= 0.9
 

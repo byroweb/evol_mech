@@ -39,9 +39,9 @@ LABELS = {
     "total_mass": "total mass (kg)", "invalid": "invalid body",
     "course_score": "course score (segments + changes)", "course_done": "course completed",
     "grace": "grace factor (walk)", "sway_rad": "body sway, pitch + roll RMS (rad)", "pitch_rms": "pitch RMS (rad)", "roll_rms": "roll RMS (rad)",
-    "bob_m": "hip bob, height std (m)", "surge_ms": "surge, fwd speed std (m/s)", "weave_m": "weave, lateral hip std (m)", "fan_duty": "fan mean throttle", "flight_len_m": "mean flight length (m)", "apex_m": "mean flight apex (m)",
+    "bob_m": "hip bob, height std (m)", "surge_ms": "surge, fwd speed std (m/s)", "weave_m": "weave, lateral hip std (m)", "fan_duty": "fan mean throttle", "track_m": "track, feet lateral separation (m)", "flight_len_m": "mean flight length (m)", "apex_m": "mean flight apex (m)",
 }
-ORDER = ["fitness", "course_score", "course_done", "time_upright", "fell", "unstable", "distance_x", "feet_x_m", "stride_m", "mean_speed", "grace", "sway_rad", "bob_m", "surge_ms", "weave_m", "fan_duty", "drift_y", "rms_lat_err",
+ORDER = ["fitness", "course_score", "course_done", "time_upright", "fell", "unstable", "distance_x", "feet_x_m", "stride_m", "mean_speed", "grace", "sway_rad", "bob_m", "surge_ms", "weave_m", "track_m", "fan_duty", "drift_y", "rms_lat_err",
          "scrub_m", "cones_hit", "cones", "n_flights", "max_apex_m", "max_flight_m", "airborne_s", "flight_frac", "swing_clear_m", "rms_accel", "fan_energy", "motor_energy_j", "leg_mass_fraction", "leg_mass_penalty",
          "total_mass", "invalid"]
 
