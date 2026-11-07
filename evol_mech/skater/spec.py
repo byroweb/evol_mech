@@ -99,6 +99,7 @@ PARAMS: list[Param] = [
     Param("run_crouch",       0.02, 0.12, 0.05, "gait"),        # run: hip below the parked height through the run (m): the bent knee that lands and loads
     Param("run_ext",          0.0,  1.0,  0.6,  "gait"),        # run: fraction of run_crouch recovered by toe-off, the thrust into the flight
     Param("run_fan",          0.0,  1.0,  0.3,  "gait"),        # run: fan throttle floor while no foot is down, the forward push in flight
+    Param("stance_x",        -0.03, 0.06, 0.0,  "gait"),        # legged: feet ahead of the hip (m), the sole's support under the CoM
 ]
 
 NAMES = [p.name for p in PARAMS]

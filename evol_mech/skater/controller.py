@@ -81,6 +81,7 @@ TREAD_TRACK_GAIN = 10.0     # 1/s, angle-error term of the tread position hold
 AIRBORNE_Z = 0.03           # hip higher than nominal by this -> treat as airborne
 FAN_AUTH_THR = 0.1          # fan pitch feedback has full authority from this mean throttle up
 FLIGHT_PUSH_S = 0.1         # legged: the fans push forward only after this long with no foot down (a jump, not a jog's gap)
+LEVEL_SOLES = True          # sole-levelling parallelogram at the ankle (see SkaterController._level_soles)
 RUN_RAMP_S = 0.6            # run: the gait amplitudes (sweep, crouch, lift) ease in over this long from the parked stance
 CONTROL_DT = 0.01
 LEGGED = ("walk", "run", "hop", "broad_jump")      # objectives with locked treads and moving feet
@@ -108,6 +109,7 @@ class SkaterController:
         self.idx = {n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n) for n in ACTUATOR_NAMES}
         self.ctrl = np.zeros(model.nu)
         hip_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hip")
+        self.hip_id = hip_id
         self.mass = float(model.body_subtreemass[hip_id])
         self.tread = tread_drive_from_params(p)
         self.servo = servo_from_params(p)
@@ -127,6 +129,13 @@ class SkaterController:
         self.servo_cmd = {f"{j}_{s}": (thigh if j == "hip_pitch" else self.horn_nom if j == "knee" else 0.0)
                           for s in ("l", "r") for j in ("hip_roll", "hip_pitch", "knee")}
         self.thigh_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"hip_pitch_{s}")]
+                        for s in ("l", "r")}
+        # sole-levelling parallelogram: the ankle spring's rest follows the leg so the sole
+        # stays parallel to the body at any knee bend (see _level_soles)
+        self.model = model
+        self.knee_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"knee_{s}")]
+                       for s in ("l", "r")}
+        self.ankle_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"ankle_{s}")]
                         for s in ("l", "r")}
         reach = max(0.005, p["sole_len"] / 2 - p["pulley_radius"])
         self.a_tip = TIP_MARGIN * G * reach / (self.z_ref + COM_ABOVE_HIP)
@@ -233,6 +242,19 @@ class SkaterController:
                 return True
         return False
 
+    def _level_soles(self, data: mujoco.MjData) -> None:
+        """A passive parallelogram from the hip keeps the sole parallel to the body
+        whatever the knee does, and the ankle spring acts about that. Without it the
+        spring rest is the parked shin angle: bend the knee and the spring (25 N m/rad,
+        stiff enough to stand on) tilts the sole with the shin, the foot rides on one
+        edge, and the body is on a knife edge. Positive ankle = toe down, so the sole
+        is level in the body frame at -(thigh + knee), toe up by ankle_rest."""
+        if not LEVEL_SOLES:
+            return
+        for s in ("l", "r"):
+            shin = float(data.qpos[self.thigh_q[s]]) + float(data.qpos[self.knee_q[s]])
+            self.model.qpos_spring[self.ankle_q[s]] = -shin - self.p["ankle_rest"]
+
     def _slew(self, name: str, target: float) -> float:
         step = self.servo.max_rad_s * CONTROL_DT
         cur = self.servo_cmd[name]
@@ -264,6 +286,7 @@ class SkaterController:
     def act(self, data: mujoco.MjData, t: float) -> np.ndarray:
         p, c, i = self.p, self.ctrl, self.idx
         pos = data.qpos[:3].copy()
+        self._level_soles(data)
         if self.p0 is None:
             self.p0 = pos.copy()
         quat = data.qpos[3:7]
@@ -341,7 +364,11 @@ class SkaterController:
             # softer than gravity, so the feet are the balance: shifted under the body by
             # the legged pitch PD and ahead of it when it runs away forward
             self.x_int = max(-0.05, min(0.05, self.x_int + p["ki_foot_leg"] * pitch * CONTROL_DT))
-            x_f = (self.x_nom + p["kp_foot_leg"] * pitch + p["kd_foot_leg"] * pitch_rate + self.x_int
+            # stance_x puts the sole's support under the centre of mass rather than the ankle
+            # under the hip: the CoM sits ahead of the hip and the sole's support is only
+            # +-6 cm about the ankle, so the parked stance stands on its front edge (a live
+            # CoM feed-forward was tried and oscillates: the legs are a quarter of the mass)
+            x_f = (self.x_nom + p["stance_x"] + p["kp_foot_leg"] * pitch + p["kd_foot_leg"] * pitch_rate + self.x_int
                    + p["kv_foot_x"] * float(v_b[0]))
         else:
             x_f = (self.x_nom - d_feet

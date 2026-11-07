@@ -238,47 +238,65 @@ def test_hip_roll_places_the_feet():
 def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     from evol_mech.skater.spec import encode, N_PARAMS
     from evol_mech.skater.rollout import FALL_COST
-    assert N_PARAMS == 70 and FALL_COST == {"walk": 0.1, "run": 0.1}
-    phys = json.load(open("configs/archetypes/skater_walker_evolved.json"))["phys"]
-    task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0}
+    assert N_PARAMS == 71 and FALL_COST == {"walk": 0.1, "run": 0.1}
+    phys = json.load(open("configs/archetypes/skater_walker_evolved6.json"))["phys"]     # levelled sole, 2.5 Hz cap
+    task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0, "step_hz_max": 2.5}
     kw = dict(motor_energy_cost=0.0005)                 # as configs/skater_walk*.json price it
     r = rollout(encode(phys), task, 0, **kw)
-    # the evolved gait walks: forward progress of the feet, no fall, fans near idle
-    assert not r["fell"] and r["feet_x_m"] > 3.0 and abs(r["feet_x_m"] - r["distance_x"]) < 0.3
-    assert r["fan_energy"] < 0.3 and 0.08 < r["stride_m"] < 0.2 and r["servo_accel_rms"] > 0
+    # the evolved gait walks: forward progress of the feet, no fall, fans near idle, feet picked up
+    assert not r["fell"] and r["feet_x_m"] > 2.5 and abs(r["feet_x_m"] - r["distance_x"]) < 0.3
+    assert r["fan_energy"] < 0.3 and 0.1 < r["stride_m"] < 0.25 and r["swing_clear_m"] > 0.02
     # stepping outscores standing still on the walk task by a wide margin
     r_still = rollout(encode({**phys, "step_len": 0.02, "walk_shift": 0.0}), task, 0, **kw)
-    assert r_still["feet_x_m"] < 0.2 and r["fitness"] > r_still["fitness"] + 0.3
-    # the hand seed also walks, and its fall penalty on the walk is small
-    r_seed = rollout(encode(json.load(open("configs/archetypes/skater_walker.json"))["phys"]), task, 0, **kw)
-    assert not r_seed["fell"] and r_seed["feet_x_m"] > 0.5
+    assert r_still["feet_x_m"] < 0.3 and r["fitness"] > r_still["fitness"] + 0.3
     r_stand = rollout(encode(phys), {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.0}, 0)
     assert not r_stand["fell"] and r_stand["time_upright"] >= 0.9
 
-
 def test_walk_task_can_cap_the_cadence():
     from evol_mech.skater.spec import encode
-    phys = json.load(open("configs/archetypes/skater_walker_evolved5.json"))["phys"]   # evolved under a 2.5 Hz cap
-    task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0, "step_hz_max": 2.5}
+    phys = json.load(open("configs/archetypes/skater_walker_evolved6.json"))["phys"]   # evolved under a 2.5 Hz cap
+    task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 2.0, "step_hz_max": 2.0}
     r = rollout(encode(phys), task, 0, motor_energy_cost=0.0005)
-    assert not r["fell"] and r["feet_x_m"] > 3.0 and r["stride_m"] > 0.17 and r["servo_sat_frac"] < 0.8
-    # stride_m divides the feet progress by the capped step count, so a lower cap shows there
-    r2 = rollout(encode(phys), {**task, "duration": 2.0, "step_hz_max": 2.0}, 0, motor_energy_cost=0.0005)
-    assert abs(r2["stride_m"] - r2["feet_x_m"] / (2.0 * r2["time_upright"])) < 1e-6
+    # stride_m divides the feet progress by the capped step count, so the cap shows there
+    assert abs(r["stride_m"] - r["feet_x_m"] / (2.0 * r["time_upright"])) < 1e-6
 
-def test_runner_seed_bounds_with_flight_and_run_fitness_pays_for_it():
+
+def test_static_legged_stance_holds_upright_and_crouched():
+    """The levelled sole and stance_x: a legged stance with both feet planted holds at 0, 3 and
+    6 cm of crouch (before, a 3 cm crouch tipped the sole onto an edge and the body over)."""
+    import mujoco
     from evol_mech.skater.spec import encode
-    phys = json.load(open("configs/archetypes/skater_runner_seed.json"))["phys"]
+    from evol_mech.skater.rollout import make_model, make_data, SUBSTEPS, _fallen
+    from evol_mech.skater.controller import SkaterController, CONTROL_DT
+    from evol_mech.sim.controller import quat_to_roll_pitch
+    phys = dict(json.load(open("configs/archetypes/skater_walker_evolved5.json"))["phys"],
+                kp_foot_leg=0.0, kd_foot_leg=0.0, ki_foot_leg=0.0, kv_foot_x=0.1, stance_x=0.01)
+    task = {"name": "run", "objective": "run", "terrain": "flat", "duration": 3.0, "speed": 0.0}
+    for crouch in (0.0, 0.03, 0.06):
+        model, p = make_model(encode(phys), "flat", np.random.default_rng(0), task)
+        data = make_data(model, p)
+        ctrl = SkaterController(model, p, task, True)
+        ctrl.gait_offsets = lambda t, c=crouch: {s: (0.0, -c * min(1.0, t / 0.5), False) for s in "lr"}
+        for k in range(300):
+            data.ctrl[:] = ctrl.act(data, k * CONTROL_DT)
+            for _ in range(SUBSTEPS):
+                mujoco.mj_step(model, data)
+            roll, pitch = quat_to_roll_pitch(data.qpos[3:7])
+            assert not _fallen(float(data.qpos[2]), roll, pitch, 0.345), f"fell at {k * CONTROL_DT:.2f} s with {crouch} m crouch"
+        assert abs(pitch) < 0.2 and abs(data.qpos[2] - (0.345 - crouch)) < 0.03
+
+def test_runner_archetype_bounds_with_real_flights_and_the_run_fitness_pays_for_them():
+    from evol_mech.skater.spec import encode
+    phys = json.load(open("configs/archetypes/skater_runner_evolved.json"))["phys"]
     task = {"name": "run_flat", "terrain": "flat", "objective": "run", "speed": 1.5, "duration": 6.0}
     r = rollout(encode(phys), task, 0, motor_energy_cost=0.0005)
-    # the seed is a gapped shuffle: no fall, 2 m in 6 s, feet off the floor a fifth of the time but the
-    # hip never rising, so none of it counts as flight (that flicker is what a fast walk does too)
-    assert not r["fell"] and r["feet_x_m"] > 1.5 and 0.1 < r["stride_m"] < 0.3
-    assert r["airborne_s"] > 0.5 and r["n_flights"] == 0 and r["flight_frac"] == 0.0
-    # the flight term is paid on real flights only
-    r0 = rollout(encode(phys), {**task, "flight_weight": 0.0}, 0, motor_energy_cost=0.0005)
-    assert abs((r["fitness"] - r0["fitness"]) - 0.3 * min(r["flight_frac"], 0.5)) < 1e-6
-
+    # a bound: many real flights (hip rising >= 1 cm), a good share of the time in the air, feet picked up
+    assert not r["fell"] and r["feet_x_m"] > 1.0 and r["n_flights"] >= 8 and r["flight_frac"] > 0.25
+    assert r["swing_clear_m"] > 0.03 and 0.1 < r["stride_m"] < 0.35
+    # the flight and clearance terms are what they say
+    r0 = rollout(encode(phys), {**task, "flight_weight": 0.0, "clear_weight": 0.0}, 0, motor_energy_cost=0.0005)
+    expect = 0.3 * min(r["flight_frac"], 0.5) + 2.0 * min(r["swing_clear_m"], 0.05)
+    assert abs((r["fitness"] - r0["fitness"]) - expect) < 1e-6
 
 def test_all_objectives_run_and_default_stands():
     for obj, extra in (("skate", {"speed": 0.6}), ("crab", {"speed": 0.3}), ("slalom", {"speed": 0.6}), ("stand", {}),

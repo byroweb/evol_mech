@@ -30,7 +30,7 @@ from evol_mech.bodies import get_body
 HIDE = {"sim_steps", "wall_s", "steps_per_s"}
 LABELS = {
     "fitness": "task fitness", "distance_x": "distance x (m)", "drift_y": "drift y (m)",
-    "mean_speed": "mean speed (m/s)", "feet_x_m": "feet progress (m)", "stride_m": "realized stride (m/step)", "servo_accel_rms": "servo cmd accel RMS (rad/s2)", "servo_sat_frac": "servo rate-limited (frac)", "time_upright": "time upright (s)", "fell": "fell",
+    "mean_speed": "mean speed (m/s)", "feet_x_m": "feet progress (m)", "stride_m": "realized stride (m/step)", "servo_accel_rms": "servo cmd accel RMS (rad/s2)", "servo_sat_frac": "servo rate-limited (frac)", "swing_clear_m": "swing-foot clearance (m)", "flight_frac": "time in flight (frac)", "time_upright": "time upright (s)", "fell": "fell",
     "unstable": "unstable", "rms_accel": "RMS hip accel (m/s²)", "rms_lat_err": "RMS lateral error (m)",
     "scrub_m": "tread scrub (m)", "cones_hit": "cones hit", "cones": "cones on course",
     "n_flights": "flights", "max_apex_m": "highest flight apex (m)", "max_flight_m": "longest flight (m)",
@@ -39,7 +39,7 @@ LABELS = {
     "total_mass": "total mass (kg)", "invalid": "invalid body",
 }
 ORDER = ["fitness", "time_upright", "fell", "unstable", "distance_x", "feet_x_m", "stride_m", "mean_speed", "drift_y", "rms_lat_err",
-         "scrub_m", "cones_hit", "cones", "n_flights", "max_apex_m", "max_flight_m", "airborne_s", "rms_accel", "fan_energy", "motor_energy_j", "leg_mass_fraction", "leg_mass_penalty",
+         "scrub_m", "cones_hit", "cones", "n_flights", "max_apex_m", "max_flight_m", "airborne_s", "flight_frac", "swing_clear_m", "rms_accel", "fan_energy", "motor_energy_j", "leg_mass_fraction", "leg_mass_penalty",
          "total_mass", "invalid"]
 
 

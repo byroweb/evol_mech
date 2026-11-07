@@ -92,6 +92,8 @@ ACCEL_COST = {"walk": 0.0, "run": 0.0}    # default ride-quality cost per object
                                 # the progress of a 0.1 m/s walk, so standing still won
 FLIGHT_MIN_S = 0.04             # both feet off the floor at least this long ...
 FLIGHT_MIN_RISE = 0.01          # ... with the hip rising at least this (m) counts as a flight
+CLEAR_WEIGHT = {"walk": 2.0, "run": 2.0}   # fitness per m of swing-foot clearance (median over swings), capped at CLEAR_CAP
+CLEAR_CAP = 0.05                # a shuffle trips on a pebble; 5 cm of clearance is paid for, more is not
 HOP_TOP_N = 3                   # hop fitness sums the highest apex rises of this many flights
 LEG_MASS_PENALTY = 5.0          # fitness per unit of leg fraction above target, per leg
 CONE_HEIGHT = 0.30              # a small traffic cone: 30 cm tall, 10 cm base radius
@@ -173,6 +175,10 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
     names = {g: (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "") for g in range(model.ngeom)}
     feet = {g for g, n in names.items() if n.startswith("foot_")}
+    foot_side = {g: n[5] for g, n in names.items() if n.startswith("foot_")}      # geom -> "l" / "r"
+    foot_z0 = {s: float(data.xpos[b][2]) for s, b in zip("lr", foot_bodies)}   # ankle height with the sole on the floor
+    swing_max = {"l": None, "r": None}            # highest ankle rise during the current swing
+    clearances: list[float] = []                  # per swing, at touchdown
     cone_of = {g: int(n.split("_")[1]) for g, n in names.items() if n.startswith("cone_")}
     body_geoms = {g for g in range(model.ngeom) if g not in feet and g != floor_geom and g not in cone_of}
     cones_hit: set[int] = set()
@@ -241,14 +247,23 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         accel_sq += float(np.sum(((v - v_prev) / CONTROL_DT) ** 2))
         v_prev = v
         feet_down = False
+        side_down = {"l": False, "r": False}
         for ci in range(data.ncon):
             g1, g2 = data.contact[ci].geom1, data.contact[ci].geom2
             if (g1 == floor_geom and g2 in feet) or (g2 == floor_geom and g1 in feet):
                 feet_down = True
+                side_down[foot_side[g2 if g1 == floor_geom else g1]] = True
             elif g1 in cone_of:
                 cones_hit.add(cone_of[g1])
             elif g2 in cone_of:
                 cones_hit.add(cone_of[g2])
+        for s, b in zip("lr", foot_bodies):          # swing-foot clearance: the ankle's rise per swing
+            rise = float(data.xpos[b][2]) - foot_z0[s]
+            if not side_down[s]:
+                swing_max[s] = rise if swing_max[s] is None else max(swing_max[s], rise)
+            elif swing_max[s] is not None:
+                clearances.append(swing_max[s])
+                swing_max[s] = None
         if not feet_down:
             if off_floor_since is None:
                 off_floor_since, takeoff, apex = t, (float(data.qpos[0]), float(data.qpos[2])), float(data.qpos[2])
@@ -296,6 +311,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     # rising >= FLIGHT_MIN_RISE): a fast walk already loses foot contact a fifth of the time
     # without the hip ever rising, and that flicker is not a bound
     flight_frac = sum(f[2] for f in flights) / max(time_upright, CONTROL_DT)
+    swing_clear = float(np.median(clearances)) if clearances else 0.0
+    clear_bonus = float(task.get("clear_weight", CLEAR_WEIGHT.get(objective, 0.0))) * max(0.0, min(swing_clear, CLEAR_CAP))
     leg_frac = leg_mass_fraction(p)
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
     energy = fan_energy_cost * fan_energy + motor_energy_cost * motor_energy
@@ -309,12 +326,12 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     elif objective == "skate":
         fitness = (dx / duration) * upright_frac - accel_cost * rms_accel - 0.2 * abs(dy)
     elif objective == "walk":
-        fitness = (feet_dx / duration + float(task.get("stride_weight", 1.0)) * stride_eff
+        fitness = (feet_dx / duration + float(task.get("stride_weight", 1.0)) * stride_eff + clear_bonus
                    - accel_cost * rms_accel - 0.2 * abs(dy))
     elif objective == "run":
         # speed of the feet, long strides, and time in the air (a bound, not a fast walk)
         fitness = (feet_dx / duration + float(task.get("stride_weight", 0.5)) * stride_eff
-                   + float(task.get("flight_weight", 0.3)) * min(flight_frac, FLIGHT_FRAC_CAP)
+                   + float(task.get("flight_weight", 0.3)) * min(flight_frac, FLIGHT_FRAC_CAP) + clear_bonus
                    - accel_cost * rms_accel - 0.2 * abs(dy))
     elif objective == "hop":
         fitness = sum(apexes[:HOP_TOP_N]) - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy)
@@ -343,6 +360,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "feet_x_m": feet_dx,
         "stride_m": stride,
         "flight_frac": flight_frac,
+        "swing_clear_m": swing_clear,
         "servo_accel_rms": servo_acc_rms,
         "servo_sat_frac": servo_sat_frac,
         "drift_y": dy,
