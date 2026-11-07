@@ -72,10 +72,21 @@ selected by the `leg_drive` gene:
   actuators on the horn hinges, so the load split and the fold stops are the
   linkage's own. Reach is the straight-down drop the horns can set with
   every link clear of its fold margin; the parked crouch stands at reach x
-  cos(crouch / 2), as the two-link leg does. The hip roll is a lever on both
-  drives: the roll servo's horn drives a link to the bracket `roll_ratio`
-  horn lengths from the roll axis (torque x ratio, speed and range / ratio),
-  reflected onto the roll hinge rather than built.
+  cos(crouch / 2), as the two-link leg does. Its two roll pivots sit at the
+  hip centre (ROLL_PIVOT_Y = 12 mm apart, the sketch's two bolts) and each
+  bracket runs out to its leg plane, carrying that leg's two servos; the
+  bracket is the roll lever, so the roll ratio is derived, (hip_width / 2 -
+  ROLL_PIVOT_Y) / horn_len, and the `roll_ratio` gene is ignored on this
+  body (on a 10 cm hip with 6 cm horns it is 0.64, the roll servo geared
+  down; a wider hip or a shorter horn gears it up, and the horn is shared
+  with the leg). The roll servos sit at the centre, one behind the other on
+  their common forward axis, horn horizontal and a vertical link down to the
+  bracket's outboard end, drawn as a light passive loop; the ratio is
+  reflected onto the roll hinge (torque x ratio, stiffness x ratio^2, speed
+  and range / ratio) rather than carried by that loop. Because the pivot is
+  inboard, rolling the leg swings its hip point up or down by arm x
+  sin(roll), and the controller's roll solve accounts for it. On the four-bar
+  body the pivot stays at the leg plane and `roll_ratio` stands in for an arm.
 
 All three horns per leg are one part: `horn_len` long and flexing in their
 sweep plane with stiffness `10^horn_k_log10` N m/rad about the servo axis

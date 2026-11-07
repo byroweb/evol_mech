@@ -134,7 +134,22 @@ for; a velocity integral in the controller is the alternative.
   it. So a walk task now charges standing still like a fall at the start
   (`stand_cost` 0.3 x the shortfall of the speed gate) and round 2
   (`skater_walk_panto2.json`) reruns from the seed; its result is in the
-  legged row above. Open: the lower links' fore-aft
+  legged row above. The roll pivots then moved to the hip centre on this body
+  (the sketch's two bolts; the bracket is the lever, so the roll ratio is
+  derived from the hip width and the horn, 0.64 on the 10 cm hip), which the
+  soft-horn walker survives on all four tilted starts (fitness -0.02 to -0.05
+  against -0.02, roll 5.3 deg). Round 4 (`configs/skater_walk_panto4.json`,
+  40 gens from that walker with the hip width free, 2026-11-07) took the hip
+  to 29 cm (`skater_walker_panto4.json`, derived roll ratio 2.2: the long
+  bracket gears the roll servo up): it reports a GA fitness of 0.43 but on
+  four tilted starts scores 0.01 against the 10 cm walker's -0.03, and the
+  walk is worse where it matters: roll RMS 9.5 deg against 5.3, grace 0.22
+  against 0.30, track 30 cm against 9 (it drifts sideways), fan duty 2.8 %
+  against 0.9, with the same 12.5 cm stride and 7.5 cm clearance. So the
+  one-lever result holds on this body too: the narrow hip is the roll fix,
+  and `hip_width` 0.10 stays locked in later rounds (the wide hip's fitness
+  came from the tilted-start seed, not from a better walk; check the winner).
+  Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %
   of the body with 12 cm rods (the leg-mass penalty will push on rod length),
