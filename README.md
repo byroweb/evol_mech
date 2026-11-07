@@ -54,6 +54,21 @@ where the build deliberately departs from it, and the open questions.
     .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json
     .venv\Scripts\python -m evol_mech.evolve.run configs\skater.json --lock-groups geometry,leg,foot,drivetrain,fan_spec   # gains only
 
+**Two leg drives.** `leg_drive` 0 is the original leg (thigh servo direct,
+shin servo through a four-bar coupler); `leg_drive` 1 is the pantograph leg
+drawn on 2026-11-07: both leg servos' horns drive rods that cross and are
+pinned at a knee node, the rods continue past it and a parallelogram closes
+at the ankle node, with a strut down to the same passive sprung foot. Its
+lengths are genes (`servo_dx`, `horn_len`, `rod_len`, `rod_ext`,
+`strut_len`), it is simulated as the real closed chain, the hip roll is a
+lever (`roll_ratio`) and every horn flexes in its sweep plane
+(`horn_k_log10`, one stiffness for all three horns): that flexure is the
+servos' series elasticity. `configs/skater_walk_panto.json` evolves a walk on
+it from `configs/archetypes/skater_walker_panto_seed.json` (run with
+`--lock-groups geometry,foot,fan_spec`; the body genes it leaves free are the
+leg lengths, the lever and the horn stiffness). See `docs/skater_design.md`
+"Leg drives".
+
 ## Designing an archetype by hand
 
 Open `tools/linkage_editor.html` in a browser (double-click; no server needed).
@@ -139,7 +154,8 @@ servo is at its slew limit and the feet's lateral separation (feet under the
 hips are free, feet splayed outboard are charged: the wide stance is the other
 half of the cowboy walk; the `tread_w` gene sets the tread's width, the foot's
 support in roll, which turned out not to matter: the hip width does),
-and by min(1, speed / 0.15 m/s) so that a walk still goes somewhere, and the fans' mean throttle is charged on top of their energy
+and by min(1, speed / 0.15 m/s) so that a walk still goes somewhere (and a stander pays `stand_cost` 0.3 x the
+shortfall of that gate, a fall at the start, since the pantograph's first round was won by not stepping), and the fans' mean throttle is charged on top of their energy
 (`fan_duty_cost` 1.0), with the clearance bonus (weight 4 on a walk) added
 outside the factor but inside the progress gate (marching in place earns
 nothing for lifting its feet), so the smoothest, stillest, fan-free walk with the longest

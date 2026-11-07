@@ -47,6 +47,44 @@ Stage plan:
 Leg motors: quasi-direct-drive BLDC (low ratio planetary) so the legs can run,
 jump and absorb landings. Steppers are retired from the leg joints.
 
+### Leg drives (built)
+
+The built leg uses hobby servos (cheap, procurable) and has two drives,
+selected by the `leg_drive` gene:
+
+- **0, four-bar (the original):** the thigh servo drives the thigh directly;
+  the shin servo, in the hip too, drives the shin through a horn, a coupler
+  down the thigh and a pin tab on the shin (LEO's parallelogram when coaxial,
+  staggered by default). The knee is a hinge the controller sets to what the
+  four-bar would give.
+- **1, pantograph (the 2026-11-07 sketch, `docs/leg_layout_sketch.png`):**
+  both leg servos sit under the
+  hip bracket at the same height, `servo_dx` apart. Each horn (`horn_len`)
+  drives a rod (`rod_len`) to a common pin, the knee node, where the rods
+  cross and are pinned; each rod continues `rod_ext` past the pin (the front
+  servo's rod to the rear lower node, the rear servo's to the front) and two
+  links of that length close a parallelogram at the ankle node, which
+  therefore sits at the vector sum of the two rod extensions. A strut
+  (`strut_len`) continues the rear rod's direction to the same passive sprung
+  foot. The horn angles place the pin (a five-bar); the pantograph carries
+  that to the foot; both servos share every load. It is built in MuJoCo as
+  the real closed chain (two `connect` equalities per leg), with the servo
+  actuators on the horn hinges, so the load split and the fold stops are the
+  linkage's own. Reach is the straight-down drop the horns can set with
+  every link clear of its fold margin; the parked crouch stands at reach x
+  cos(crouch / 2), as the two-link leg does. The hip roll is a lever on both
+  drives: the roll servo's horn drives a link to the bracket `roll_ratio`
+  horn lengths from the roll axis (torque x ratio, speed and range / ratio),
+  reflected onto the roll hinge rather than built.
+
+All three horns per leg are one part: `horn_len` long and flexing in their
+sweep plane with stiffness `10^horn_k_log10` N m/rad about the servo axis
+(stiff out of plane, so the kinematics stay planar). That flexure is the
+series elasticity: the servo's position stiffness (stall torque over a 4 deg
+deadband) and the horn's spring act in series, and the actuator's stiffness
+is their series sum. One stiffness for all three keeps the bill of materials
+to one horn; independent values are a later experiment.
+
 ## Foot: tread
 
 A short rubber tread under a flat sole, front and rear pulleys plus idlers.
@@ -112,6 +150,9 @@ throttle.
 
 - Geometry: hip width, thigh and shin length, crouch (nominal knee angle),
   pushrod attachment offsets, core size and battery, fan placement.
+- Leg drive: `leg_drive` (four-bar or pantograph), and for the pantograph
+  `servo_dx`, `horn_len`, `rod_len`, `rod_ext`, `strut_len`; the hip roll
+  lever `roll_ratio`; the horns' flexural stiffness `horn_k_log10`.
 - Foot: type (tread or wheels), sole length, pulley radius, worm ratio.
 - Suspension and leveling gains.
 - Allocation weights, friction margin, steering gains.

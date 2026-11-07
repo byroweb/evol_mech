@@ -69,8 +69,9 @@ import numpy as np
 from ..body.hardware import tread_drive_from_params, servo_from_params, fan_from_params
 from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
-from .structure import (nominal_angles, nominal_height, foot_from_angles, angles_from_foot,
-                        horn_from_shin, shin_from_horn, drive_stops, HIP_ROLL_RANGE, KNEE_RANGE)
+from .structure import (nominal_angles, nominal_height, nominal_foot, angles_from_foot,
+                        horn_from_shin, shin_from_horn, drive_stops, KNEE_RANGE, hip_roll_range,
+                        is_pantograph, panto_nominal, panto_ik, panto_pose_allowed)
 
 MU_FOOT = 1.2
 G = 9.81
@@ -126,25 +127,34 @@ class SkaterController:
                          for s in ("l", "r")}
         self.tread_ref = {"l": 0.0, "r": 0.0}       # tracked roller angle
         self.z_ref = nominal_height(p)
-        thigh, shin = nominal_angles(p)
-        self.x_nom, z_nom = foot_from_angles(p, thigh, shin)
+        self.x_nom, z_nom = nominal_foot(p)
         self.h_nom = -z_nom                          # hip-to-ankle drop in the parked crouch
-        # the shin drive: horn hard stops per thigh angle, and the horn that parks the shin
-        self.stops = drive_stops(p)
-        self.thigh_lim = self.stops.thigh_range()
-        horn = horn_from_shin(p, thigh, shin)
-        self.horn_nom = thigh + p["crouch"] if horn is None else horn
-        self.servo_cmd = {f"{j}_{s}": (thigh if j == "hip_pitch" else self.horn_nom if j == "knee" else 0.0)
-                          for s in ("l", "r") for j in ("hip_roll", "hip_pitch", "knee")}
-        self.thigh_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"hip_pitch_{s}")]
-                        for s in ("l", "r")}
+        self.roll_range, self.roll_ratio = hip_roll_range(p), float(p.get("roll_ratio", 1.0))
+        self.panto = is_pantograph(p)
+        qadr = lambda name: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)]
+        if self.panto:
+            # the pantograph: both leg servos are horns; the IK warm-starts from the last pose
+            hf, hr = panto_nominal(p)
+            self.ik_guess = {s: (hf, hr) for s in ("l", "r")}
+            self.servo_cmd = {f"{j}_{s}": (hf if j == "hip_pitch" else hr if j == "knee" else 0.0)
+                              for s in ("l", "r") for j in ("hip_roll", "hip_pitch", "knee")}
+            # the foot hangs from link_c: its body-relative angle is the chain's qpos sum
+            self.chain_q = {s: [qadr(f"hip_pitch_{s}"), qadr(f"rod_f_{s}"), qadr(f"link_c_{s}")] for s in ("l", "r")}
+        else:
+            thigh, shin = nominal_angles(p)
+            # the shin drive: horn hard stops per thigh angle, and the horn that parks the shin
+            self.stops = drive_stops(p)
+            self.thigh_lim = self.stops.thigh_range()
+            horn = horn_from_shin(p, thigh, shin)
+            self.horn_nom = thigh + p["crouch"] if horn is None else horn
+            self.servo_cmd = {f"{j}_{s}": (thigh if j == "hip_pitch" else self.horn_nom if j == "knee" else 0.0)
+                              for s in ("l", "r") for j in ("hip_roll", "hip_pitch", "knee")}
+            self.chain_q = {s: [qadr(f"hip_pitch_{s}"), qadr(f"knee_{s}")] for s in ("l", "r")}
+        self.thigh_q = {s: qadr(f"hip_pitch_{s}") for s in ("l", "r")}
         # sole-levelling parallelogram: the ankle spring's rest follows the leg so the sole
         # stays parallel to the body at any knee bend (see _level_soles)
         self.model = model
-        self.knee_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"knee_{s}")]
-                       for s in ("l", "r")}
-        self.ankle_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"ankle_{s}")]
-                        for s in ("l", "r")}
+        self.ankle_q = {s: qadr(f"ankle_{s}") for s in ("l", "r")}
         reach = max(0.005, p["sole_len"] / 2 - p["pulley_radius"])
         self.a_tip = TIP_MARGIN * G * reach / (self.z_ref + COM_ABOVE_HIP)
         self.objective = task["objective"]
@@ -356,11 +366,11 @@ class SkaterController:
         if not LEVEL_SOLES:
             return
         for s in ("l", "r"):
-            shin = float(data.qpos[self.thigh_q[s]]) + float(data.qpos[self.knee_q[s]])
+            shin = sum(float(data.qpos[a]) for a in self.chain_q[s])     # the link the foot hangs from
             self.model.qpos_spring[self.ankle_q[s]] = -shin - self.p["ankle_rest"]
 
     def _slew(self, name: str, target: float) -> float:
-        step = self.servo.max_rad_s * CONTROL_DT
+        step = self.servo.max_rad_s * CONTROL_DT / (self.roll_ratio if name.startswith("hip_roll") else 1.0)
         cur = self.servo_cmd[name]
         cur += max(-step, min(step, target - cur))
         self.servo_cmd[name] = cur
@@ -496,8 +506,18 @@ class SkaterController:
             gx, gz, fb = gait[s]
             h = max(0.02, self.h_nom + (h_fb * hfb_scale if fb else 0.0) + gz - sign * dh_roll)
             dy = dy_f + sign * p["stance_w"]                      # + = foot to the left, both legs
-            roll_cmd = max(-HIP_ROLL_RANGE, min(HIP_ROLL_RANGE, math.atan2(dy, h)))
+            roll_cmd = max(-self.roll_range, min(self.roll_range, math.atan2(dy, h)))
             c[i[f"hip_roll_{s}"]] = self._slew(f"hip_roll_{s}", roll_cmd)
+            if self.panto:
+                # both horns from the ankle target; an unreachable target gives the nearest pose
+                # clear of the folds, a failed solve holds the last one
+                hf, hr, res = panto_ik(p, x_f + gx, -math.hypot(h, dy), self.ik_guess[s])
+                if math.isfinite(res) and panto_pose_allowed(p, hf, hr):
+                    self.ik_guess[s] = (hf, hr)
+                hf, hr = self.ik_guess[s]
+                c[i[f"hip_pitch_{s}"]] = self._slew(f"hip_pitch_{s}", hf)
+                c[i[f"knee_{s}"]] = self.horn_cmd[s] = self._slew(f"knee_{s}", hr)
+                continue
             thigh, shin = angles_from_foot(p, x_f + gx, -math.hypot(h, dy))
             thigh_cmd, horn_cmd = self._drive_commands(s, thigh, shin)
             self.horn_cmd[s] = horn_cmd                      # the shin servo's own angle, for traces

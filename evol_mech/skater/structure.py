@@ -22,6 +22,22 @@ flat under load and rests toe-up when unloaded. The hip roll servo (LEO's
 abduction axis, along x through the hip point) swings the whole leg plane
 sideways; the controller puts the stance foot under the body with it.
 
+Pantograph leg (leg_drive 1, the user's 2026-11-07 sketch): both leg servos
+sit under the hip bracket at the same height, `servo_dx` apart. Each horn
+(`horn_len`) drives a rod (`rod_len`) to a common pin, the knee node, where
+the two rods cross and are pinned together; each rod continues `rod_ext`
+past the pin (the front servo's rod to the rear lower node, the rear
+servo's to the front lower node) and two links of the same length close a
+parallelogram at the ankle node, so the ankle node sits at the vector sum of
+the two rod extensions. A strut of `strut_len` continues the rear rod's
+direction from the ankle node to the ankle, the same passive sprung foot as
+the four-bar leg. The two horn angles set where the pin sits (a five-bar)
+and the pantograph carries that to the foot: both servos share every load.
+The hip roll is a lever: the roll servo's horn drives a link to the bracket
+`roll_ratio` horn lengths from the roll axis. All three horns are one part
+(`horn_len`) and flex in their sweep plane (`horn_k_log10`), a torsion spring
+in series with the servo, stiff out of plane so the kinematics stay planar.
+
 The core, battery and fan placement rules are shared with the biped
 (`body/structure.py`).
 """
@@ -79,6 +95,8 @@ SHIN_DRIVE = {
 }
 FOLD_MARGIN = math.radians(10)        # no two links of the shin drive within this of straight
 HORN_RANGE = (math.radians(-130), math.radians(130))
+HORN_KG = 0.010                       # pantograph: a servo horn with its rod-end bearing
+PIN_KG = 0.008                        # pantograph: a pinned node (bolt, bushing, spacer)
 
 
 class InvalidBody(ValueError):
@@ -305,10 +323,188 @@ def drive_stops(p: dict[str, float], mech: dict = SHIN_DRIVE, step_deg: float = 
     return DriveStops(tuple(thighs), tuple(los), tuple(his))
 
 
+# ---- pantograph leg (leg_drive 1) ---------------------------------------------------
+
+def is_pantograph(p: dict[str, float]) -> bool:
+    return float(p.get("leg_drive", 0.0)) >= 0.5
+
+
+def _ang(ax: float, az: float, bx: float, bz: float) -> float:
+    c = (ax * bx + az * bz) / (math.hypot(ax, az) * math.hypot(bx, bz) + 1e-12)
+    return math.acos(max(-1.0, min(1.0, c)))
+
+
+def panto_points(p: dict[str, float], horn_f: float, horn_r: float) -> dict | None:
+    """Forward kinematics of the pantograph leg in the leg plane (x forward, z up,
+    origin at the hip point; angles body-relative, 0 = straight down, + = backward):
+    horn tips, the knee pin, the rod directions past the pin, the ankle, and the
+    link angles (horn-rod at each tip, rod-rod at the pin). None when the rods
+    cannot meet. The pin is the lower of the two circle intersections (the rods
+    hang below the horns and cross)."""
+    d, h, r, e, s = p["servo_dx"], p["horn_len"], p["rod_len"], p["rod_ext"], p["strut_len"]
+    uf, ur = _u(horn_f), _u(horn_r)
+    t1 = (d / 2 + h * uf[0], h * uf[1])
+    t2 = (-d / 2 + h * ur[0], h * ur[1])
+    dx, dz = t2[0] - t1[0], t2[1] - t1[1]
+    dist = math.hypot(dx, dz)
+    if dist < 1e-6 or dist > 2 * r - 1e-9:
+        return None
+    hh = math.sqrt(max(0.0, r * r - (dist / 2) ** 2))
+    mx, mz = (t1[0] + t2[0]) / 2, (t1[1] + t2[1]) / 2
+    nx, nz = -dz / dist, dx / dist
+    a1 = (mx + hh * nx, mz + hh * nz)
+    a2 = (mx - hh * nx, mz - hh * nz)
+    a = a1 if a1[1] < a2[1] else a2
+    u1 = ((a[0] - t1[0]) / r, (a[1] - t1[1]) / r)
+    u2 = ((a[0] - t2[0]) / r, (a[1] - t2[1]) / r)
+    ankle = (a[0] + e * u1[0] + (e + s) * u2[0], a[1] + e * u1[1] + (e + s) * u2[1])
+    return {"t1": t1, "t2": t2, "pin": a, "u1": u1, "u2": u2, "ankle": ankle,
+            "rod_f": math.atan2(-u1[0], -u1[1]), "rod_r": math.atan2(-u2[0], -u2[1]),
+            "horn_rod_f": _ang(uf[0], uf[1], u1[0], u1[1]), "horn_rod_r": _ang(ur[0], ur[1], u2[0], u2[1]),
+            "cross": _ang(u1[0], u1[1], u2[0], u2[1])}
+
+
+def panto_pose_allowed(p: dict[str, float], horn_f: float, horn_r: float) -> bool:
+    """Hard-stop rule of the pantograph: horns within HORN_RANGE, the rods meet, and
+    no pair of links (horn-rod at either tip, rod-rod at the pin) within FOLD_MARGIN of
+    straight or folded."""
+    if not (HORN_RANGE[0] - 1e-9 <= horn_f <= HORN_RANGE[1] + 1e-9
+            and HORN_RANGE[0] - 1e-9 <= horn_r <= HORN_RANGE[1] + 1e-9):
+        return False
+    k = panto_points(p, horn_f, horn_r)
+    if k is None:
+        return False
+    lo, hi = FOLD_MARGIN - 1e-9, math.pi - FOLD_MARGIN + 1e-9
+    return all(lo <= k[n] <= hi for n in ("horn_rod_f", "horn_rod_r", "cross"))
+
+
+def panto_ik(p: dict[str, float], x: float, z: float, guess: tuple[float, float] | None = None,
+             tol: float = 1e-6) -> tuple[float, float, float]:
+    """Horn angles (front, rear) that put the ankle at (x, z) relative to the hip
+    point: damped Newton from `guess` (default: the horns splayed 60 deg). Returns
+    (horn_f, horn_r, residual m); the residual is ~0 when the target is reachable
+    with the links clear of their folds, else the nearest pose the search found."""
+    hf, hr = guess if guess is not None else (-math.pi / 3, math.pi / 3)
+    best = (hf, hr, float("inf"))
+    lam = 1e-3
+
+    def err(a, b):
+        k = panto_points(p, a, b)
+        if k is None:
+            return None
+        return (k["ankle"][0] - x, k["ankle"][1] - z)
+
+    f = err(hf, hr)
+    if f is None:
+        for a, b in ((-1.0, 1.0), (-0.5, 0.5), (-1.5, 1.5), (0.0, 1.0), (-1.0, 0.0)):
+            f = err(a, b)
+            if f is not None:
+                hf, hr = a, b
+                break
+        else:
+            return best
+    for _ in range(40):
+        n = math.hypot(*f)
+        if n < best[2] and panto_pose_allowed(p, hf, hr):
+            best = (hf, hr, n)
+        if n < tol:
+            return best
+        eps = 1e-6
+        fa, fb = err(hf + eps, hr), err(hf, hr + eps)
+        if fa is None or fb is None:
+            break
+        j = ((fa[0] - f[0]) / eps, (fb[0] - f[0]) / eps, (fa[1] - f[1]) / eps, (fb[1] - f[1]) / eps)
+        # Levenberg-Marquardt step on J^T J + lam I
+        g0, g1 = j[0] * f[0] + j[2] * f[1], j[1] * f[0] + j[3] * f[1]
+        m00, m01, m11 = j[0] ** 2 + j[2] ** 2 + lam, j[0] * j[1] + j[2] * j[3], j[1] ** 2 + j[3] ** 2 + lam
+        det = m00 * m11 - m01 * m01
+        if abs(det) < 1e-18:
+            break
+        da, db = -(m11 * g0 - m01 * g1) / det, -(m00 * g1 - m01 * g0) / det
+        step = math.hypot(da, db)
+        if step > 0.5:
+            da, db = da * 0.5 / step, db * 0.5 / step
+        na = max(HORN_RANGE[0], min(HORN_RANGE[1], hf + da))
+        nb = max(HORN_RANGE[0], min(HORN_RANGE[1], hr + db))
+        fn = err(na, nb)
+        if fn is None or math.hypot(*fn) > n:
+            lam *= 10.0                                 # a worse step: damp harder, keep the pose
+            if lam > 1e3:
+                break
+            continue
+        lam = max(1e-6, lam / 3.0)
+        hf, hr, f = na, nb, fn
+    return best
+
+
+def panto_reach(p: dict[str, float]) -> float:
+    """Straight-down reach of the pantograph: the largest hip-to-ankle drop at x = 0
+    the horns can set with every link clear of its folds (bisection)."""
+    top = p["horn_len"] + p["rod_len"] + 2 * p["rod_ext"] + p["strut_len"]
+    # the reachable drops are a band (the leg cannot fold flat either): walk down from the
+    # longest link sum to the first reachable drop, then bisect up to the edge above it
+    n, guess, lo, hi = 24, None, 0.0, top
+    for k in range(1, n + 1):
+        H = top * (1 - k / n) + 0.02 * k / n
+        a, b, res = panto_ik(p, 0.0, -H, guess)
+        if res < 1e-4:
+            lo, hi, guess = H, top * (1 - (k - 1) / n) + 0.02 * (k - 1) / n, (a, b)
+            break
+    else:
+        return 0.0
+    for _ in range(14):
+        mid = (lo + hi) / 2
+        a, b, res = panto_ik(p, 0.0, -mid, guess)
+        if res < 1e-4:
+            lo, guess = mid, (a, b)
+        else:
+            hi = mid
+    return lo
+
+
+def leg_reach(p: dict[str, float]) -> float:
+    """Hip-to-ankle distance at full extension: thigh + shin, or the pantograph's reach."""
+    return panto_reach(p) if is_pantograph(p) else p["thigh_len"] + p["shin_len"]
+
+
+def panto_nominal(p: dict[str, float]) -> tuple[float, float]:
+    """Horn angles of the parked crouch: the ankle straight below the hip point at
+    reach x cos(crouch / 2) (two equal links at knee flexion `crouch` stand at that
+    height, so the gene means the same on either leg)."""
+    reach = panto_reach(p)
+    if reach <= 0.0:
+        raise InvalidBody("pantograph rods cannot meet")
+    a, b, res = panto_ik(p, 0.0, -reach * math.cos(p["crouch"] / 2))
+    if res > 1e-4:
+        raise InvalidBody("pantograph cannot park at the crouch")
+    return a, b
+
+
+def nominal_foot(p: dict[str, float]) -> tuple[float, float]:
+    """Ankle position (x forward, z up) relative to the hip point in the parked crouch."""
+    if is_pantograph(p):
+        return panto_points(p, *panto_nominal(p))["ankle"]
+    return foot_from_angles(p, *nominal_angles(p))
+
+
+def hip_roll_range(p: dict[str, float]) -> float:
+    """The hip roll's half range: the roll servo's horn sweep through the lever, capped at HIP_ROLL_RANGE."""
+    return min(HIP_ROLL_RANGE, HORN_RANGE[1] / float(p.get("roll_ratio", 1.0)))
+
+
+def horn_stiffness(p: dict[str, float]) -> float:
+    """A horn's flexural stiffness about its servo axis (N m/rad); all three horns are the same part."""
+    return 10.0 ** float(p.get("horn_k_log10", 3.0))
+
+
+def series_kp(kp_servo: float, k_horn: float) -> float:
+    """Stiffness of the servo's position loop in series with its flexing horn."""
+    return 1.0 / (1.0 / kp_servo + 1.0 / k_horn)
+
+
 def nominal_height(p: dict[str, float]) -> float:
     """Hip-joint height above the floor in the parked crouch."""
-    thigh, shin = nominal_angles(p)
-    return -foot_from_angles(p, thigh, shin)[1] - foot_layout(p).bottom_z
+    return -nominal_foot(p)[1] - foot_layout(p).bottom_z
 
 
 def spawn_height(p: dict[str, float], terrain_zmax: float = 0.0) -> float:
@@ -348,8 +544,15 @@ def structure_from_params(p: dict[str, float]) -> SkaterStructure:
     battery = BATTERY_KG_BASE + BATTERY_KG_PER_MAH * p["battery_mah"]
     payload = battery + ELECTRONICS_KG
 
-    thigh = (LINK_KG_PER_M + COUPLER_KG_PER_M) * p["thigh_len"] + JOINT_BRACKET_KG
-    shin = LINK_KG_PER_M * p["shin_len"] + JOINT_BRACKET_KG + tread.mass_kg
+    if is_pantograph(p):
+        # upper: two horns, two rods (tip to pin to the far node) and the pin; lower: the two
+        # parallelogram links with the strut, their three pins, the ankle bracket, the tread drive
+        thigh = 2 * HORN_KG + 2 * LINK_KG_PER_M * (p["rod_len"] + p["rod_ext"]) + PIN_KG
+        shin = (LINK_KG_PER_M * (2 * p["rod_ext"] + p["strut_len"]) + 3 * PIN_KG + JOINT_BRACKET_KG
+                + tread.mass_kg)
+    else:
+        thigh = (LINK_KG_PER_M + COUPLER_KG_PER_M) * p["thigh_len"] + JOINT_BRACKET_KG
+        shin = LINK_KG_PER_M * p["shin_len"] + JOINT_BRACKET_KG + tread.mass_kg
     sole_area = p["sole_len"] * 2 * sole_half_w(p)
     n_rollers = len(lay.roller_x) + (1 if lay.idler else 0)
     foot = (SOLE_PLATE_KG_PER_M2 * sole_area + TREAD_RUBBER_KG_PER_M2 * 2 * sole_area
@@ -367,6 +570,14 @@ def leg_mass_fraction(p: dict[str, float]) -> float:
 def check_buildable(p: dict[str, float]) -> None:
     """Raise InvalidBody for geometry that cannot be assembled."""
     foot_layout(p)
+    if is_pantograph(p):
+        hf, hr = panto_nominal(p)                           # raises when the rods cannot meet or park
+        k = panto_points(p, hf, hr)
+        # a step's worth of workspace: a 4 cm lift exactly, 6 cm fore and aft to within the
+        # same reach clamp the two-link leg lives with (a near-straight crouch has little of either)
+        for dx_, dz_, tol in ((0.0, 0.04, 1e-3), (0.06, 0.0, 0.03), (-0.06, 0.0, 0.03)):
+            if panto_ik(p, k["ankle"][0] + dx_, k["ankle"][1] + dz_, (hf, hr))[2] > tol:
+                raise InvalidBody("pantograph workspace too small around the crouch")
     if nominal_height(p) < 0.05:
         raise InvalidBody("crouch leaves the hip on the floor")
     if p["hip_width"] / 2 < sole_half_w(p) + 0.005:

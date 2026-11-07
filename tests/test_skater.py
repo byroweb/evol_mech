@@ -77,6 +77,82 @@ def test_shin_drive_four_bar():
     assert lo <= thigh <= hi
 
 
+def test_pantograph_kinematics_closed_chain_and_lever():
+    from evol_mech.skater.structure import (is_pantograph, panto_points, panto_ik, panto_pose_allowed, panto_reach,
+                                            panto_nominal, nominal_foot, leg_reach, hip_roll_range, horn_stiffness,
+                                            series_kp, HORN_RANGE, check_buildable)
+    from evol_mech.skater.mjcf import SERVO_KV_FRAC
+    from evol_mech.body.hardware import servo_from_params
+    p0 = decode(DEFAULT_NORM)
+    assert not is_pantograph(p0) and leg_reach(p0) == p0["thigh_len"] + p0["shin_len"]
+    p = decode(encode({**p0, "leg_drive": 1.0, "hip_width": 0.10}))
+    assert is_pantograph(p)
+    # the parked crouch: ankle straight below the hip point at reach x cos(crouch / 2)
+    hf, hr = panto_nominal(p)
+    k = panto_points(p, hf, hr)
+    assert abs(k["ankle"][0]) < 1e-6 and abs(-k["ankle"][1] - panto_reach(p) * math.cos(p["crouch"] / 2)) < 1e-4
+    assert nominal_foot(p) == pytest.approx(k["ankle"]) and 0 < panto_reach(p) <= p["horn_len"] + p["rod_len"] + 2 * p["rod_ext"] + p["strut_len"]
+    # the pin lies on both rods, the rods cross there and the ankle closes the parallelogram
+    t1, t2, pin, u1, u2 = k["t1"], k["t2"], k["pin"], k["u1"], k["u2"]
+    assert math.hypot(pin[0] - t1[0], pin[1] - t1[1]) == pytest.approx(p["rod_len"])
+    assert math.hypot(pin[0] - t2[0], pin[1] - t2[1]) == pytest.approx(p["rod_len"])
+    assert pin[1] < min(t1[1], t2[1]) and u1[0] < 0 < u2[0]          # below the horn tips; front rod runs back, rear rod forward
+    e, st = p["rod_ext"], p["strut_len"]
+    assert k["ankle"] == pytest.approx((pin[0] + e * u1[0] + (e + st) * u2[0], pin[1] + e * u1[1] + (e + st) * u2[1]))
+    # IK round trip over a step's workspace, warm-started, every pose clear of the folds
+    for dx, dz in ((0.0, 0.0), (0.05, 0.0), (-0.05, 0.0), (0.0, 0.04), (0.03, 0.02)):
+        a, b, res = panto_ik(p, k["ankle"][0] + dx, k["ankle"][1] + dz, (hf, hr))
+        assert res < 1e-5 and panto_pose_allowed(p, a, b)
+        assert panto_points(p, a, b)["ankle"] == pytest.approx((k["ankle"][0] + dx, k["ankle"][1] + dz), abs=1e-5)
+    # out of reach: the nearest allowed pose, still finite and allowed
+    a, b, res = panto_ik(p, 0.0, -1.0, (hf, hr))
+    assert math.isfinite(res) and res > 0.1 and panto_pose_allowed(p, a, b)
+    assert not panto_pose_allowed(p, HORN_RANGE[1] + 0.1, hr)
+    check_buildable(p)
+    with pytest.raises(InvalidBody):                       # rods too short to meet across the servo spacing
+        check_buildable({**p, "rod_len": 0.08, "servo_dx": 0.10, "horn_len": 0.02})
+    # the lever and the flexing horns reflect onto the hinge actuators
+    assert hip_roll_range(p) == pytest.approx(math.radians(30)) and hip_roll_range({**p, "roll_ratio": 5.0}) == pytest.approx(math.radians(26))
+    assert horn_stiffness(p) == pytest.approx(1000.0) and series_kp(50.0, 50.0) == pytest.approx(25.0)
+    pl = {**p, "roll_ratio": 3.0, "horn_k_log10": 1.0}
+    model, pm = make_model(encode(pl), "flat", np.random.default_rng(0))
+    servo = servo_from_params(pm)
+    act = lambda n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
+    kp_leg = series_kp(servo.kp, 10.0)
+    kp_roll = kp_leg * 9.0
+    assert model.actuator_gainprm[act("hip_pitch_l"), 0] == pytest.approx(kp_leg, rel=1e-3)
+    assert model.actuator_biasprm[act("knee_l"), 2] == pytest.approx(-kp_leg * SERVO_KV_FRAC, rel=1e-2)
+    assert model.actuator_gainprm[act("hip_roll_l"), 0] == pytest.approx(kp_roll, rel=1e-3)
+    assert model.actuator_forcerange[act("hip_roll_l"), 1] == pytest.approx(3 * servo.torque_nm, rel=1e-3)
+    # built as a real closed chain: the loops close at the crouch, the sim's ankle is the kinematics' ankle
+    model, pm = make_model(encode(p), "flat", np.random.default_rng(0))
+    assert model.neq >= 4 and all(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_EQUALITY, i) in
+                                  {"pin_l", "pin_r", "node_l", "node_r"} for i in range(model.neq) if model.eq_type[i] == mujoco.mjtEq.mjEQ_CONNECT)
+    data = make_data(model, pm)
+    mujoco.mj_forward(model, data)
+    body = lambda n: data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n)]
+    rel = body("foot_l") - body("hip")
+    assert rel[0] == pytest.approx(k["ankle"][0], abs=1e-4) and rel[2] == pytest.approx(k["ankle"][1], abs=1e-4)
+    assert np.abs(data.efc_pos[:model.neq * 3]).max() < 1e-6 if data.nefc else True
+    # ... and it stands on it, the loops holding, with the same actuator set as the four-bar leg
+    names = {mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in range(model.nu)}
+    assert names == set(ACTUATOR_NAMES)
+    r = rollout(encode(p), {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 3.0}, 0)
+    assert r["time_upright"] == 3.0 and r["pitch_rms"] < 0.1
+    # a walk task charges standing still like a fall at the start: the pantograph's first round was won by a stander
+    from evol_mech.skater.rollout import STAND_COST
+    stander = json.load(open("configs/archetypes/skater_walker_panto.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 3.0, "step_hz_max": 2.5}
+    r1, r0 = rollout(encode(stander), task, 0), rollout(encode(stander), {**task, "stand_cost": 0.0}, 0)
+    gate = min(1.0, (r1["feet_x_m"] / 3.0) / 0.15)
+    assert r1["time_upright"] == 3.0 and abs((r0["fitness"] - r1["fitness"]) - STAND_COST * (1 - gate)) < 1e-6
+    # the seed archetype walks forward on it
+    seed = json.load(open("configs/archetypes/skater_walker_panto_seed.json"))["phys"]
+    r = rollout(encode(seed), {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 6.0,
+                               "step_hz_max": 2.5}, 0)
+    assert r["time_upright"] == 6.0 and r["feet_x_m"] > 0.2
+
+
 def test_foot_layout_tread_and_wheels():
     p = decode(DEFAULT_NORM)
     lay = foot_layout(p)
@@ -244,7 +320,7 @@ def test_hip_roll_places_the_feet():
 def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     from evol_mech.skater.spec import encode, N_PARAMS
     from evol_mech.skater.rollout import FALL_COST
-    assert N_PARAMS == 77 and FALL_COST == {"walk": 0.3, "run": 0.1, "course": 0.1}
+    assert N_PARAMS == 85 and FALL_COST == {"walk": 0.3, "run": 0.1, "course": 0.1}
     phys = json.load(open("configs/archetypes/skater_walker_evolved6.json"))["phys"]     # levelled sole, 2.5 Hz cap
     task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0, "step_hz_max": 2.5}
     kw = dict(motor_energy_cost=0.0005)                 # as configs/skater_walk*.json price it

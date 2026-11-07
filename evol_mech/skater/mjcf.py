@@ -15,6 +15,20 @@ position actuator whose target is set by the controller as (shin command -
 thigh command), which is what the parallelogram does geometrically. The
 coupler's mass is in the thigh.
 
+Pantograph leg (leg_drive 1, structure.py "Pantograph leg"): built as the real
+closed chain. Under the roll bracket, horn_f (joint hip_pitch, the front servo)
+-> rod_f -> link_c -> foot, and horn_r (joint knee, the rear servo) -> rod_r ->
+link_b; a connect equality pins the rods together at the knee node and another
+pins link_c to link_b at the ankle node. Every body is placed at the parked
+crouch with its joint `ref` set to that angle, so qpos reads the same
+body-relative angles the kinematics use and the loops close at qpos0. The two
+servo actuators sit on the horn hinges, so the load split between the servos
+is whatever the linkage makes it. The hip roll lever (roll_ratio) is not built
+as a link: its ratio is reflected onto the roll hinge's actuator (stiffness x
+ratio^2, torque x ratio, range / ratio). Flexing horns (the horn_k_log10 gene, one
+part for all three) are the servo's position stiffness in series with the
+horn's spring.
+
 Conventions: +x forward, +y left, +z up. Hinges about +y swing the distal
 link backward for positive angles. All model joints are zero in the straight
 leg; `nominal_qpos` gives the parked crouch.
@@ -44,7 +58,9 @@ from ..body.structure import (hip_half_y, fan_center_y, fan_z_core, payload_z as
 from .structure import (structure_from_params, foot_layout, nominal_angles, spawn_height,
                         check_buildable, InvalidBody, LINK_RADIUS, SOLE_HALF_W, SOLE_HALF_T,
                         roller_half_len, sole_half_w, HIP_ROLL_RANGE, THIGH_RANGE, KNEE_RANGE, ANKLE_RANGE,
-                        ANKLE_ROLL_RANGE, ANKLE_ROLL_STIFF)
+                        ANKLE_ROLL_RANGE, ANKLE_ROLL_STIFF, HORN_RANGE, HORN_KG, PIN_KG, JOINT_BRACKET_KG,
+                        LINK_KG_PER_M, is_pantograph, panto_nominal, panto_points, hip_roll_range,
+                        horn_stiffness, series_kp)
 
 SIM_DT = 0.002
 FAN_PITCH_RANGE = math.radians(90)
@@ -85,7 +101,79 @@ def n_rollers(p: dict[str, float]) -> int:
     return len(lay.roller_x) + (1 if lay.idler else 0)
 
 
+def _ankle(side: str, p: dict[str, float], st, ankle_rest: float, ref: float = 0.0, euler: str = "") -> str:
+    """The passive two-axis sprung ankle and the foot under it. `ref` / `euler` place the
+    foot level at the parked crouch when its parent is not the shin (pantograph)."""
+    return f"""
+            <body name="foot_{side}" {euler}>
+              <joint name="ankle_{side}" type="hinge" axis="0 1 0" ref="{ref:.4f}" range="{ankle_rest-ANKLE_RANGE:.4f} {ankle_rest+ANKLE_RANGE:.4f}"
+                     stiffness="{p['ankle_stiffness']:.3f}" springref="{ankle_rest:.4f}"
+                     damping="{0.1 * p['ankle_stiffness']:.4f}"/>
+              <joint name="ankle_roll_{side}" type="hinge" axis="1 0 0" range="{-ANKLE_ROLL_RANGE:.4f} {ANKLE_ROLL_RANGE:.4f}"
+                     stiffness="{ANKLE_ROLL_STIFF * p['ankle_stiffness']:.3f}" springref="0"
+                     damping="{0.1 * ANKLE_ROLL_STIFF * p['ankle_stiffness']:.4f}"/>
+              {_foot(side, p, st.foot_kg)}
+            </body>"""
+
+
+def _panto_leg(side: str, sign: float, p: dict[str, float], st) -> str:
+    """The pantograph leg under its roll bracket (see the module docstring)."""
+    y = sign * p["hip_width"] / 2
+    d, h, r, e, s = p["servo_dx"], p["horn_len"], p["rod_len"], p["rod_ext"], p["strut_len"]
+    tread = tread_drive_from_params(p)
+    hf, hr = panto_nominal(p)
+    k = panto_points(p, hf, hr)
+    rf, rr = k["rod_f"], k["rod_r"]                    # the rods' body-relative angles at the crouch
+    ankle_rest = -rr - p["ankle_rest"]                 # the foot hangs from link_c, which lies along the rear rod
+    rod_kg = LINK_KG_PER_M * (r + e) + PIN_KG / 2
+    link_b_kg = LINK_KG_PER_M * e + PIN_KG
+    link_c_kg = LINK_KG_PER_M * (e + s) + 2 * PIN_KG + JOINT_BRACKET_KG
+    roll = hip_roll_range(p)
+    return f"""
+      <body name="hip_roll_{side}" pos="0 {y:.4f} 0">
+        <joint name="hip_roll_{side}" type="hinge" axis="1 0 0" range="{-roll:.4f} {roll:.4f}" damping="0.05"/>
+        <geom type="sphere" size="0.012" mass="0.001" rgba="0.5 0.5 0.5 1" {NOCOL}/>
+        <body name="horn_f_{side}" pos="{d/2:.4f} 0 0" euler="0 {hf:.5f} 0">
+          <joint name="hip_pitch_{side}" type="hinge" axis="0 1 0" ref="{hf:.5f}" range="{HORN_RANGE[0]:.4f} {HORN_RANGE[1]:.4f}" damping="0.05"/>
+          <geom type="capsule" fromto="0 0 0 0 0 {-h:.4f}" size="0.004" mass="{HORN_KG:.4f}" rgba="0.95 0.85 0.1 1" {NOCOL}/>
+          <body name="rod_f_{side}" pos="0 0 {-h:.4f}" euler="0 {rf-hf:.5f} 0">
+            <joint name="rod_f_{side}" type="hinge" axis="0 1 0" ref="{rf-hf:.5f}" damping="0.01"/>
+            <geom type="capsule" fromto="0 0 0 0 0 {-(r+e):.4f}" size="{LINK_RADIUS}" mass="{rod_kg:.4f}" rgba="0.9 0.2 0.2 1" {NOCOL}/>
+            <body name="link_c_{side}" pos="0 0 {-(r+e):.4f}" euler="0 {rr-rf:.5f} 0">
+              <joint name="link_c_{side}" type="hinge" axis="0 1 0" ref="{rr-rf:.5f}" damping="0.01"/>
+              <geom type="capsule" fromto="0 0 0 0 0 {-(e+s):.4f}" size="{LINK_RADIUS}" mass="{link_c_kg:.4f}" rgba="0.9 0.2 0.2 1" {NOCOL}/>
+              <geom name="tread_drive_{side}" type="box" pos="0.018 0 -0.03" size="0.012 0.012 0.02"
+                    mass="{tread.mass_kg:.4f}" rgba="0.9 0.3 0.3 1" {NOCOL}/>
+              {_ankle(side, p, st, ankle_rest, ref=-rr, euler=f'pos="0 0 {-(e+s):.4f}" euler="0 {-rr:.5f} 0"')}
+            </body>
+          </body>
+        </body>
+        <body name="horn_r_{side}" pos="{-d/2:.4f} 0 0" euler="0 {hr:.5f} 0">
+          <joint name="knee_{side}" type="hinge" axis="0 1 0" ref="{hr:.5f}" range="{HORN_RANGE[0]:.4f} {HORN_RANGE[1]:.4f}" damping="0.05"/>
+          <geom type="capsule" fromto="0 0 0 0 0 {-h:.4f}" size="0.004" mass="{HORN_KG:.4f}" rgba="0.95 0.85 0.1 1" {NOCOL}/>
+          <body name="rod_r_{side}" pos="0 0 {-h:.4f}" euler="0 {rr-hr:.5f} 0">
+            <joint name="rod_r_{side}" type="hinge" axis="0 1 0" ref="{rr-hr:.5f}" damping="0.01"/>
+            <geom type="capsule" fromto="0 0 0 0 0 {-(r+e):.4f}" size="{LINK_RADIUS}" mass="{rod_kg:.4f}" rgba="0.9 0.2 0.2 1" {NOCOL}/>
+            <body name="link_b_{side}" pos="0 0 {-(r+e):.4f}" euler="0 {rf-rr:.5f} 0">
+              <joint name="link_b_{side}" type="hinge" axis="0 1 0" ref="{rf-rr:.5f}" damping="0.01"/>
+              <geom type="capsule" fromto="0 0 0 0 0 {-e:.4f}" size="{LINK_RADIUS}" mass="{link_b_kg:.4f}" rgba="0.9 0.2 0.2 1" {NOCOL}/>
+            </body>
+          </body>
+        </body>
+      </body>"""
+
+
+def _panto_loops(side: str, p: dict[str, float]) -> str:
+    """The two pins that close the pantograph: rods at the knee node, links at the ankle node."""
+    if not is_pantograph(p):
+        return ""
+    return (f'<connect name="pin_{side}" body1="rod_f_{side}" body2="rod_r_{side}" anchor="0 0 {-p["rod_len"]:.4f}"/>\n    '
+            f'<connect name="node_{side}" body1="link_c_{side}" body2="link_b_{side}" anchor="0 0 {-p["rod_ext"]:.4f}"/>')
+
+
 def _leg(side: str, sign: float, p: dict[str, float], st) -> str:
+    if is_pantograph(p):
+        return _panto_leg(side, sign, p, st)
     y = sign * p["hip_width"] / 2
     L1, L2 = p["thigh_len"], p["shin_len"]
     tread = tread_drive_from_params(p)
@@ -93,9 +181,10 @@ def _leg(side: str, sign: float, p: dict[str, float], st) -> str:
     # (positive ankle angle = toe down, so the rest angle is -shin - ankle_rest)
     _, shin_nom = nominal_angles(p)
     ankle_rest = -shin_nom - p["ankle_rest"]
+    roll = hip_roll_range(p)
     return f"""
       <body name="hip_roll_{side}" pos="0 {y:.4f} 0">
-        <joint name="hip_roll_{side}" type="hinge" axis="1 0 0" range="{-HIP_ROLL_RANGE:.4f} {HIP_ROLL_RANGE:.4f}" damping="0.05"/>
+        <joint name="hip_roll_{side}" type="hinge" axis="1 0 0" range="{-roll:.4f} {roll:.4f}" damping="0.05"/>
         <geom type="sphere" size="0.012" mass="0.001" rgba="0.5 0.5 0.5 1" {NOCOL}/>
         <body name="thigh_{side}">
           <joint name="hip_pitch_{side}" type="hinge" axis="0 1 0" range="{THIGH_RANGE[0]:.4f} {THIGH_RANGE[1]:.4f}" damping="0.05"/>
@@ -109,15 +198,7 @@ def _leg(side: str, sign: float, p: dict[str, float], st) -> str:
                   mass="{st.shin_kg - tread.mass_kg:.4f}" rgba="0.3 0.8 0.4 1" {NOCOL}/>
             <geom name="tread_drive_{side}" type="box" pos="0.018 0 -0.03" size="0.012 0.012 0.02"
                   mass="{tread.mass_kg:.4f}" rgba="0.9 0.3 0.3 1" {NOCOL}/>
-            <body name="foot_{side}" pos="0 0 {-L2:.4f}">
-              <joint name="ankle_{side}" type="hinge" axis="0 1 0" range="{ankle_rest-ANKLE_RANGE:.4f} {ankle_rest+ANKLE_RANGE:.4f}"
-                     stiffness="{p['ankle_stiffness']:.3f}" springref="{ankle_rest:.4f}"
-                     damping="{0.1 * p['ankle_stiffness']:.4f}"/>
-              <joint name="ankle_roll_{side}" type="hinge" axis="1 0 0" range="{-ANKLE_ROLL_RANGE:.4f} {ANKLE_ROLL_RANGE:.4f}"
-                     stiffness="{ANKLE_ROLL_STIFF * p['ankle_stiffness']:.3f}" springref="0"
-                     damping="{0.1 * ANKLE_ROLL_STIFF * p['ankle_stiffness']:.4f}"/>
-              {_foot(side, p, st.foot_kg)}
-            </body>
+            {_ankle(side, p, st, ankle_rest, euler=f'pos="0 0 {-L2:.4f}"')}
           </body>
         </body>
       </body>"""
@@ -139,9 +220,15 @@ def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) 
 def _leg_actuators(side: str, p: dict[str, float]) -> str:
     servo = servo_from_params(p)
     tread = tread_drive_from_params(p)
-    t, kp, kv = servo.torque_nm, servo.kp, servo.kp * SERVO_KV_FRAC
-    rows = [f'<position name="{j}_{side}" joint="{j}_{side}" kp="{kp:.2f}" kv="{kv:.3f}" '
-            f'forcerange="{-t:.3f} {t:.3f}"/>' for j in LEG_JOINTS]
+    # each servo's position stiffness in series with its flexing horn; the roll servo
+    # works through the bracket lever (roll_ratio), reflected onto the roll hinge
+    ratio = float(p.get("roll_ratio", 1.0))
+    kp_leg = series_kp(servo.kp, horn_stiffness(p))
+    kp_roll = kp_leg * ratio ** 2
+    gains = {"hip_roll": (kp_roll, servo.torque_nm * ratio), "hip_pitch": (kp_leg, servo.torque_nm),
+             "knee": (kp_leg, servo.torque_nm)}
+    rows = [f'<position name="{j}_{side}" joint="{j}_{side}" kp="{gains[j][0]:.2f}" kv="{gains[j][0] * SERVO_KV_FRAC:.3f}" '
+            f'forcerange="{-gains[j][1]:.3f} {gains[j][1]:.3f}"/>' for j in LEG_JOINTS]
     rows.append(f'<velocity name="tread_{side}" joint="roller_{side}0" kv="{TREAD_TRACK_KV}" '
                 f'forcerange="{-tread.pulley_torque_nm:.4f} {tread.pulley_torque_nm:.4f}"/>')
     return "\n    ".join(rows)
@@ -198,6 +285,8 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
   <equality>
     {_roller_couplings('l', p)}
     {_roller_couplings('r', p)}
+    {_panto_loops('l', p)}
+    {_panto_loops('r', p)}
   </equality>
   <actuator>
     {_leg_actuators('l', p)}
@@ -222,6 +311,8 @@ def nominal_qpos(model: mujoco.MjModel, p: dict[str, float]) -> np.ndarray:
     angles, ankle at zero (sole square to the shin; the spring settles it),
     treads and fans at zero."""
     q = model.qpos0.copy()
+    if is_pantograph(p):            # built at the crouch: every loop joint's ref is its parked angle
+        return q
     thigh, shin = nominal_angles(p)
     for s in ("l", "r"):
         for name, val in (("hip_pitch", thigh), ("knee", shin - thigh), ("ankle", -shin)):
