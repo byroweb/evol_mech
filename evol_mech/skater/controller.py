@@ -81,8 +81,9 @@ TREAD_TRACK_GAIN = 10.0     # 1/s, angle-error term of the tread position hold
 AIRBORNE_Z = 0.03           # hip higher than nominal by this -> treat as airborne
 FAN_AUTH_THR = 0.1          # fan pitch feedback has full authority from this mean throttle up
 FLIGHT_PUSH_S = 0.1         # legged: the fans push forward only after this long with no foot down (a jump, not a jog's gap)
+RUN_RAMP_S = 0.6            # run: the gait amplitudes (sweep, crouch, lift) ease in over this long from the parked stance
 CONTROL_DT = 0.01
-LEGGED = ("walk", "hop", "broad_jump")      # objectives with locked treads and moving feet
+LEGGED = ("walk", "run", "hop", "broad_jump")      # objectives with locked treads and moving feet
 # walk cycle: stance duty (`step_duty`) and the cycle fraction at which the body is
 # furthest left (`shift_phase`) are genes; the left foot's phase is the cycle reference
 JUMP_PHASES = (0.45, 0.60, 0.80)            # cycle fractions: crouch | thrust | tuck | settle
@@ -178,6 +179,26 @@ class SkaterController:
                     w = (u - duty) / (1 - duty)
                     out[s] = (-L / 2 + L * w, p["step_lift"] * math.sin(math.pi * w), True)
             return out
+        if self.objective == "run":
+            # bounding: the stance foot sweeps back under the hip while the hip dips (bent-knee
+            # landing) and then rises (thrust); the swing foot is retracted toward the hip and
+            # carried forward to land ahead of it. duty < 0.5 leaves a flight between stances.
+            out = {}
+            ramp = min(1.0, t / RUN_RAMP_S)            # from the parked stance, not a 9 cm drop at t = 0
+            for s, ph in (("l", 0.0), ("r", 0.5)):
+                u = (p["run_hz"] * t + ph) % 1.0
+                L, duty = ramp * p["run_len"], p["run_duty"]
+                crouch, lift = ramp * p["run_crouch"], ramp * p["run_lift"]
+                # the parked stance is nearly straight-legged (no room to extend), so the run
+                # lives run_crouch lower: bent knee at touchdown, run_ext of it recovered by toe-off
+                if u < duty:
+                    w = u / duty
+                    dz = -crouch * (1.0 - p["run_ext"] * max(0.0, 2 * w - 1))
+                    out[s] = (L / 2 - L * w, dz, False)
+                else:
+                    w = (u - duty) / (1 - duty)
+                    out[s] = (-L / 2 + L * w, -crouch + lift * math.sin(math.pi * w), False)
+            return out
         if self.objective in ("hop", "broad_jump"):
             u = (p["jump_hz"] * t) % 1.0
             c, th, tk = JUMP_PHASES
@@ -196,9 +217,12 @@ class SkaterController:
     def body_shift(self, t: float) -> float:
         """Walk: lateral body offset (+ = left) over the feet, furthest toward the
         stance side mid-swing of the other foot; zero for the other objectives."""
-        if self.objective != "walk":
+        if self.objective == "walk":
+            u = (self.p["step_hz"] * t) % 1.0
+        elif self.objective == "run":
+            u = (self.p["run_hz"] * t) % 1.0
+        else:
             return 0.0
-        u = (self.p["step_hz"] * t) % 1.0
         amp = self.p["walk_shift"] * self.p["hip_width"] / 2          # 1.0 = hip over the stance foot
         return amp * math.cos(2 * math.pi * (u - self.p["shift_phase"]))
 
@@ -270,7 +294,8 @@ class SkaterController:
                 self.air_since = None
             elif self.air_since is None:
                 self.air_since = t
-            airborne = self.air_since is not None and t - self.air_since >= FLIGHT_PUSH_S
+            gate = 0.0 if self.objective == "run" else FLIGHT_PUSH_S     # a run's flight is the push phase
+            airborne = self.air_since is not None and t - self.air_since >= gate
         else:
             airborne = pos[2] > self.z_ref + AIRBORNE_Z
         # legged: the soles are locked, so nothing is asked of the treads and there is no lean
@@ -282,7 +307,10 @@ class SkaterController:
         pitch_ref = (d_lean - d_feet) / h_com
         # legged on the ground: the fans do not push forward against locked soles (that
         # just topples the body); progress comes from the steps. Airborne they take it all.
-        push = 0.0 if (self.legged and not airborne) else 1.0
+        # a run with run_fan ~ 0 asks nothing of the fans in flight either (a push at idle
+        # throttle is only a pitch command banging between its stops)
+        fan_push = airborne and (self.objective != "run" or p["run_fan"] > 0.02)
+        push = 0.0 if (self.legged and not fan_push) else 1.0
         f_fan = self.mass * np.array([push * (float(a_des[0]) - a_tread), float(a_des[1])])
         self.last_fan_force = (float(f_fan[0]), float(f_fan[1]))
 
@@ -347,11 +375,13 @@ class SkaterController:
             diff = p["fan_kp_roll"] * roll + p["fan_kd_roll"] * roll_rate
             # swing-side assist: the fan over a lifted foot carries that side (feedforward
             # on the gait phase, scaled by how far the foot is lifted), the roll PD does the rest
-            lift = p["step_lift"] if self.objective == "walk" else 1.0
+            lift = {"walk": p["step_lift"], "run": p["run_lift"]}.get(self.objective, 1.0)
             assist_l, assist_r = (p["step_fan"] * max(0.0, g[1]) / lift for g in (gait["l"], gait["r"]))
-            thr_l = max(0.0, min(1.0, p["fan_base"] - diff + assist_l))
-            thr_r = max(0.0, min(1.0, p["fan_base"] + diff + assist_r))
-            t_vert = max(0.05, p["fan_base"]) * self.t_max
+            # run: the fans spin up to run_fan while no foot is down and push the body forward
+            base = max(p["fan_base"], p["run_fan"]) if (self.objective == "run" and airborne) else p["fan_base"]
+            thr_l = max(0.0, min(1.0, base - diff + assist_l))
+            thr_r = max(0.0, min(1.0, base + diff + assist_r))
+            t_vert = max(0.05, base) * self.t_max
             # pitching a fan that makes no thrust does nothing but bang the pitch servo between
             # its stops on every footfall, so the attitude terms fade out with the throttle
             auth = min(1.0, 0.5 * (thr_l + thr_r) / FAN_AUTH_THR)

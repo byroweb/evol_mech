@@ -129,7 +129,10 @@ overrides), plus the realized stride (progress per step, capped at 0.75 x leg
 length) and minus servo chatter and rate-limit costs; `step_hz_max` on a walk
 task caps the cadence, which is how the walk gets longer, slower steps (the GA
 will not trade speed for stride on its own, the servo slew rate sets the
-stride at any cadence). Stand: fraction of time upright under periodic
+stride at any cadence). Run: a bounding gait (crouched stance, retracted
+swing, fan push in flight) scored on feet speed, stride and time in real
+flights; so far it only shuffles, because a crouched legged stance cannot yet
+be balanced (see docs/skater_review.md). Stand: fraction of time upright under periodic
 shoves, minus drift (`drift_cost` per metre, default 1.0) and fan energy.
 `fan_energy_cost` (0.2 by default) prices fan use so that thrust-propelled
 skating on the feet scores below actual stepping. A fall is a tipped hip or

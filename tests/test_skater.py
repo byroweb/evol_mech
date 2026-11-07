@@ -238,7 +238,7 @@ def test_hip_roll_places_the_feet():
 def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     from evol_mech.skater.spec import encode, N_PARAMS
     from evol_mech.skater.rollout import FALL_COST
-    assert N_PARAMS == 63 and FALL_COST == {"walk": 0.1}
+    assert N_PARAMS == 70 and FALL_COST == {"walk": 0.1, "run": 0.1}
     phys = json.load(open("configs/archetypes/skater_walker_evolved.json"))["phys"]
     task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0}
     kw = dict(motor_energy_cost=0.0005)                 # as configs/skater_walk*.json price it
@@ -266,9 +266,23 @@ def test_walk_task_can_cap_the_cadence():
     r2 = rollout(encode(phys), {**task, "duration": 2.0, "step_hz_max": 2.0}, 0, motor_energy_cost=0.0005)
     assert abs(r2["stride_m"] - r2["feet_x_m"] / (2.0 * r2["time_upright"])) < 1e-6
 
+def test_runner_seed_bounds_with_flight_and_run_fitness_pays_for_it():
+    from evol_mech.skater.spec import encode
+    phys = json.load(open("configs/archetypes/skater_runner_seed.json"))["phys"]
+    task = {"name": "run_flat", "terrain": "flat", "objective": "run", "speed": 1.5, "duration": 6.0}
+    r = rollout(encode(phys), task, 0, motor_energy_cost=0.0005)
+    # the seed is a gapped shuffle: no fall, 2 m in 6 s, feet off the floor a fifth of the time but the
+    # hip never rising, so none of it counts as flight (that flicker is what a fast walk does too)
+    assert not r["fell"] and r["feet_x_m"] > 1.5 and 0.1 < r["stride_m"] < 0.3
+    assert r["airborne_s"] > 0.5 and r["n_flights"] == 0 and r["flight_frac"] == 0.0
+    # the flight term is paid on real flights only
+    r0 = rollout(encode(phys), {**task, "flight_weight": 0.0}, 0, motor_energy_cost=0.0005)
+    assert abs((r["fitness"] - r0["fitness"]) - 0.3 * min(r["flight_frac"], 0.5)) < 1e-6
+
+
 def test_all_objectives_run_and_default_stands():
     for obj, extra in (("skate", {"speed": 0.6}), ("crab", {"speed": 0.3}), ("slalom", {"speed": 0.6}), ("stand", {}),
-                       ("walk", {"speed": 0.4}), ("hop", {}), ("broad_jump", {"speed": 0.5})):
+                       ("walk", {"speed": 0.4}), ("run", {"speed": 1.5}), ("hop", {}), ("broad_jump", {"speed": 0.5})):
         r = rollout(DEFAULT_NORM, {"name": obj, "terrain": "flat", "objective": obj, "duration": 1.0, **extra}, 0)
         assert np.isfinite(r["fitness"]) and not r["invalid"]
     r = rollout(DEFAULT_NORM, {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 3.0}, 0)

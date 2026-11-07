@@ -91,6 +91,14 @@ PARAMS: list[Param] = [
     Param("kv_foot_y",        0.0,  0.5,  0.1,  "roll"),        # feet shifted per m/s of lateral body speed (s); sqrt(h/g) = capture point
     Param("step_duty",        0.5,  0.9,  0.6,  "gait"),        # walk: fraction of the cycle a foot is in stance (double support = 2 duty - 1)
     Param("shift_phase",      0.0,  0.5,  0.3,  "gait"),        # walk: cycle fraction (left foot) at which the body is furthest left
+    # ---- run: a bounding gait with flight between stances (appended) ---------
+    Param("run_hz",           1.0,  4.0,  2.5,  "gait"),        # run: cycle rate per leg
+    Param("run_len",          0.05, 0.30, 0.15, "gait"),        # run: stance sweep, foot ahead of the hip at touchdown to behind at toe-off (m)
+    Param("run_duty",         0.25, 0.60, 0.40, "gait"),        # run: stance fraction of the cycle (< 0.5 = both feet off the ground between stances)
+    Param("run_lift",         0.02, 0.15, 0.06, "gait"),        # run: swing-foot retraction toward the hip (m), the folded knee
+    Param("run_crouch",       0.02, 0.12, 0.05, "gait"),        # run: hip below the parked height through the run (m): the bent knee that lands and loads
+    Param("run_ext",          0.0,  1.0,  0.6,  "gait"),        # run: fraction of run_crouch recovered by toe-off, the thrust into the flight
+    Param("run_fan",          0.0,  1.0,  0.3,  "gait"),        # run: fan throttle floor while no foot is down, the forward push in flight
 ]
 
 NAMES = [p.name for p in PARAMS]

@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import mujoco                                           # noqa: E402
 from evol_mech.skater.spec import encode                # noqa: E402
-from evol_mech.skater.rollout import make_model, make_data, SUBSTEPS   # noqa: E402
+from evol_mech.skater.rollout import make_model, make_data, SUBSTEPS, GAIT_HZ   # noqa: E402
 from evol_mech.skater.controller import SkaterController, CONTROL_DT, quat_to_roll_pitch   # noqa: E402
 
 SERVOS = ("hip_roll", "hip_pitch", "horn")            # the three leg servos
@@ -80,6 +80,7 @@ def trace(genome: np.ndarray, task: dict, seed: int = 0) -> dict:
             break
     out = {k: np.asarray(v) for k, v in log.items()}
     out["p"] = p
+    out["objective"] = task["objective"]
     return out
 
 
@@ -87,8 +88,9 @@ def smoothness(log: dict, p: dict) -> dict:
     """Candidate grace metrics on the servo commands."""
     t = log["t"]
     dur = float(t[-1] - t[0]) if len(t) > 1 else 0.0
-    out = {"duration_s": dur, "progress_m": float(log["x"][-1] - log["x"][0]), "step_hz": p["step_hz"]}
-    out["strides"] = p["step_hz"] * dur
+    hz = p[GAIT_HZ.get(log.get("objective", "walk"), "step_hz")]
+    out = {"duration_s": dur, "progress_m": float(log["x"][-1] - log["x"][0]), "step_hz": hz}
+    out["strides"] = hz * dur
     out["stride_m"] = out["progress_m"] / out["strides"] if out["strides"] else 0.0   # realized distance per step
     acc, hf = [], []
     for s in ("l", "r"):
@@ -101,7 +103,7 @@ def smoothness(log: dict, p: dict) -> dict:
             spec = np.abs(np.fft.rfft(q - q.mean())) ** 2
             f = np.fft.rfftfreq(len(q), CONTROL_DT)
             tot = float(spec.sum()) or 1.0
-            hf.append(float(spec[f > 2.5 * p["step_hz"]].sum()) / tot)
+            hf.append(float(spec[f > 2.5 * hz].sum()) / tot)
     out["servo_accel_rms_rad_s2"] = float(np.mean(acc)) if acc else 0.0
     out["servo_power_above_2.5x_step"] = float(np.mean(hf)) if hf else 0.0
     out["hip_z_sway_cm"] = float(np.std(log["z"])) * 100

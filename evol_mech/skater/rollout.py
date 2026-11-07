@@ -1,7 +1,7 @@
 """Single-episode simulation of one skater genome on one task.
 
 Task dict: {"name", "terrain", "objective": "skate" | "crab" | "slalom" | "stand"
-| "walk" | "hop" | "broad_jump", "duration", "weight", "speed" (m/s, skate/crab/
+| "walk" | "run" | "hop" | "broad_jump", "duration", "weight", "speed" (m/s, skate/crab/
 slalom/walk/broad_jump), "amplitude" and "wavelength" (slalom path
 y = A sin(2 pi x / lambda))}.
 
@@ -35,6 +35,17 @@ Fitness (stage-1 tasks from the design doc):
           fall in the first second pays it all (with no penalty, falling at
           once avoided every running cost and scored zero). The feet, not
           the hip, measure the progress so a forward dive earns nothing.
+  run     a bounding gait (controller.gait_offsets: stance sweep run_len at
+          run_hz with run_duty in stance, the hip run_crouch low and run_ext
+          of that recovered by toe-off, swing foot retracted run_lift; the
+          fans spin to run_fan while no foot is down and push forward): feet
+          progress per second + `stride_weight` (0.5) x the realized stride
+          (capped at RUN_STRIDE_CAP_FRAC of the leg) + `flight_weight` (0.3)
+          x the share of the upright time in real flights (both feet off for
+          FLIGHT_MIN_S with the hip rising FLIGHT_MIN_RISE; a fast walk loses
+          foot contact a fifth of the time without the hip rising, and that
+          flicker is not a bound), minus the walk's chatter, rate-limit and
+          scaled fall costs
   hop     sum of the three highest ballistic rises of the hip (apex above its
           take-off height) minus drift, so repeatable high hops score and a
           chatter of tiny bounces does not; treads locked
@@ -67,13 +78,16 @@ from .mjcf import build_mjcf, nominal_qpos, ACTUATOR_NAMES
 from .structure import InvalidBody, nominal_height, leg_mass_fraction, LEG_MASS_FRACTION_TARGET
 from .controller import SkaterController
 
-OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "hop", "broad_jump")
+OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "run", "hop", "broad_jump")
+GAIT_HZ = {"walk": "step_hz", "run": "run_hz"}   # the cycle-rate gene of each stepping objective
 STRIDE_CAP_FRAC = 0.75          # realized stride rewarded up to this fraction of thigh + shin (human step/leg ~0.7-0.8)
-CHATTER_COST = {"walk": 1e-4}   # fitness per rad/s^2 of servo command acceleration RMS (0 elsewhere)
-SAT_COST = {"walk": 0.1}        # fitness x the fraction of control steps with a leg servo at its rate limit
-FALL_COST = {"walk": 0.1}       # default fall penalty per objective (0.5 otherwise); on the walk it
+RUN_STRIDE_CAP_FRAC = 1.2       # run: step per leg length of a human jog ~1.0-1.5
+FLIGHT_FRAC_CAP = 0.5           # run: share of the upright time in real flights rewarded up to this (a bound, not a single leap)
+CHATTER_COST = {"walk": 1e-4, "run": 1e-4}   # fitness per rad/s^2 of servo command acceleration RMS (0 elsewhere)
+SAT_COST = {"walk": 0.1, "run": 0.1}      # fitness x the fraction of control steps with a leg servo at its rate limit
+FALL_COST = {"walk": 0.1, "run": 0.1}     # default fall penalty per objective (0.5 otherwise); on the walk it
                                 # scales with the time left, so an early fall pays it all and a late one little
-ACCEL_COST = {"walk": 0.0}      # default ride-quality cost per objective (0.02 otherwise): a walk's
+ACCEL_COST = {"walk": 0.0, "run": 0.0}    # default ride-quality cost per objective (0.02 otherwise): a walk's
                                 # step impacts are not a ride-quality fault, and at 0.02 they outweighed
                                 # the progress of a 0.1 m/s walk, so standing still won
 FLIGHT_MIN_S = 0.04             # both feet off the floor at least this long ...
@@ -113,8 +127,9 @@ def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, 
     """Compile a model. Raises InvalidBody for un-buildable genomes. With a slalom
     task the cones are placed in the scene."""
     p = decode(genome)
-    if task and "step_hz_max" in task:            # a task may cap the cadence (slower, longer steps)
-        p["step_hz"] = min(p["step_hz"], float(task["step_hz_max"]))
+    for hz in GAIT_HZ.values():                   # a task may cap the cadence (slower, longer steps)
+        if task and f"{hz}_max" in task:
+            p[hz] = min(p[hz], float(task[f"{hz}_max"]))
     asset, geom, hdata = terrain_mod.build(terrain_kind, rng)
     zmax = TERRAIN_ZMAX.get(terrain_kind, 0.0)
     scene = _cones_xml(slalom_cones(task), hdata, zmax) if task and task.get("objective") == "slalom" else ""
@@ -273,9 +288,14 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     upright_frac = time_upright / duration
     servo_acc_rms = math.sqrt(servo_acc_sq / max(1, n - 2)) / CONTROL_DT ** 2
     servo_sat_frac = servo_sat / max(1, n - 2)
-    strides = p["step_hz"] * max(time_upright, CONTROL_DT)
-    stride = feet_dx / strides if objective == "walk" else 0.0
-    stride_eff = max(0.0, min(stride, STRIDE_CAP_FRAC * (p["thigh_len"] + p["shin_len"])))
+    strides = p[GAIT_HZ.get(objective, "step_hz")] * max(time_upright, CONTROL_DT)
+    stride = feet_dx / strides if objective in GAIT_HZ else 0.0
+    cap_frac = RUN_STRIDE_CAP_FRAC if objective == "run" else STRIDE_CAP_FRAC
+    stride_eff = max(0.0, min(stride, cap_frac * (p["thigh_len"] + p["shin_len"])))
+    # share of the upright time spent in real flights (both feet off >= FLIGHT_MIN_S with the hip
+    # rising >= FLIGHT_MIN_RISE): a fast walk already loses foot contact a fifth of the time
+    # without the hip ever rising, and that flicker is not a bound
+    flight_frac = sum(f[2] for f in flights) / max(time_upright, CONTROL_DT)
     leg_frac = leg_mass_fraction(p)
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
     energy = fan_energy_cost * fan_energy + motor_energy_cost * motor_energy
@@ -291,6 +311,11 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     elif objective == "walk":
         fitness = (feet_dx / duration + float(task.get("stride_weight", 1.0)) * stride_eff
                    - accel_cost * rms_accel - 0.2 * abs(dy))
+    elif objective == "run":
+        # speed of the feet, long strides, and time in the air (a bound, not a fast walk)
+        fitness = (feet_dx / duration + float(task.get("stride_weight", 0.5)) * stride_eff
+                   + float(task.get("flight_weight", 0.3)) * min(flight_frac, FLIGHT_FRAC_CAP)
+                   - accel_cost * rms_accel - 0.2 * abs(dy))
     elif objective == "hop":
         fitness = sum(apexes[:HOP_TOP_N]) - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy)
     elif objective == "broad_jump":
@@ -305,7 +330,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         fitness = upright_frac - float(task.get("drift_cost", 1.0)) * math.hypot(dx, dy)
     if not unstable:
         fall_cost = float(task.get("fall_cost", FALL_COST.get(objective, 0.5)))
-        if objective == "walk":
+        if objective in GAIT_HZ:
             fall_cost *= 1.0 - upright_frac
         chatter = (float(task.get("chatter_cost", CHATTER_COST.get(objective, 0.0))) * servo_acc_rms
                    + float(task.get("sat_cost", SAT_COST.get(objective, 0.0))) * servo_sat_frac)
@@ -317,6 +342,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "distance_x": dx,
         "feet_x_m": feet_dx,
         "stride_m": stride,
+        "flight_frac": flight_frac,
         "servo_accel_rms": servo_acc_rms,
         "servo_sat_frac": servo_sat_frac,
         "drift_y": dy,
