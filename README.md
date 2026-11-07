@@ -135,7 +135,14 @@ flights; the first bounds with real flights came once the sole was levelled (a
 parallelogram at the passive ankle keeps the sole parallel to the body at any
 knee angle) and the feet placed under the CoM (`stance_x`). Walk and run both
 earn a swing-foot clearance bonus (`clear_weight`, up to 5 cm), so the gait
-picks its feet up instead of shuffling (see docs/skater_review.md). Stand: fraction of time upright under periodic
+picks its feet up instead of shuffling (see docs/skater_review.md).
+Course: the `course` objective runs a gait schedule (`profile`: stand, walk, run, walk,
+stand by default) and scores every segment and every gait change on its own
+(speed, stride, flight and clearance per gait segment; feet drift and pitch on
+the stops; peak pitch over the 2 s after each change, plus the time to 90 % of
+the new speed); the controller blends one stepping cycle's parameters between
+the walk and the run over the `trans_s` gene, so a change is a continuous foot
+path. A long course is the stability test a short task is not. Stand: fraction of time upright under periodic
 shoves, minus drift (`drift_cost` per metre, default 1.0) and fan energy.
 `fan_energy_cost` (0.2 by default) prices fan use so that thrust-propelled
 skating on the feet scores below actual stepping. A fall is a tipped hip or

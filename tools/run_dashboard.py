@@ -37,8 +37,9 @@ LABELS = {
     "airborne_s": "time airborne (s)", "fan_energy": "fan energy (norm.)", "motor_energy_j": "motor energy (J)",
     "leg_mass_fraction": "leg mass fraction", "leg_mass_penalty": "leg mass penalty",
     "total_mass": "total mass (kg)", "invalid": "invalid body",
+    "course_score": "course score (segments + changes)", "course_done": "course completed",
 }
-ORDER = ["fitness", "time_upright", "fell", "unstable", "distance_x", "feet_x_m", "stride_m", "mean_speed", "drift_y", "rms_lat_err",
+ORDER = ["fitness", "course_score", "course_done", "time_upright", "fell", "unstable", "distance_x", "feet_x_m", "stride_m", "mean_speed", "drift_y", "rms_lat_err",
          "scrub_m", "cones_hit", "cones", "n_flights", "max_apex_m", "max_flight_m", "airborne_s", "flight_frac", "swing_clear_m", "rms_accel", "fan_energy", "motor_energy_j", "leg_mass_fraction", "leg_mass_penalty",
          "total_mass", "invalid"]
 

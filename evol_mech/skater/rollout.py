@@ -76,23 +76,37 @@ from ..sim.rollout import (CONTROL_DT, SUBSTEPS, INVALID_FITNESS, UNSTABLE_FITNE
 from .spec import decode
 from .mjcf import build_mjcf, nominal_qpos, ACTUATOR_NAMES
 from .structure import InvalidBody, nominal_height, leg_mass_fraction, LEG_MASS_FRACTION_TARGET
-from .controller import SkaterController
+from .controller import SkaterController, COURSE_PROFILE
 
-OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "run", "hop", "broad_jump")
+OBJECTIVES = ("skate", "crab", "slalom", "stand", "walk", "run", "course", "hop", "broad_jump")
 GAIT_HZ = {"walk": "step_hz", "run": "run_hz"}   # the cycle-rate gene of each stepping objective
+STEPPING = ("walk", "run", "course")             # objectives whose fall cost scales with the time left
+# course scoring (see _course_scores): per-segment terms with the walk's and run's weights,
+# a stop cost on the stands, and a bonus per gait change survived with little pitch excursion
+TRANS_WIN_S = 2.0               # the window after a gait change scored as the transition (and left out of the segment's steady window)
+COURSE_SPEED_WEIGHT = {"walk": 1.0, "run": 2.0}
+COURSE_STRIDE_WEIGHT = {"walk": 1.0, "run": 0.5}
+COURSE_FLIGHT_WEIGHT = 0.3
+STOP_COST = 1.0                 # fitness per m the feet move during a stand (after the change)
+SETTLE_COST = 0.5               # fitness per rad of pitch RMS during a stand
+TRANS_WEIGHT = 0.3              # bonus per transition, scaled down by the pitch excursion over TRANS_PITCH
+TRANS_PITCH = 0.5               # rad of peak pitch in the window at which the transition bonus is nil
+T90_SMOOTH_S = 0.5              # the start metric: time to 90 % of the segment's steady speed, speed smoothed over this
+COST_REF_S = 8.0                # course: energy and drift costs are scaled to this task length (its scores are per second;
+                                # a 36 s course would otherwise pay 4.5 x the fan energy the 8 s walk and run tasks evolved under)
 STRIDE_CAP_FRAC = 0.75          # realized stride rewarded up to this fraction of thigh + shin (human step/leg ~0.7-0.8)
 RUN_STRIDE_CAP_FRAC = 1.2       # run: step per leg length of a human jog ~1.0-1.5
 FLIGHT_FRAC_CAP = 0.5           # run: share of the upright time in real flights rewarded up to this (a bound, not a single leap)
-CHATTER_COST = {"walk": 1e-4, "run": 1e-4}   # fitness per rad/s^2 of servo command acceleration RMS (0 elsewhere)
-SAT_COST = {"walk": 0.1, "run": 0.1}      # fitness x the fraction of control steps with a leg servo at its rate limit
-FALL_COST = {"walk": 0.1, "run": 0.1}     # default fall penalty per objective (0.5 otherwise); on the walk it
+CHATTER_COST = {"walk": 1e-4, "run": 1e-4, "course": 1e-4}   # fitness per rad/s^2 of servo command acceleration RMS (0 elsewhere)
+SAT_COST = {"walk": 0.1, "run": 0.1, "course": 0.1}      # fitness x the fraction of control steps with a leg servo at its rate limit
+FALL_COST = {"walk": 0.1, "run": 0.1, "course": 0.1}     # default fall penalty per objective (0.5 otherwise); on the walk it
                                 # scales with the time left, so an early fall pays it all and a late one little
-ACCEL_COST = {"walk": 0.0, "run": 0.0}    # default ride-quality cost per objective (0.02 otherwise): a walk's
+ACCEL_COST = {"walk": 0.0, "run": 0.0, "course": 0.0}    # default ride-quality cost per objective (0.02 otherwise): a walk's
                                 # step impacts are not a ride-quality fault, and at 0.02 they outweighed
                                 # the progress of a 0.1 m/s walk, so standing still won
 FLIGHT_MIN_S = 0.04             # both feet off the floor at least this long ...
 FLIGHT_MIN_RISE = 0.01          # ... with the hip rising at least this (m) counts as a flight
-CLEAR_WEIGHT = {"walk": 2.0, "run": 2.0}   # fitness per m of swing-foot clearance (median over swings), capped at CLEAR_CAP
+CLEAR_WEIGHT = {"walk": 2.0, "run": 2.0, "course": 2.0}   # fitness per m of swing-foot clearance (median over swings), capped at CLEAR_CAP
 CLEAR_CAP = 0.05                # a shuffle trips on a pebble; 5 cm of clearance is paid for, more is not
 HOP_TOP_N = 3                   # hop fitness sums the highest apex rises of this many flights
 LEG_MASS_PENALTY = 5.0          # fitness per unit of leg fraction above target, per leg
@@ -162,6 +176,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     objective = task["objective"]
     if objective not in OBJECTIVES:
         raise ValueError(f"unknown objective {objective!r}; choose from {OBJECTIVES}")
+    if objective == "course":                        # the gait schedule sets the duration
+        profile = [(str(g), float(d)) for g, d in task.get("profile", COURSE_PROFILE)]
+        task = {**task, "profile": profile, "duration": float(task.get("duration") or sum(d for _, d in profile))}
     try:
         model, p = make_model(genome, task["terrain"], rng, task)
     except InvalidBody as e:
@@ -178,11 +195,11 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     foot_side = {g: n[5] for g, n in names.items() if n.startswith("foot_")}      # geom -> "l" / "r"
     foot_z0 = {s: float(data.xpos[b][2]) for s, b in zip("lr", foot_bodies)}   # ankle height with the sole on the floor
     swing_max = {"l": None, "r": None}            # highest ankle rise during the current swing
-    clearances: list[float] = []                  # per swing, at touchdown
+    clearances: list[tuple[float, float]] = []    # (time, rise) per swing, at touchdown
     cone_of = {g: int(n.split("_")[1]) for g, n in names.items() if n.startswith("cone_")}
     body_geoms = {g for g in range(model.ngeom) if g not in feet and g != floor_geom and g not in cone_of}
     cones_hit: set[int] = set()
-    flights: list[tuple[float, float, float]] = []    # (apex rise, distance, duration)
+    flights: list[tuple[float, float, float, float]] = []    # (apex rise, distance, duration, landing time)
     off_floor_since = None                            # time the feet left the floor, else None
     takeoff = None                                    # (x, z) at that moment
     apex = 0.0
@@ -192,6 +209,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
 
     duration = float(task["duration"])
     n_ctrl = int(duration / CONTROL_DT)
+    # per-step histories for the course's segment scores
+    feet_hist, pitch_hist, cyc_hist = np.zeros(n_ctrl), np.zeros(n_ctrl), np.zeros(n_ctrl)
+    sat_hist, acc_hist = np.zeros(n_ctrl), np.zeros(n_ctrl)
     x0, y0 = float(data.qpos[0]), float(data.qpos[1])
     feet_x0 = float(np.mean([data.xpos[b][0] for b in foot_bodies]))
     servo_prev: list[np.ndarray] = []                 # last two servo command vectors (chatter metric)
@@ -239,8 +259,12 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
                              + [ctrl.horn_cmd[s] for s in "lr"]
                              + [data.ctrl[ctrl.idx[f"fan_pitch_{s}"]] for s in "lr"])
         if len(servo_prev) == 2:
-            servo_acc_sq += float(np.mean((servo_cmd - 2 * servo_prev[-1] + servo_prev[-2]) ** 2))
-            servo_sat += int(np.any(np.abs(servo_cmd[:6] - servo_prev[-1][:6]) >= 0.98 * servo_step))
+            acc_hist[k] = float(np.mean((servo_cmd - 2 * servo_prev[-1] + servo_prev[-2]) ** 2))
+            sat_hist[k] = int(np.any(np.abs(servo_cmd[:6] - servo_prev[-1][:6]) >= 0.98 * servo_step))
+            servo_acc_sq += acc_hist[k]
+            servo_sat += int(sat_hist[k])
+        feet_hist[k] = float(np.mean([data.xpos[b][0] for b in foot_bodies]))
+        cyc_hist[k] = ctrl.cycles
         servo_prev = (servo_prev + [servo_cmd])[-2:]
         motor_energy += float(np.sum(np.abs(data.actuator_force[motor_acts] * data.actuator_velocity[motor_acts]))) * CONTROL_DT
         v = data.qvel[:3].copy()
@@ -262,7 +286,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             if not side_down[s]:
                 swing_max[s] = rise if swing_max[s] is None else max(swing_max[s], rise)
             elif swing_max[s] is not None:
-                clearances.append(swing_max[s])
+                clearances.append((t, swing_max[s]))
                 swing_max[s] = None
         if not feet_down:
             if off_floor_since is None:
@@ -271,7 +295,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             airborne_s += CONTROL_DT
         elif off_floor_since is not None:
             if t - off_floor_since >= FLIGHT_MIN_S and apex - takeoff[1] >= FLIGHT_MIN_RISE:
-                flights.append((apex - takeoff[1], float(data.qpos[0]) - takeoff[0], t - off_floor_since))
+                flights.append((apex - takeoff[1], float(data.qpos[0]) - takeoff[0], t - off_floor_since, t))
             off_floor_since = None
         if objective == "slalom":
             y_ref = A * math.sin(2 * math.pi * float(data.qpos[0]) / lam)
@@ -283,6 +307,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
 
         z = float(data.qpos[2])
         roll, pitch = quat_to_roll_pitch(data.qpos[3:7])
+        pitch_hist[k] = pitch
         if _fallen(z, roll, pitch, h_nom) or _body_touching_floor(data, body_geoms, floor_geom):
             fell = True
             if stop_on_fall:
@@ -311,7 +336,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     # rising >= FLIGHT_MIN_RISE): a fast walk already loses foot contact a fifth of the time
     # without the hip ever rising, and that flicker is not a bound
     flight_frac = sum(f[2] for f in flights) / max(time_upright, CONTROL_DT)
-    swing_clear = float(np.median(clearances)) if clearances else 0.0
+    swing_clear = float(np.median([c for _, c in clearances])) if clearances else 0.0
+    course = (_course_scores(task, p, k + 1, time_upright, feet_hist, pitch_hist, cyc_hist, sat_hist, acc_hist,
+                             flights, clearances) if objective == "course" else {})
     clear_bonus = float(task.get("clear_weight", CLEAR_WEIGHT.get(objective, 0.0))) * max(0.0, min(swing_clear, CLEAR_CAP))
     leg_frac = leg_mass_fraction(p)
     leg_pen = LEG_MASS_PENALTY * 2 * max(0.0, leg_frac - LEG_MASS_FRACTION_TARGET)
@@ -333,6 +360,10 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         fitness = (float(task.get("speed_weight", 1.0)) * feet_dx / duration + float(task.get("stride_weight", 0.5)) * stride_eff
                    + float(task.get("flight_weight", 0.3)) * min(flight_frac, FLIGHT_FRAC_CAP) + clear_bonus
                    - accel_cost * rms_accel - 0.2 * abs(dy))
+    elif objective == "course":
+        scale = COST_REF_S / duration
+        energy *= scale
+        fitness = course["course_score"] - accel_cost * rms_accel - 0.2 * abs(dy) * scale
     elif objective == "hop":
         fitness = sum(apexes[:HOP_TOP_N]) - float(task.get("drift_cost", 0.3)) * math.hypot(dx, dy)
     elif objective == "broad_jump":
@@ -347,7 +378,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         fitness = upright_frac - float(task.get("drift_cost", 1.0)) * math.hypot(dx, dy)
     if not unstable:
         fall_cost = float(task.get("fall_cost", FALL_COST.get(objective, 0.5)))
-        if objective in GAIT_HZ:
+        if objective in STEPPING:
             fall_cost *= 1.0 - upright_frac
         chatter = (float(task.get("chatter_cost", CHATTER_COST.get(objective, 0.0))) * servo_acc_rms
                    + float(task.get("sat_cost", SAT_COST.get(objective, 0.0))) * servo_sat_frac)
@@ -385,7 +416,85 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "sim_steps": steps,
         "wall_s": wall,
         "steps_per_s": steps / wall if wall > 0 else 0.0,
+        **course,
     }
+
+
+def _course_scores(task: dict, p: dict, n_done: int, time_upright: float, feet, pitch, cyc, sat, acc,
+                   flights, clearances) -> dict:
+    """Segment and transition scores of a course (objective "course").
+
+    Each profile segment is scored on its steady window (the segment less the first
+    TRANS_WIN_S after a gait change): a walk or run on the feet's speed, the realized
+    stride (progress per cycle of the shared phase, capped as on the plain objectives),
+    the share of the window in real flights (run) and the swing clearance, each with its
+    gait's weights, weighted by the segment's share of the stepping time; a stand on the
+    distance the feet move and the pitch RMS (the stop). Each gait change earns
+    `trans_weight` x (1 - peak |pitch| / TRANS_PITCH) over the TRANS_WIN_S after it if
+    the body is still upright at the end of the window, and reports the time to 90 % of
+    the new segment's steady speed (the start). Segments after a fall score nothing, and
+    the rollout's fall cost scales with the time left, so a course is worth finishing.
+    Returns flat keys (seg<k>_<gait>.<metric>, trans<k>_<gait>.<metric>) and course_score."""
+    dt = CONTROL_DT
+    profile = task["profile"]
+    leg = p["thigh_len"] + p["shin_len"]
+    win, smooth = int(round(TRANS_WIN_S / dt)), int(round(T90_SMOOTH_S / dt))
+    w_speed = {"walk": float(task.get("walk_speed_weight", COURSE_SPEED_WEIGHT["walk"])),
+               "run": float(task.get("run_speed_weight", COURSE_SPEED_WEIGHT["run"]))}
+    w_stride = {"walk": float(task.get("walk_stride_weight", COURSE_STRIDE_WEIGHT["walk"])),
+                "run": float(task.get("run_stride_weight", COURSE_STRIDE_WEIGHT["run"]))}
+    w_flight = float(task.get("flight_weight", COURSE_FLIGHT_WEIGHT))
+    w_clear = float(task.get("clear_weight", CLEAR_WEIGHT["course"]))
+    w_trans, stop_cost = float(task.get("trans_weight", TRANS_WEIGHT)), float(task.get("stop_cost", STOP_COST))
+    gait_total = sum(d for g, d in profile if g != "stand") or 1.0
+    out, total = {}, 0.0
+    t0 = 0.0
+    for k, (g, d) in enumerate(profile):
+        s, e = t0, t0 + d
+        t0 = e
+        i0, i1 = int(round(s / dt)), min(n_done, int(round(e / dt)))
+        j0 = min(i1, i0 + win) if k > 0 else i0            # steady window: after the change settles
+        n = i1 - j0
+        seg = {"upright_s": max(0.0, min(time_upright, e) - s), "progress_m": 0.0, "speed": 0.0, "stride_m": 0.0,
+               "flight_frac": 0.0, "swing_clear_m": 0.0, "pitch_rms": 0.0, "sat_frac": 0.0, "chatter_rms": 0.0}
+        if n > 1:
+            T = n * dt
+            prog = float(feet[i1 - 1] - feet[j0])
+            cycles = float(cyc[i1 - 1] - cyc[j0])
+            cl = [c for t_c, c in clearances if j0 * dt <= t_c < i1 * dt]
+            seg.update(progress_m=prog, speed=prog / T, stride_m=prog / cycles if cycles > 0.5 else 0.0,
+                       flight_frac=sum(f[2] for f in flights if j0 * dt <= f[3] < i1 * dt) / T,
+                       swing_clear_m=float(np.median(cl)) if cl else 0.0,
+                       pitch_rms=float(np.sqrt(np.mean(pitch[j0:i1] ** 2))),
+                       sat_frac=float(np.mean(sat[j0:i1])),
+                       chatter_rms=float(np.sqrt(np.mean(acc[j0:i1]))) / dt ** 2)
+        if g == "stand":
+            score = (-stop_cost * abs(seg["progress_m"]) - SETTLE_COST * seg["pitch_rms"]) if n > 1 else 0.0
+        else:
+            cap = (RUN_STRIDE_CAP_FRAC if g == "run" else STRIDE_CAP_FRAC) * leg
+            score = (d / gait_total) * (w_speed[g] * seg["speed"] + w_stride[g] * max(0.0, min(seg["stride_m"], cap))
+                                        + (w_flight * min(seg["flight_frac"], FLIGHT_FRAC_CAP) if g == "run" else 0.0)
+                                        + w_clear * max(0.0, min(seg["swing_clear_m"], CLEAR_CAP)))
+        seg["score"] = score
+        total += score
+        out.update({f"seg{k}_{g}.{m}": v for m, v in seg.items()})
+        if k > 0:                                            # the change into this segment
+            i_end = min(n_done, i0 + win)
+            peak = float(np.max(np.abs(pitch[i0:i_end]))) if i_end > i0 else 0.0
+            survived = time_upright >= min(e, s + TRANS_WIN_S) - 1e-9
+            t90 = d
+            if g != "stand" and seg["speed"] > 0.05:
+                for i in range(i0, i1 - smooth):
+                    if (feet[i + smooth] - feet[i]) / (smooth * dt) >= 0.9 * seg["speed"]:
+                        t90 = (i + smooth) * dt - s
+                        break
+            tr = {"survived": float(survived), "pitch_max_deg": math.degrees(peak), "t90_s": t90,
+                  "score": w_trans * max(0.0, 1.0 - peak / TRANS_PITCH) if survived else 0.0}
+            total += tr["score"]
+            out.update({f"trans{k}_{g}.{m}": v for m, v in tr.items()})
+    out["course_score"] = total
+    out["course_done"] = float(time_upright >= t0 - 1e-9)
+    return out
 
 
 def evaluate(genome: np.ndarray, cfg: dict, seed: int) -> dict:
@@ -400,7 +509,8 @@ def evaluate(genome: np.ndarray, cfg: dict, seed: int) -> dict:
         out["wall_s"] += m["wall_s"]
         out["invalid"] = out["invalid"] or m["invalid"]
         for k2, v in m.items():
-            out[f"{task['name']}.{k2}"] = v
+            if not isinstance(v, (list, dict)):
+                out[f"{task['name']}.{k2}"] = v
         if m["invalid"]:
             break
     out["steps_per_s"] = out["sim_steps"] / out["wall_s"] if out["wall_s"] > 0 else 0.0

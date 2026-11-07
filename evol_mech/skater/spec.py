@@ -100,6 +100,11 @@ PARAMS: list[Param] = [
     Param("run_ext",          0.0,  1.0,  0.6,  "gait"),        # run: fraction of run_crouch recovered by toe-off, the thrust into the flight
     Param("run_fan",          0.0,  1.0,  0.3,  "gait"),        # run: fan throttle floor while no foot is down, the forward push in flight
     Param("stance_x",        -0.03, 0.06, 0.0,  "gait"),        # legged: feet ahead of the hip (m), the sole's support under the CoM
+    # ---- run: its own fore/aft balance (a bound's feet sit elsewhere than a walk's) ----
+    Param("run_stance_x",    -0.03, 0.06, 0.0,  "gait"),        # run: stance_x for the bound
+    Param("run_kv_x",         0.0,  0.5,  0.1,  "gait"),        # run: kv_foot_x for the bound
+    Param("run_kp_leg",      -0.6,  0.6,  0.0,  "gait"),        # run: kp_foot_leg for the bound
+    Param("trans_s",          0.3,  3.0,  1.0,  "gait"),        # course: a gait change (stepping amplitude, walk <-> run mix) takes this long (s)
 ]
 
 NAMES = [p.name for p in PARAMS]

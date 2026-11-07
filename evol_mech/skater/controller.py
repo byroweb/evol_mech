@@ -84,7 +84,11 @@ FLIGHT_PUSH_S = 0.1         # legged: the fans push forward only after this long
 LEVEL_SOLES = True          # sole-levelling parallelogram at the ankle (see SkaterController._level_soles)
 RUN_RAMP_S = 0.6            # run: the gait amplitudes (sweep, crouch, lift) ease in over this long from the parked stance
 CONTROL_DT = 0.01
-LEGGED = ("walk", "run", "hop", "broad_jump")      # objectives with locked treads and moving feet
+LEGGED = ("walk", "run", "course", "hop", "broad_jump")      # objectives with locked treads and moving feet
+# course: a schedule of gaits. The commanded gait sets the targets of a stepping amplitude
+# (0 standing, 1 stepping) and of the walk/run mix; both slew over the trans_s gene, one shared phase
+# runs at the blended cadence, and the two cycles are blended at that phase.
+COURSE_PROFILE = (("stand", 2.0), ("walk", 10.0), ("run", 10.0), ("walk", 10.0), ("stand", 4.0))
 # walk cycle: stance duty (`step_duty`) and the cycle fraction at which the body is
 # furthest left (`shift_phase`) are genes; the left foot's phase is the cycle reference
 JUMP_PHASES = (0.45, 0.60, 0.80)            # cycle fractions: crouch | thrust | tuck | settle
@@ -148,6 +152,11 @@ class SkaterController:
         self.x_int = 0.0                             # legged: integrated foot shift (steady moments)
         self.horn_cmd = {"l": 0.0, "r": 0.0}
         self.air_since = None                        # legged: time the feet left the floor
+        # course state (see _course_update); cycles counts the shared phase for every objective
+        self.profile = [(str(g), float(d)) for g, d in task.get("profile", COURSE_PROFILE)]
+        self.amp, self.cycles, self.phase = 0.0, 0.0, 0.0
+        self.blend = 1.0 if self.profile[0][0] == "run" else 0.0    # a course that opens with a run is a run from t = 0
+        self._t_prev = None
         self.floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
         self.foot_geoms = {g for g in range(model.ngeom)
                            if (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "").startswith("foot_")}
@@ -155,7 +164,7 @@ class SkaterController:
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
         p, obj = self.p, self.objective
-        if obj in ("skate", "walk", "broad_jump"):
+        if obj in ("skate", "walk", "course", "broad_jump"):
             v, heading = np.array([self.speed, 0.0]), 0.0
         elif obj == "crab":                          # kept for later stages; not in the stage-1 task set
             v, heading = np.array([0.0, self.speed]), 0.0
@@ -172,42 +181,82 @@ class SkaterController:
         return v, p["steer_kp"] * wrap(heading - yaw)
 
     # ---- legged cycles -------------------------------------------------------------
+    @staticmethod
+    def _leg(u: float, L: float, duty: float, lift: float, crouch: float, ext: float) -> tuple[float, float]:
+        """One stepping cycle at phase u (0 = touchdown): (foot x offset, foot / hip
+        height offset). The stance foot sweeps L back under the hip for duty of the cycle;
+        the swing foot returns lifted by lift. With crouch the hip also rides crouch low
+        (the bent-knee landing that loads the leg) and recovers ext of it in the last half
+        of stance (the thrust): with duty < 0.5 that is a bound, both feet off between
+        stances. crouch = 0, duty > 0.5 is the walk; so the walk and the run are one cycle
+        with different parameters, and a course blends the parameters, not two foot paths
+        (blending a duty-0.8 walk with a duty-0.33 run at one phase has both feet lifted
+        with no thrust at half-blend, and the body fell at every change)."""
+        if u < duty:
+            w = u / duty
+            return L / 2 - L * w, -crouch * (1.0 - ext * max(0.0, 2 * w - 1))
+        w = (u - duty) / (1 - duty)
+        return -L / 2 + L * w, -crouch + lift * math.sin(math.pi * w)
+
+    def _walk_leg(self, u: float) -> tuple[float, float]:
+        p = self.p
+        return self._leg(u, p["step_len"], p["step_duty"], p["step_lift"], 0.0, 0.0)
+
+    def _run_leg(self, u: float, ramp: float) -> tuple[float, float]:
+        """The run's amplitudes (sweep, crouch, lift) scaled by ramp. The parked stance is
+        nearly straight-legged (no room to extend), so the run lives run_crouch lower."""
+        p = self.p
+        return self._leg(u, ramp * p["run_len"], p["run_duty"], ramp * p["run_lift"], ramp * p["run_crouch"], p["run_ext"])
+
+    def _course_leg(self, u: float) -> tuple[float, float]:
+        """The course's cycle: the walk's and the run's parameters mixed by the blend, the
+        amplitudes (sweep, lift, crouch) scaled by the stepping amplitude."""
+        p, a, b = self.p, self.amp, self.blend
+        mix = lambda w, r: (1 - b) * p[w] + b * p[r]
+        return self._leg(u, a * mix("step_len", "run_len"), mix("step_duty", "run_duty"), a * mix("step_lift", "run_lift"),
+                         a * b * p["run_crouch"], b * p["run_ext"])
+
+    def course_gait(self, t: float) -> str:
+        """The gait the course profile commands at time t."""
+        acc = 0.0
+        for g, d in self.profile:
+            acc += d
+            if t < acc:
+                return g
+        return self.profile[-1][0]
+
+    def _course_update(self, t: float) -> None:
+        """Advance the course state to t: the commanded gait sets the targets of the
+        stepping amplitude (0 standing, 1 stepping) and of the walk/run mix, both slewed
+        over trans_s (a stand is a walk of zero amplitude, so a stop after a run also
+        brings the walk's balance genes and height feedback back); the shared phase runs
+        at the blended cadence and is held at a left touchdown while stopped, so every
+        start begins there."""
+        dt = 0.0 if self._t_prev is None else max(0.0, t - self._t_prev)
+        self._t_prev = t
+        g = self.course_gait(t)
+        amp_t = 0.0 if g == "stand" else 1.0
+        blend_t = 1.0 if g == "run" else 0.0                           # a stand is a walk of zero amplitude
+        step = dt / self.p["trans_s"]
+        self.amp += max(-step, min(step, amp_t - self.amp))
+        self.blend += max(-step, min(step, blend_t - self.blend))
+        hz = (1 - self.blend) * self.p["step_hz"] + self.blend * self.p["run_hz"]
+        self.cycles = self.cycles + hz * dt if self.amp > 0.0 else 0.0
+        self.phase = self.cycles % 1.0
+
     def gait_offsets(self, t: float) -> dict[str, tuple[float, float, bool]]:
         """Per side: (foot x offset, foot lift, height feedback on) for the legged
         objectives; zero for the others."""
         p = self.p
         if self.objective == "walk":
-            out = {}
-            for s, ph in (("l", 0.0), ("r", 0.5)):
-                u = (p["step_hz"] * t + ph) % 1.0
-                L = p["step_len"]
-                duty = p["step_duty"]
-                if u < duty:                         # stance: foot travels back under the hip
-                    out[s] = (L / 2 - L * u / duty, 0.0, True)
-                else:                                # swing: lifted return
-                    w = (u - duty) / (1 - duty)
-                    out[s] = (-L / 2 + L * w, p["step_lift"] * math.sin(math.pi * w), True)
-            return out
+            self.cycles = p["step_hz"] * t
+            return {s: (*self._walk_leg((p["step_hz"] * t + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
         if self.objective == "run":
-            # bounding: the stance foot sweeps back under the hip while the hip dips (bent-knee
-            # landing) and then rises (thrust); the swing foot is retracted toward the hip and
-            # carried forward to land ahead of it. duty < 0.5 leaves a flight between stances.
-            out = {}
+            self.cycles = p["run_hz"] * t
             ramp = min(1.0, t / RUN_RAMP_S)            # from the parked stance, not a 9 cm drop at t = 0
-            for s, ph in (("l", 0.0), ("r", 0.5)):
-                u = (p["run_hz"] * t + ph) % 1.0
-                L, duty = ramp * p["run_len"], p["run_duty"]
-                crouch, lift = ramp * p["run_crouch"], ramp * p["run_lift"]
-                # the parked stance is nearly straight-legged (no room to extend), so the run
-                # lives run_crouch lower: bent knee at touchdown, run_ext of it recovered by toe-off
-                if u < duty:
-                    w = u / duty
-                    dz = -crouch * (1.0 - p["run_ext"] * max(0.0, 2 * w - 1))
-                    out[s] = (L / 2 - L * w, dz, False)
-                else:
-                    w = (u - duty) / (1 - duty)
-                    out[s] = (-L / 2 + L * w, -crouch + lift * math.sin(math.pi * w), False)
-            return out
+            return {s: (*self._run_leg((p["run_hz"] * t + ph) % 1.0, ramp), False) for s, ph in (("l", 0.0), ("r", 0.5))}
+        if self.objective == "course":
+            return {s: (*self._course_leg((self.phase + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
         if self.objective in ("hop", "broad_jump"):
             u = (p["jump_hz"] * t) % 1.0
             c, th, tk = JUMP_PHASES
@@ -227,12 +276,14 @@ class SkaterController:
         """Walk: lateral body offset (+ = left) over the feet, furthest toward the
         stance side mid-swing of the other foot; zero for the other objectives."""
         if self.objective == "walk":
-            u = (self.p["step_hz"] * t) % 1.0
+            u, scale = (self.p["step_hz"] * t) % 1.0, 1.0
         elif self.objective == "run":
-            u = (self.p["run_hz"] * t) % 1.0
+            u, scale = (self.p["run_hz"] * t) % 1.0, 1.0
+        elif self.objective == "course":
+            u, scale = self.phase, min(1.0, self.amp / 0.2)              # the sway is there as soon as the feet move
         else:
             return 0.0
-        amp = self.p["walk_shift"] * self.p["hip_width"] / 2          # 1.0 = hip over the stance foot
+        amp = scale * self.p["walk_shift"] * self.p["hip_width"] / 2  # 1.0 = hip over the stance foot
         return amp * math.cos(2 * math.pi * (u - self.p["shift_phase"]))
 
     def _feet_down(self, data: mujoco.MjData) -> bool:
@@ -287,6 +338,11 @@ class SkaterController:
         p, c, i = self.p, self.ctrl, self.idx
         pos = data.qpos[:3].copy()
         self._level_soles(data)
+        if self.objective == "course":
+            self._course_update(t)
+        # how much of a run this is: the run's balance genes and fan rules blend in with it
+        b_run = self.blend if self.objective == "course" else (1.0 if self.objective == "run" else 0.0)
+        runish = b_run > 0.5
         if self.p0 is None:
             self.p0 = pos.copy()
         quat = data.qpos[3:7]
@@ -317,7 +373,7 @@ class SkaterController:
                 self.air_since = None
             elif self.air_since is None:
                 self.air_since = t
-            gate = 0.0 if self.objective == "run" else FLIGHT_PUSH_S     # a run's flight is the push phase
+            gate = 0.0 if runish else FLIGHT_PUSH_S     # a run's flight is the push phase
             airborne = self.air_since is not None and t - self.air_since >= gate
         else:
             airborne = pos[2] > self.z_ref + AIRBORNE_Z
@@ -332,7 +388,7 @@ class SkaterController:
         # just topples the body); progress comes from the steps. Airborne they take it all.
         # a run with run_fan ~ 0 asks nothing of the fans in flight either (a push at idle
         # throttle is only a pitch command banging between its stops)
-        fan_push = airborne and (self.objective != "run" or p["run_fan"] > 0.02)
+        fan_push = airborne and (not runish or p["run_fan"] > 0.02)
         push = 0.0 if (self.legged and not fan_push) else 1.0
         f_fan = self.mass * np.array([push * (float(a_des[0]) - a_tread), float(a_des[1])])
         self.last_fan_force = (float(f_fan[0]), float(f_fan[1]))
@@ -368,8 +424,11 @@ class SkaterController:
             # under the hip: the CoM sits ahead of the hip and the sole's support is only
             # +-6 cm about the ankle, so the parked stance stands on its front edge (a live
             # CoM feed-forward was tried and oscillates: the legs are a quarter of the mass)
-            x_f = (self.x_nom + p["stance_x"] + p["kp_foot_leg"] * pitch + p["kd_foot_leg"] * pitch_rate + self.x_int
-                   + p["kv_foot_x"] * float(v_b[0]))
+            # the run has its own offset, pitch and speed gains (run_*), mixed in with b_run
+            sx = (1 - b_run) * p["stance_x"] + b_run * p["run_stance_x"]
+            kp = (1 - b_run) * p["kp_foot_leg"] + b_run * p["run_kp_leg"]
+            kv = (1 - b_run) * p["kv_foot_x"] + b_run * p["run_kv_x"]
+            x_f = self.x_nom + sx + kp * pitch + p["kd_foot_leg"] * pitch_rate + self.x_int + kv * float(v_b[0])
         else:
             x_f = (self.x_nom - d_feet
                    + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)
@@ -379,9 +438,10 @@ class SkaterController:
         dy_f = (-self.body_shift(t) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
                 + p["kv_foot_y"] * float(v_b[1]))
         gait = self.gait_offsets(t)
+        hfb_scale = 1.0 - self.blend if self.objective == "course" else 1.0   # the run sets its own height
         for s, sign in (("l", +1.0), ("r", -1.0)):
             gx, gz, fb = gait[s]
-            h = max(0.02, self.h_nom + (h_fb if fb else 0.0) + gz - sign * dh_roll)
+            h = max(0.02, self.h_nom + (h_fb * hfb_scale if fb else 0.0) + gz - sign * dh_roll)
             dy = dy_f + sign * p["stance_w"]                      # + = foot to the left, both legs
             roll_cmd = max(-HIP_ROLL_RANGE, min(HIP_ROLL_RANGE, math.atan2(dy, h)))
             c[i[f"hip_roll_{s}"]] = self._slew(f"hip_roll_{s}", roll_cmd)
@@ -402,10 +462,10 @@ class SkaterController:
             diff = p["fan_kp_roll"] * roll + p["fan_kd_roll"] * roll_rate
             # swing-side assist: the fan over a lifted foot carries that side (feedforward
             # on the gait phase, scaled by how far the foot is lifted), the roll PD does the rest
-            lift = {"walk": p["step_lift"], "run": p["run_lift"]}.get(self.objective, 1.0)
+            lift = (1 - b_run) * p["step_lift"] + b_run * p["run_lift"] if self.objective in ("walk", "run", "course") else 1.0
             assist_l, assist_r = (p["step_fan"] * max(0.0, g[1]) / lift for g in (gait["l"], gait["r"]))
             # run: the fans spin up to run_fan while no foot is down and push the body forward
-            base = max(p["fan_base"], p["run_fan"]) if (self.objective == "run" and airborne) else p["fan_base"]
+            base = max(p["fan_base"], b_run * p["run_fan"]) if (runish and airborne) else p["fan_base"]
             thr_l = max(0.0, min(1.0, base - diff + assist_l))
             thr_r = max(0.0, min(1.0, base + diff + assist_r))
             t_vert = max(0.05, base) * self.t_max
@@ -421,7 +481,7 @@ class SkaterController:
             thr_l = thr_r = fan_l = fan_r = 0.0
         self.dbg = {"pitch": pitch, "pitch_ref": pitch_ref, "a_des": float(a_des[0]), "a_tread": a_tread,
                     "d_feet": d_feet, "v_bal": v_bal, "x_f": x_f, "h": self.h_nom + h_fb, "dy_f": dy_f,
-                    "f_fan_x": float(f_fan[0]),
+                    "f_fan_x": float(f_fan[0]), "amp": self.amp, "blend": self.blend, "phase": self.phase,
                     "fan_l": fan_l, "fan_r": fan_r, "thr": (thr_l, thr_r)}
         c[i["fan_thrust_l"]], c[i["fan_thrust_r"]] = thr_l, thr_r
         c[i["fan_pitch_l"]], c[i["fan_pitch_r"]] = fan_l, fan_r

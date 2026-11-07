@@ -238,7 +238,7 @@ def test_hip_roll_places_the_feet():
 def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     from evol_mech.skater.spec import encode, N_PARAMS
     from evol_mech.skater.rollout import FALL_COST
-    assert N_PARAMS == 71 and FALL_COST == {"walk": 0.1, "run": 0.1}
+    assert N_PARAMS == 75 and FALL_COST == {"walk": 0.1, "run": 0.1, "course": 0.1}
     phys = json.load(open("configs/archetypes/skater_walker_evolved6.json"))["phys"]     # levelled sole, 2.5 Hz cap
     task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0, "step_hz_max": 2.5}
     kw = dict(motor_energy_cost=0.0005)                 # as configs/skater_walk*.json price it
@@ -270,7 +270,8 @@ def test_static_legged_stance_holds_upright_and_crouched():
     from evol_mech.skater.controller import SkaterController, CONTROL_DT
     from evol_mech.sim.controller import quat_to_roll_pitch
     phys = dict(json.load(open("configs/archetypes/skater_walker_evolved5.json"))["phys"],
-                kp_foot_leg=0.0, kd_foot_leg=0.0, ki_foot_leg=0.0, kv_foot_x=0.1, stance_x=0.01)
+                kp_foot_leg=0.0, kd_foot_leg=0.0, ki_foot_leg=0.0, kv_foot_x=0.1, stance_x=0.01,
+                run_kp_leg=0.0, run_kv_x=0.1, run_stance_x=0.01)
     task = {"name": "run", "objective": "run", "terrain": "flat", "duration": 3.0, "speed": 0.0}
     for crouch in (0.0, 0.03, 0.06):
         model, p = make_model(encode(phys), "flat", np.random.default_rng(0), task)
@@ -318,3 +319,42 @@ def test_registry_and_evaluate():
     assert np.isfinite(out["fitness"]) and "skate_flat.mean_speed" in out
     with pytest.raises(ValueError):
         get_body("hexapod")
+
+
+def test_course_blends_one_cycle_between_the_gaits_and_scores_each_segment():
+    import mujoco
+    from evol_mech.skater.spec import encode
+    from evol_mech.skater.controller import SkaterController
+    p = decode(DEFAULT_NORM)
+    model, _ = make_model(DEFAULT_NORM, "flat", np.random.default_rng(0))
+    # the walk is the stepping cycle with no crouch; the run is the same cycle crouched with a short duty
+    walk = SkaterController(model, p, {"objective": "walk", "speed": 0.4, "terrain": "flat"})
+    assert walk._walk_leg(0.3) == walk._leg(0.3, p["step_len"], p["step_duty"], p["step_lift"], 0.0, 0.0)
+    assert walk._run_leg(0.3, 1.0) == walk._leg(0.3, p["run_len"], p["run_duty"], p["run_lift"], p["run_crouch"], p["run_ext"])
+    profile = [["stand", 1.0], ["walk", 3.0], ["run", 3.0], ["stand", 2.0]]
+    c = SkaterController(model, p, {"objective": "course", "speed": 0.4, "terrain": "flat", "profile": profile})
+    data = make_data(model, p)
+    state = {}
+    for k in range(900):
+        t = k * 0.01
+        c.act(data, t)
+        state[round(t, 2)] = (c.amp, c.blend, c.phase, c.gait_offsets(t))
+    assert state[0.5][0] == 0.0 and state[0.5][3]["l"] == (0.0, 0.0, True)      # standing: no step, feet parked
+    assert abs(state[2.5][0] - 1.0) < 1e-9 and state[2.5][1] == 0.0             # walking after trans_s: full amplitude, no run in the mix
+    assert 0.3 < state[4.5][1] < 0.7 < state[5.5][1] <= 1.0                        # the mix slews over trans_s into the run
+    assert c.course_gait(4.5) == "run" and c.course_gait(8.0) == "stand" and c.course_gait(99.0) == "stand"
+    assert state[8.95][0] == 0.0 and state[8.95][2] == 0.0                        # stopped again: amplitude gone, phase parked at a left touchdown
+    opens_running = SkaterController(model, p, {"objective": "course", "terrain": "flat", "profile": [["run", 2.0]]})
+    assert opens_running.blend == 1.0
+    # the seed completes the course: both walks, a bounding run, four changes survived, and the transition
+    # bonus is what it says
+    phys = json.load(open("configs/archetypes/skater_courser_seed.json"))["phys"]
+    task = {"name": "course", "terrain": "flat", "objective": "course", "speed": 0.4, "step_hz_max": 2.5}
+    r = rollout(encode(phys), task, 0, motor_energy_cost=0.0005)
+    assert not r["fell"] and r["course_done"] == 1.0 and r["time_upright"] == 36.0
+    assert r["seg1_walk.speed"] > 0.3 and r["seg3_walk.speed"] > 0.3 and r["seg2_run.flight_frac"] > 0.3 and r["seg2_run.swing_clear_m"] > 0.03
+    assert all(r[f"trans{k}_{g}.survived"] == 1.0 and r[f"trans{k}_{g}.pitch_max_deg"] < 30 for k, g in ((1, "walk"), (2, "run"), (3, "walk"), (4, "stand")))
+    assert abs(r["seg4_stand.progress_m"]) < 0.15                   # the stop: the feet settle within a few cm
+    r0 = rollout(encode(phys), {**task, "trans_weight": 0.0}, 0, motor_energy_cost=0.0005)
+    expect = sum(r[f"trans{k}_{g}.score"] for k, g in ((1, "walk"), (2, "run"), (3, "walk"), (4, "stand")))
+    assert expect > 0.5 and abs((r["fitness"] - r0["fitness"]) - expect) < 1e-6
