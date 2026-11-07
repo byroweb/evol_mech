@@ -1,0 +1,50 @@
+{
+  "run_name": "skater_walk_hip3",
+  "body": "skater",
+  "seed": 0,
+  "population": 96,
+  "generations": 40,
+  "elites": 4,
+  "tournament_k": 3,
+  "mutation_sigma": 0.05,
+  "mutation_rate": 0.3,
+  "workers": 12,
+  "tasks": [
+    {
+      "name": "walk_flat",
+      "terrain": "flat",
+      "objective": "walk",
+      "speed": 0.4,
+      "duration": 12.0,
+      "weight": 1.0,
+      "step_hz_max": 2.5,
+      "pose_noise_deg": 2.0,
+      "repeats": 2
+    },
+    {
+      "name": "walk_rough",
+      "terrain": "cobblestone",
+      "objective": "walk",
+      "speed": 0.4,
+      "duration": 8.0,
+      "weight": 0.5,
+      "step_hz_max": 2.5
+    },
+    {
+      "name": "stand_perturbed",
+      "terrain": "flat",
+      "objective": "stand",
+      "duration": 6.0,
+      "weight": 0.5,
+      "drift_cost": 1.0
+    }
+  ],
+  "fans_enabled": true,
+  "fan_energy_cost": 0.2,
+  "motor_energy_cost": 0.0005,
+  "record_elite_video": false,
+  "locked": [
+    "hip_width"
+  ],
+  "archetype": "configs/archetypes/skater_walker_hip3_seed.json"
+}

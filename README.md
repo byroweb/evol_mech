@@ -137,7 +137,8 @@ body's pitch and roll RMS, hip height and forward-speed standard deviations,
 lateral excursion about a 1.5 s moving average, the share of the time a leg
 servo is at its slew limit and the feet's lateral separation (feet under the
 hips are free, feet splayed outboard are charged: the wide stance is the other
-half of the cowboy walk),
+half of the cowboy walk; the `tread_w` gene sets the tread's width, the foot's
+support in roll, which turned out not to matter: the hip width does),
 and by min(1, speed / 0.15 m/s) so that a walk still goes somewhere, and the fans' mean throttle is charged on top of their energy
 (`fan_duty_cost` 1.0), with the clearance bonus (weight 4 on a walk) added
 outside the factor but inside the progress gate (marching in place earns

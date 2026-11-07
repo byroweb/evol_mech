@@ -43,7 +43,7 @@ from ..body.structure import (hip_half_y, fan_center_y, fan_z_core, payload_z as
                               HIP_HALF_X, HIP_HALF_Z)
 from .structure import (structure_from_params, foot_layout, nominal_angles, spawn_height,
                         check_buildable, InvalidBody, LINK_RADIUS, SOLE_HALF_W, SOLE_HALF_T,
-                        ROLLER_HALF_LEN, HIP_ROLL_RANGE, THIGH_RANGE, KNEE_RANGE, ANKLE_RANGE,
+                        roller_half_len, sole_half_w, HIP_ROLL_RANGE, THIGH_RANGE, KNEE_RANGE, ANKLE_RANGE,
                         ANKLE_ROLL_RANGE, ANKLE_ROLL_STIFF)
 
 SIM_DT = 0.002
@@ -71,12 +71,12 @@ def _foot(side: str, p: dict[str, float], mass_kg: float) -> str:
             <body name="roller_{side}{k}" pos="{x:.4f} 0 {z:.4f}">
               <joint name="roller_{side}{k}" type="hinge" axis="0 1 0" damping="0.0005" armature="0.00002"/>
               <geom name="foot_{side}_r{k}" type="cylinder" zaxis="0 1 0"
-                    size="{lay.roller_r:.4f} {ROLLER_HALF_LEN}" mass="{roller_mass:.4f}" {FOOT_ATTR}/>
+                    size="{lay.roller_r:.4f} {roller_half_len(p):.4f}" mass="{roller_mass:.4f}" {FOOT_ATTR}/>
             </body>"""
         for k, x, z in rollers)
     return f"""
             <geom name="foot_{side}_sole" type="box" pos="0 0 {lay.plate_z:.4f}"
-                  size="{p['sole_len']/2:.4f} {SOLE_HALF_W} {SOLE_HALF_T}" mass="{plate_mass:.4f}"
+                  size="{p['sole_len']/2:.4f} {sole_half_w(p):.4f} {SOLE_HALF_T}" mass="{plate_mass:.4f}"
                   friction="1.2 0.005 0.0001" rgba="0.25 0.25 0.28 1"/>{body}"""
 
 

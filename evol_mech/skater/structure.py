@@ -45,7 +45,17 @@ ANKLE_SPRING_KG = 0.010         # per axis (pitch and roll)
 SOLE_HALF_W = 0.020             # sole plate half-width
 SOLE_HALF_T = 0.004             # sole plate half-thickness
 ANKLE_PLATE_GAP = 0.006         # ankle axis above the plate top (the coaxial pulley sits there)
-ROLLER_HALF_LEN = 0.015         # tread width 30 mm
+ROLLER_HALF_LEN = 0.015         # tread width 30 mm (the default of the tread_w gene)
+
+
+def roller_half_len(p: dict[str, float]) -> float:
+    """Half the tread width: the rollers' half-length, the foot's support half-width in roll."""
+    return float(p.get("tread_w", 2 * ROLLER_HALF_LEN)) / 2
+
+
+def sole_half_w(p: dict[str, float]) -> float:
+    """The sole plate's half-width: at least the tread's."""
+    return max(SOLE_HALF_W, roller_half_len(p))
 ROLLER_GAP = 0.002              # clearance between adjacent rollers
 MAX_ROLLERS = 6
 IDLER_RISE = 0.6                # front idler axis raised by this fraction of a roller radius
@@ -340,10 +350,10 @@ def structure_from_params(p: dict[str, float]) -> SkaterStructure:
 
     thigh = (LINK_KG_PER_M + COUPLER_KG_PER_M) * p["thigh_len"] + JOINT_BRACKET_KG
     shin = LINK_KG_PER_M * p["shin_len"] + JOINT_BRACKET_KG + tread.mass_kg
-    sole_area = p["sole_len"] * 2 * SOLE_HALF_W
+    sole_area = p["sole_len"] * 2 * sole_half_w(p)
     n_rollers = len(lay.roller_x) + (1 if lay.idler else 0)
     foot = (SOLE_PLATE_KG_PER_M2 * sole_area + TREAD_RUBBER_KG_PER_M2 * 2 * sole_area
-            + ROLLER_KG_PER_M * 2 * ROLLER_HALF_LEN * n_rollers + 2 * ANKLE_SPRING_KG)
+            + ROLLER_KG_PER_M * 2 * roller_half_len(p) * n_rollers + 2 * ANKLE_SPRING_KG)
     fan_kg = fan.mass_kg                            # fan_from_params already includes one pitch servo
     total = hip + core + payload + 2 * (thigh + shin + foot + fan_kg)
     return SkaterStructure(hip, core, cx, cy, payload, battery_half(p), thigh, shin, foot,
@@ -359,7 +369,7 @@ def check_buildable(p: dict[str, float]) -> None:
     foot_layout(p)
     if nominal_height(p) < 0.05:
         raise InvalidBody("crouch leaves the hip on the floor")
-    if p["hip_width"] / 2 < SOLE_HALF_W + 0.005:
+    if p["hip_width"] / 2 < sole_half_w(p) + 0.005:
         raise InvalidBody("hip too narrow for the soles")
     if core_half_y(p) < battery_half(p)[1]:
         raise InvalidBody("battery wider than the core")
