@@ -127,7 +127,12 @@ servo), scored against round 9 on the same four tilted starts.
    clock with the same gains). The real servo plus this score reward
    survival over travel; items 2, 3 and 5 are what make a real step
    affordable. The course (stand, walk, stand) stays on the clock until
-   item 10.
+   item 10. A stride floor was tried next (task `stride_min`, kept, default
+   off: the speed gate also scales with stride / floor): it moves nothing
+   here, because the shuffler is already fully gated by its speed (3 cm/s
+   against a 15 cm/s gate) and still beats every strider, each of which
+   falls. Under the real servo the score has no gradient toward walking
+   until something walks; that is items 2 and 3, not the score.
 2. **Capture-point stepping.** The lateral foot placement from the linear
    inverted pendulum (foot to the capture point, `y + v_y sqrt(h/g)`),
    replacing `kp_roll_y`, `kd_roll_y` and `kv_foot_y`; the fore-aft

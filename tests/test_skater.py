@@ -692,3 +692,21 @@ def test_contact_driven_walk_runs_the_phase_off_the_feet():
     assert started_at is not None and START_RAMP_S <= started_at <= START_TIMEOUT_S + CONTROL_DT
     # after the start the stance anchor is the measured foot relative to the balance target
     assert abs(ctrl._anchor["r"] - (ctrl.foot_meas["r"][0] - ctrl._x_bal["r"])) < 0.05
+
+
+def test_walk_stride_floor_gates_short_strides():
+    """Phase 1 item 5, first piece: task `stride_min` folds a stride gate into the walk's speed
+    gate. The phase-1a shuffler (2.7 cm steps, 3 cm/s) is already fully gated by its speed, so the
+    floor changes nothing for it: the real servo chose it because every strider fell, not because
+    the score let it travel. A strider under the floor keeps its score; a floor above its stride
+    takes the same fraction of the gait score that the speed gate would."""
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 6.0, "pose_noise_deg": 2.0}
+    shuffler = json.load(open("configs/archetypes/skater_walker_phase1a.json"))["phys"]
+    a = rollout(encode(shuffler), {**task, "servo_model": "real", "gait_phase": "contact"}, 0)
+    b = rollout(encode(shuffler), {**task, "servo_model": "real", "gait_phase": "contact", "stride_min": 0.10}, 0)
+    assert a["stride_m"] < 0.05 and a["feet_x_m"] / 6.0 < 0.15 and b["fitness"] == a["fitness"]
+    strider = json.load(open("configs/archetypes/skater_walker_panto8.json"))["phys"]
+    a = rollout(encode(strider), task, 0)
+    b = rollout(encode(strider), {**task, "stride_min": 0.10}, 0)
+    c = rollout(encode(strider), {**task, "stride_min": 0.60}, 0)
+    assert a["stride_m"] > 0.10 and b["fitness"] == a["fitness"] and c["fitness"] < a["fitness"] - 0.05

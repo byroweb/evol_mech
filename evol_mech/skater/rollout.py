@@ -139,6 +139,9 @@ WALK_SPEED_WEIGHT = 0.3         # walk: fitness per m/s of the feet (was 1.0; sp
 WALK_STRIDE_WEIGHT = 3.0        # walk: fitness per m of realized stride (was 1.0; the stride is what a walk is judged on)
 WALK_SPEED_GATE = 0.15          # walk: the gait score is scaled by min(1, speed / this), so a walk is still a walk: the first
 STAND_COST = 0.3                # walk: a stander pays this x (1 - speed gate): standing still in a walk task is a fall at t = 0 (the pantograph's first round was won by one)
+# walk: task key `stride_min` (m, default 0 = off) is a stride floor: the speed gate is also min(1, stride / stride_min),
+# so a shuffle keeps that fraction of its gait score and clearance bonus and pays the rest of the stand cost (the
+# real-servo round of phase 1 chose 2.7 cm steps that stood for 12 s over any gait that travelled)
                                 # course round under the grace score shrank its walk segments to a 3 cm shuffle at 0.03 m/s,
                                 # safe and graceful and going nowhere (a slow walk is fine, standing is not)
 SWAY_REF = 0.20                 # rad of body pitch + roll RMS that halves the gait score on its own
@@ -454,6 +457,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
                       + float(task.get("stride_weight", WALK_STRIDE_WEIGHT)) * stride_eff)
         quality["grace"] = _grace(task, quality, servo_sat_frac, p["hip_width"])
         speed_gate = min(1.0, (feet_dx / duration) / float(task.get("speed_gate", WALK_SPEED_GATE)))
+        stride_min = float(task.get("stride_min", 0.0))
+        if stride_min > 0.0:
+            speed_gate = min(speed_gate, max(0.0, stride) / stride_min)
         # the clearance bonus is gated by progress too: left outside the gate, the first track round
         # marched in place with its feet lifted 6 cm (2 cm of progress in 12 s) and won on clearance
         fitness = (gait_score * quality["grace"] * speed_gate + clear_bonus * speed_gate - accel_cost * rms_accel - 0.2 * abs(dy)
