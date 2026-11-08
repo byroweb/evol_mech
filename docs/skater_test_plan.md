@@ -354,7 +354,16 @@ servo), scored against round 9 on the same four tilted starts.
    Capture on top of it falls (-1.01), untuned. `clear_min` (a clearance
    floor on the speed gate, like `stride_min`) added after round 1f.
    Round 1h (`configs/skater_walk_phase1h.json`: contact gait in the
-   strider form, clear_min 0.03, from the round-1e walker) runs.
+   strider form, clear_min 0.03, from the round-1e walker): GA best -0.29
+   at generation 30; on unseen seeds -0.91 against the seed's -1.10 under
+   the round's score, perturbed flat walks 6 of 8 for both (the winner's
+   two falls backward), stands 4 of 4 and better, plain tilted starts 12 s
+   x 4 for both with 4.7 cm of clearance (seed 4.4) and 10.5 cm strides
+   (seed 12.1): the GA sat on the stride floor. Kept as
+   `skater_walker_phase1h.json`, the item-1 walker; a modest gain, bought
+   with stride. Items 1 and 2 on the strider are done in the forms the
+   body allows; capture on top of the contact gait is untuned (-1.01 as a
+   seed) and would be the next gains round if wanted.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

@@ -552,3 +552,18 @@ for; a velocity integral in the controller is the alternative.
   behind contact_start 'instant' and contact_anchor 'command', with the
   shuffler's defaults untouched. The clearance floor (clear_min) went in
   at the same time, so round 1h cannot win the way round 1f did.
+
+  Round 1h (2026-11-08) won the way the floors allow: -0.91 against the
+  seed's -1.10 on unseen seeds, every plain start and every perturbed
+  stand upright, 4.7 cm of clearance, and 10.5 cm strides sitting exactly
+  on the 10 cm floor. The same count of perturbed flat falls as the seed
+  (two of eight, now backward rather than sideways). Kept as the item-1
+  walker because it is the first sensor-gated gait that strides, and
+  named for what it is: a modest, honest gain, not a new walker. The
+  pattern across rounds 1e to 1h is now clear enough to act on. Each
+  gains round buys stability with stride until it meets a floor, and the
+  GA's own best (-0.29) is never the unseen-seed number (-0.70 on the
+  flat task): a population of 96 over 40 generations overfits its eight
+  starts. That is the case for the population-shape test and for CMA-ES
+  (item 6), and it is the case for stopping the gains rounds on this body
+  until the score's starts are drawn fresh each generation.
