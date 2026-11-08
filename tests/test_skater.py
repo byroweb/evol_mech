@@ -757,3 +757,21 @@ def test_capture_point_lands_the_swing_foot_ahead_of_the_body_velocity():
             assert 0.0 <= ctrl.swing_w["l"] <= 1.0 and ctrl.swing_w["r"] == 0.0
             seen_swing = True
     assert seen_swing and seen_stance
+
+
+def test_servo_lead_stands_the_round9_strider_under_the_real_servo():
+    """Phase 1 item 3a: latency compensation (task servo_lead). Under the real servo the round-9
+    strider falls within 6 s from the seed-0 tilted start; commanding for when the command lands
+    (gait 40 ms ahead, tilt led by its rate) it stands the 12 s. Default 0 leaves scores untouched."""
+    from evol_mech.skater.controller import SkaterController
+    from evol_mech.skater.rollout import rollout, make_model
+    p = json.load(open("configs/archetypes/skater_walker_panto9.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 12.0,
+            "pose_noise_deg": 2.0, "servo_model": "real", "gait_phase": "clock"}
+    plain = rollout(encode(p), task, 0)
+    led = rollout(encode(p), {**task, "servo_lead": "auto"}, 0)
+    assert plain["fell"] and plain["time_upright"] < 6.0, plain["time_upright"]
+    assert not led["fell"] and led["time_upright"] == pytest.approx(12.0, abs=0.02) and led["feet_x_m"] > 1.0
+    model, phys = make_model(encode(p), "flat", np.random.default_rng(0), task)
+    assert SkaterController(model, phys, task, True).lead == 0.0
+    assert SkaterController(model, phys, {**task, "servo_lead": "auto"}, True).lead == pytest.approx(0.04)

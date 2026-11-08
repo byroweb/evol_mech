@@ -156,6 +156,14 @@ class SkaterController:
         self.servo, self.roll_servo = servo_from_params(p), roll_servo_from_params(p)
         # the real servo model: speed falls with load, commands arrive late, held at 50 Hz, in deadband steps
         self.real_servo = str(task.get("servo_model", "ideal")) == "real"
+        # latency compensation (task servo_lead: seconds, or "auto" = the latency plus the hold, 40 ms;
+        # default 0 keeps every score): the controller commands for when the command lands. The
+        # gait is evaluated servo_lead ahead and the balance terms are led by the tilt rate, which
+        # on the round-9 strider is the difference between falling in 2-6 s and standing 12 s on
+        # every start (the servo-model ablation in docs/skater_review.md: its 20 ms latency alone
+        # was the fall). 40 ms stands four of four, 30 ms three, 50 ms one: the full hold counts
+        lead = task.get("servo_lead", 0.0)
+        self.lead = (SERVO_LATENCY_S + 1.0 / SERVO_CMD_HZ) if str(lead) == "auto" else float(lead)
         self.servo_acts = [self.idx[f"{j}_{s}"] for j in ("hip_roll", "hip_pitch", "knee") for s in "lr"]
         self._servo_queue: list[np.ndarray] = []      # commands issued, oldest first, for the latency
         self._servo_held: np.ndarray | None = None    # the command the servos are holding (50 Hz zero-order hold)
@@ -586,6 +594,10 @@ class SkaterController:
         v_world = data.qvel[:3]
         roll_rate, pitch_rate, yaw_rate = float(data.qvel[3]), float(data.qvel[4]), float(data.qvel[5])
         cy, sy = math.cos(yaw), math.sin(yaw)
+        # latency compensation: the tilt the body will have when this command lands, and the gait
+        # time it lands at (self.lead = 0 leaves both as measured)
+        roll, pitch = roll + self.lead * roll_rate, pitch + self.lead * pitch_rate
+        t_g = t + self.lead
 
         # 1. planner (world) -> body yaw frame
         v_des, omega_des = self.plan(pos, yaw)
@@ -672,12 +684,12 @@ class SkaterController:
         dh_roll = p["kp_roll_lvl"] * roll + p["kd_roll_lvl"] * roll_rate   # left side up -> shorten left
         # feet toward the fall and toward the lateral motion: with kp_roll_y ~ leg drop and
         # kv_foot_y ~ sqrt(drop / g) the swing foot lands on the capture point
-        dy_f = (-self.body_shift(t) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
+        dy_f = (-self.body_shift(t_g) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
                 + (0.0 if self.capture else p["kv_foot_y"]) * float(v_b[1]))
         # the swing foot's landing at the capture point: hip velocity x the pendulum time, in x and y
         T_c = math.sqrt(max(0.05, h_com) / G)
         cap_x, cap_y = (float(v_b[0]) * T_c, float(v_b[1]) * T_c) if self.capture else (0.0, 0.0)
-        gait = self.gait_offsets(t)
+        gait = self.gait_offsets(t_g)
         hfb_scale = 1.0 - self.blend if self.objective == "course" else 1.0   # the run sets its own height
         stance_w = self.stance_w
         for s, sign in (("l", +1.0), ("r", -1.0)):

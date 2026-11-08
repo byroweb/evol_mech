@@ -405,3 +405,23 @@ for; a velocity integral in the controller is the alternative.
   compensation (command for when the command lands: gait phase advanced by
   the delay, balance led by tilt rate x delay) before gravity compensation,
   whose real job is the swing horn's load, not the stance's.
+
+  Phase 1, item 3a (2026-11-08): latency compensation, task `servo_lead`.
+  The controller commands for when the command lands: the gait clock (or
+  contact phase) is evaluated the lead ahead, and roll and pitch are led by
+  their rates in every balance term, feet, fans and levelling alike. On the
+  round-9 strider under the real servo this is the whole difference: no
+  lead, 5.3 s mean with one of four tilted starts standing; 40 ms (the
+  20 ms latency plus the 20 ms hold), all four stand 12 s with 7.3 cm
+  strides and 1.54 m travelled, fitness -0.35 against -0.49. 30 ms stands
+  three, 50 ms one: the lead is the delay, measured, not a gain. Under the
+  ideal servo the same lead costs grace 0.02 and a third of the distance,
+  which is what predicting a delay that is not there should cost, so the
+  default stays 0 and the switch is `auto` under `servo_model real`. The
+  round-8 and round-7 striders do not move at any lead (2 to 3 s): the
+  ablation had already said their fall is the 50 Hz hold with the
+  speed-torque line, the swing horns at 0.5 to 0.8 of stall slewing at half
+  speed, and that is item 3b, load compensation on the swing horn. The
+  phase-1a shuffler neither gains nor loses up to 30 ms. The round-9 body
+  now has a strider that stands under the real servo, which no gains round
+  had produced; the next gains round should run with `servo_lead auto`.

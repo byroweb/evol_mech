@@ -210,6 +210,22 @@ servo), scored against round 9 on the same four tilted starts.
    offset by that torque over the horn stiffness so the position loops
    carry only the error, and the swing horn's load falls below the
    speed-torque knee. Removes most of the "shift per rad of pitch" gains.
+   *3a done 2026-11-08* (task `servo_lead`: seconds or `auto` = latency
+   plus hold, 40 ms; default 0 keeps every score): the gait is evaluated
+   `servo_lead` ahead and roll / pitch are led by their rates in every
+   balance term. The round-9 strider under the real servo, four tilted
+   starts: no lead 5.3 s mean and one of four stands; 20 ms two; 30 ms
+   three; 40 ms all four stand 12 s, 7.3 cm strides, 1.54 m, fitness -0.35
+   against -0.49; 50 ms one. The lead is the measured delay, not a gain to
+   tune: half the hold is too little, the hold plus a frame too much. On
+   the ideal servo the lead costs a little (grace 0.42 to 0.40, 1.6 m to
+   1.25), as a predictor of a delay that is not there should. The round-8
+   and round-7 striders are unmoved at any lead (2-3 s), as the ablation
+   said: their fall is the hold with the speed-torque line, the swing horn
+   slewing at half speed under load, which is 3b. The phase-1a shuffler is
+   unmoved up to 30 ms and loses a start at 40. Cobblestone unmoved
+   everywhere (1.5 s): rough ground is the contact gait's job and these are
+   clock striders.
 4. **Landing mode.** On a contact rise after a flight (or after a swing on
    rough ground) the leg's stiffness drops for a few hundred ms through the
    horn command, then recovers. Needed before the run and the hop.
