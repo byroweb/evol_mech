@@ -135,6 +135,15 @@ SERVO_KG_PER_KGCM = 0.0011
 SERVO_SEC_PER_60DEG = 0.15
 SERVO_KG_PER_SPEED = 0.015       # +15 g at twice the standard speed
 SERVO_DEADBAND_RAD = math.radians(4.0)   # full torque reached at this error: internal loop stiffness
+# the "real" servo model (task "servo_model": "real"; docs/skater_test_plan.md phase 0): the ideal
+# one slews at the no-load speed, takes a new command every control step with no delay and at
+# any resolution. A hobby servo's speed falls to zero at stall (a straight speed-torque line),
+# its command arrives 20 ms late at 50 Hz, and it does not move for a command change inside its
+# pulse deadband (3 us at ~10 us per degree).
+SERVO_LATENCY_S = 0.02
+SERVO_CMD_HZ = 50.0
+SERVO_CMD_DEADBAND_RAD = math.radians(0.3)
+SERVO_MIN_SPEED_FRAC = 0.05              # the speed-torque line's floor, so a stalled servo still creeps
 
 
 @dataclass(frozen=True)

@@ -46,9 +46,9 @@ to use it. Nothing here needs a GA round; each item is a commit with a test.
 
 ### Actuator model
 
-- [ ] **Speed under load**: the servo's slew falls linearly from the no-load
+- [x] **Speed under load** (task `servo_model: real`): the servo's slew falls linearly from the no-load
       figure to zero at stall, so a fast servo working hard is not fast.
-- [ ] **Deadband, latency and update rate**: a 4 deg deadband (already the
+- [x] **Deadband, latency and update rate** (same switch): a 4 deg deadband (already the
       stiffness model), a 20 ms command latency and a 50 Hz command rate so
       the derivative gains are tuned against the servo the build will have,
       not a continuous one. Expect the round-5 limit cycle to move.

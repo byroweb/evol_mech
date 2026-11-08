@@ -66,7 +66,8 @@ import math
 import mujoco
 import numpy as np
 
-from ..body.hardware import tread_drive_from_params, servo_from_params, roll_servo_from_params, fan_from_params
+from ..body.hardware import (tread_drive_from_params, servo_from_params, roll_servo_from_params, fan_from_params,
+                             SERVO_LATENCY_S, SERVO_CMD_HZ, SERVO_CMD_DEADBAND_RAD, SERVO_MIN_SPEED_FRAC)
 from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .sensors import FootSensors
@@ -123,6 +124,14 @@ class SkaterController:
         self.mass = float(model.body_subtreemass[hip_id])
         self.tread = tread_drive_from_params(p)
         self.servo, self.roll_servo = servo_from_params(p), roll_servo_from_params(p)
+        # the real servo model: speed falls with load, commands arrive late, held at 50 Hz, in deadband steps
+        self.real_servo = str(task.get("servo_model", "ideal")) == "real"
+        self.servo_acts = [self.idx[f"{j}_{s}"] for j in ("hip_roll", "hip_pitch", "knee") for s in "lr"]
+        self._servo_queue: list[np.ndarray] = []      # commands issued, oldest first, for the latency
+        self._servo_held: np.ndarray | None = None    # the command the servos are holding (50 Hz zero-order hold)
+        self._load_frac: dict[str, float] = {}        # each servo's torque fraction last step, for the speed-torque line
+        self._data = None
+        self._tick = 0
         self.t_max = fan_from_params(p).max_thrust_n
         self.roller_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"roller_{s}0")]
                          for s in ("l", "r")}
@@ -379,6 +388,11 @@ class SkaterController:
 
     def _slew(self, name: str, target: float) -> float:
         step = (self.roll_servo.max_rad_s / self.roll_ratio if name.startswith("hip_roll") else self.servo.max_rad_s) * CONTROL_DT
+        if self.real_servo and self._data is not None:
+            # speed-torque line: the servo slews at (1 - load / stall) of its no-load speed
+            a = self.idx[name]
+            frac = abs(float(self._data.actuator_force[a])) / max(1e-9, float(self.model.actuator_forcerange[a][1]))
+            step *= max(SERVO_MIN_SPEED_FRAC, 1.0 - min(1.0, frac))
         cur = self.servo_cmd[name]
         cur += max(-step, min(step, target - cur))
         self.servo_cmd[name] = cur
@@ -407,6 +421,7 @@ class SkaterController:
     # ---- main --------------------------------------------------------------------
     def act(self, data: mujoco.MjData, t: float) -> np.ndarray:
         p, c, i = self.p, self.ctrl, self.idx
+        self._data = data
         self.sensors.update(data)
         pos = data.qpos[:3].copy()
         self._level_soles(data)
@@ -580,4 +595,28 @@ class SkaterController:
         c[i["fan_thrust_l"]], c[i["fan_thrust_r"]] = thr_l, thr_r
         c[i["fan_pitch_l"]], c[i["fan_pitch_r"]] = fan_l, fan_r
         self.last_throttle = (thr_l, thr_r)
+        if self.real_servo:
+            c = self._servo_link(c)
+        return c
+
+    def _servo_link(self, c: np.ndarray) -> np.ndarray:
+        """What the six leg servos actually receive: the command issued SERVO_LATENCY_S ago,
+        refreshed at SERVO_CMD_HZ and held between refreshes, and moved only when the change
+        clears the pulse deadband. The fans and treads pass straight through."""
+        c = c.copy()
+        issued = c[self.servo_acts].copy()
+        self._servo_queue.append(issued)
+        delay = max(1, int(round(SERVO_LATENCY_S / CONTROL_DT)))
+        if len(self._servo_queue) > delay + 1:
+            self._servo_queue.pop(0)
+        arrived = self._servo_queue[0]
+        hold = max(1, int(round(1.0 / (SERVO_CMD_HZ * CONTROL_DT))))
+        n = len(self._servo_queue)
+        if self._servo_held is None:
+            self._servo_held = arrived.copy()
+        elif (n + self._tick) % hold == 0:
+            move = np.abs(arrived - self._servo_held) >= SERVO_CMD_DEADBAND_RAD
+            self._servo_held = np.where(move, arrived, self._servo_held)
+        self._tick += 1
+        c[self.servo_acts] = self._servo_held
         return c

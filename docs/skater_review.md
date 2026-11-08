@@ -261,6 +261,30 @@ for; a velocity integral in the controller is the alternative.
   two servos at stall. That is a foot-placement rule set at swing and held
   from the measured foot in stance, which is phase 1's capture-point step,
   not a servo size.
+- **Real servo model (plan phase 0).** A task switch, `"servo_model":
+  "real"` (default `ideal`, so every score so far stands): the six leg
+  servos slew at (1 - load / stall) of their no-load speed (a straight
+  speed-torque line with a 5 % floor), receive the command issued 20 ms
+  earlier, refreshed at 50 Hz and held between refreshes, and move only for
+  a change past a 0.3 deg pulse deadband (`controller._servo_link`,
+  constants in `hardware.py`); fans and treads pass straight through.
+  Re-scoring the walkers under it on four tilted starts:
+
+  | walker | ideal: upright, fitness, grace | real: upright, fitness, grace |
+  |---|---|---|
+  | hip3 (four-bar, 6 cm horn, slow servo) | 12 s, -0.08, 0.35 | 12 s, -0.32, 0.35 (1.3 m, not 2.0) |
+  | panto7 (25 mm horn, fast servo) | 12 s, -0.12, 0.22 | falls at 2.3 s |
+  | panto8 (roll gains re-evolved) | 12 s, -0.10, 0.24 | falls at 2.5 s |
+  | panto9 (31 cm hip, feet inboard) | 12 s, -0.09, 0.43 | 1 of 4 starts upright, falls at 5.8 s |
+
+  Every pantograph gait since the horn cap was tuned to a servo that does
+  not exist: 20 ms of latency at 50 Hz with the slew falling under load is
+  enough to drop them in two or three steps, with the servo acceleration
+  tripled on the way down. The four-bar walker, evolved slow and with its
+  servos at a quarter of stall, survives at two thirds of its speed. This is
+  the controls review's point in numbers, and the reason phase 1 rewrites
+  the controller for these servos before any more body rounds: from here
+  every round scores under `servo_model: real`.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %

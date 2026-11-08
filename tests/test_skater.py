@@ -534,3 +534,50 @@ def test_foot_sensors_read_the_stance_and_survive_dropouts():
     for _ in range(5):
         dead.update(data)
     assert all(dead.load[s] == 0.0 and not dead.contact[s] for s in "lr") and dead.dropped == 20
+
+
+def test_real_servo_model_delays_holds_and_slows_the_commands():
+    """Phase 0 of the test plan: with task servo_model "real" the six leg servos receive the
+    command issued 20 ms ago, refreshed at 50 Hz, moved only past the pulse deadband, and slew
+    slower under load; the fans pass straight through; the default stays the ideal servo."""
+    from evol_mech.skater.controller import SkaterController, CONTROL_DT
+    from evol_mech.body.hardware import SERVO_LATENCY_S, SERVO_CMD_DEADBAND_RAD
+    seed = json.load(open("configs/archetypes/skater_walker_panto5_seed.json"))["phys"]
+    stander = decode(encode({**seed, "step_len": 0.0, "step_lift": 0.0}))
+    rng = np.random.default_rng(0)
+    model, p = make_model(encode(stander), "flat", rng, {"objective": "stand", "terrain": "flat"})
+    ideal = SkaterController(model, p, {"objective": "stand", "terrain": "flat"})
+    real = SkaterController(model, p, {"objective": "stand", "terrain": "flat", "servo_model": "real"})
+    assert not ideal.real_servo and real.real_servo
+    # the link alone: a step in the command reaches the servos after the latency, not before
+    nu = model.nu
+    for k in range(6):
+        c = np.zeros(nu)
+        c[real.servo_acts] = 1.0 if k >= 1 else 0.0          # the command steps at k = 1
+        c[real.idx["fan_thrust_l"]] = float(k)
+        out = real._servo_link(c)
+        assert out[real.idx["fan_thrust_l"]] == float(k)      # fans untouched
+        if k < 1 + round(SERVO_LATENCY_S / CONTROL_DT):
+            assert np.all(out[real.servo_acts] == 0.0), (k, out[real.servo_acts])
+    assert np.all(out[real.servo_acts] == 1.0)
+    # a change inside the deadband never moves the held command
+    c[real.servo_acts] = 1.0 + 0.5 * SERVO_CMD_DEADBAND_RAD
+    for _ in range(6):
+        out = real._servo_link(c)
+    assert np.all(out[real.servo_acts] == 1.0)
+    # under load the slew step shrinks: a servo at stall creeps
+    data = make_data(model, p)
+    real._data = data
+    data.actuator_force[real.idx["knee_l"]] = model.actuator_forcerange[real.idx["knee_l"]][1]
+    real.servo_cmd["knee_l"] = 0.0
+    slow = real._slew("knee_l", 1.0)
+    data.actuator_force[real.idx["knee_l"]] = 0.0
+    real.servo_cmd["knee_l"] = 0.0
+    fast = real._slew("knee_l", 1.0)
+    assert 0.0 < slow < 0.2 * fast
+    # the stand runs under both models and the default result is the ideal one
+    task = {"name": "s", "terrain": "flat", "objective": "stand", "duration": 1.0}
+    r0 = rollout(encode(stander), task, 0)
+    r1 = rollout(encode(stander), {**task, "servo_model": "ideal"}, 0)
+    r2 = rollout(encode(stander), {**task, "servo_model": "real"}, 0)
+    assert r0["fitness"] == r1["fitness"] and r2["fitness"] != r1["fitness"] and r2["time_upright"] > 0.5
