@@ -710,3 +710,36 @@ def test_walk_stride_floor_gates_short_strides():
     b = rollout(encode(strider), {**task, "stride_min": 0.10}, 0)
     c = rollout(encode(strider), {**task, "stride_min": 0.60}, 0)
     assert a["stride_m"] > 0.10 and b["fitness"] == a["fitness"] and c["fitness"] < a["fitness"] - 0.05
+
+
+def test_capture_point_lands_the_swing_foot_ahead_of_the_body_velocity():
+    """Phase 1 item 2: with task foot_placement "capture" the swing foot's landing moves by the hip
+    velocity x sqrt(h_com / g) (the linear inverted pendulum's capture point), weighted in over the
+    swing; the planted feet keep the kp / kd shift and the kv velocity genes are ignored. The
+    default ("gains") is untouched."""
+    from evol_mech.skater.controller import SkaterController, CONTROL_DT
+    from evol_mech.sim.rollout import SUBSTEPS
+    walker = json.load(open("configs/archetypes/skater_walker_phase1a.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 6.0, "pose_noise_deg": 2.0}
+    base = rollout(encode(walker), task, 0)
+    cap = rollout(encode(walker), {**task, "foot_placement": "capture"}, 0)
+    assert base["time_upright"] >= 6.0 and cap["time_upright"] >= 6.0
+    assert cap["fitness"] != base["fitness"]
+    # the swing weight follows the phase, and only the swing foot sees the capture offset
+    model, p = make_model(encode(walker), "flat", np.random.default_rng(0), {**task, "foot_placement": "capture"})
+    data = make_data(model, p)
+    ctrl = SkaterController(model, p, {**task, "foot_placement": "capture"})
+    seen_swing = seen_stance = False
+    for k in range(200):
+        t = k * CONTROL_DT
+        data.ctrl[:] = ctrl.act(data, t)
+        for _ in range(SUBSTEPS):
+            mujoco.mj_step(model, data)
+        u = ctrl.cycles % 1.0
+        if u < p["step_duty"]:
+            assert ctrl.swing_w["l"] == 0.0
+            seen_stance = True
+        else:
+            assert 0.0 <= ctrl.swing_w["l"] <= 1.0 and ctrl.swing_w["r"] == 0.0
+            seen_swing = True
+    assert seen_swing and seen_stance

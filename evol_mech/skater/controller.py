@@ -119,6 +119,16 @@ START_RAMP_S = 0.4
 START_LOAD_BW = 0.6
 START_TIMEOUT_S = 0.8
 ANCHOR_FROM_MEASUREMENT = True   # False: the stance sweep and swing start from the nominal +-L/2 (a diagnostic)
+# capture-point foot placement (task foot_placement "capture"; default "gains" keeps every score). Two
+# balance strategies, kept apart: the planted feet shift under the body by the kp / kd gains (the
+# ankle strategy: a centre-of-pressure shift within the soles, which the GA has always tuned small),
+# and the SWING foot lands at the linear inverted pendulum's capture point, hip velocity x
+# sqrt(h_com / g) ahead of its nominal landing (the step strategy), weighted in over the swing. The
+# kv_foot_x / kv_foot_y velocity gains, whose job that was, go. Applying the full capture point to
+# both planted feet at every step was tried first and fell in a second on every walker: it is a
+# 40 cm/rad body translation through the roll servos against feet that do not slide. Sizing the body
+# shift to the measured feet was tried too and dropped: it unsettled every clock-tuned gait, and the
+# shift's gene formula already sizes it to the stance foot. Correct at any hip width by construction.
 KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
                                   # closer to a rigid link but the two position loops then chatter (rms accel x3)
 
@@ -237,6 +247,9 @@ class SkaterController:
         self._gait_started = False
         self._tw_prev = None
         self.contact_events = {"early": 0, "late": 0, "clock": 0}      # for the rollout's report
+        self.capture = str(task.get("foot_placement", "gains")) == "capture"
+        self.swing_w = {"l": 0.0, "r": 0.0}        # 0 in stance, the swing's progress 0..1 in swing (walk only)
+        self.measure_feet = self.contact_gait or self.capture
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -367,6 +380,9 @@ class SkaterController:
             if self.contact_gait:
                 return self._contact_walk(t)
             self.cycles = p["step_hz"] * t + p["step_duty"]
+            for s, ph in (("l", 0.0), ("r", 0.5)):
+                u = (self.cycles + ph) % 1.0
+                self.swing_w[s] = 0.0 if u < p["step_duty"] else (u - p["step_duty"]) / (1.0 - p["step_duty"])
             return {s: (*self._walk_leg((self.cycles + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
         if self.objective == "run":
             self.cycles = p["run_hz"] * t + p["run_duty"]
@@ -455,15 +471,15 @@ class SkaterController:
                 self._swing_from[s] = (float(self.foot_meas[s][0]) - self._x_bal[s]) if ANCHOR_FROM_MEASUREMENT else -L / 2
             if u < duty:
                 gx, gz = self._anchor[s] - L * (u / duty), 0.0
-                self.dy_hold[s] = self.gait_dy[s]
+                self.dy_hold[s], self.swing_w[s] = self.gait_dy[s], 0.0
             elif self._landed[s]:                       # down early: hold it there while the phase catches up
                 gx, gz = self._anchor[s], 0.0
-                self.dy_hold[s] = self.gait_dy[s]
+                self.dy_hold[s], self.swing_w[s] = self.gait_dy[s], 0.0
             else:
                 w = (u - duty) / (1.0 - duty)
                 x0 = self._swing_from[s]
                 gx, gz = x0 + (L / 2 - x0) * w, lift * math.sin(math.pi * w) - self._search[s]
-                self.dy_hold[s] = self.gait_dy[s] * (1.0 - w)
+                self.dy_hold[s], self.swing_w[s] = self.gait_dy[s] * (1.0 - w), w
             out[s] = (gx, gz, True)
         return out
 
@@ -551,7 +567,7 @@ class SkaterController:
         p, c, i = self.p, self.ctrl, self.idx
         self._data = data
         self.sensors.update(data)
-        if self.contact_gait:
+        if self.measure_feet:
             R = data.xmat[self.hip_id].reshape(3, 3)
             for s in "lr":
                 self.foot_meas[s] = R.T @ (data.xpos[self.foot_body[s]] - data.xpos[self.hip_id]) - self.hip_point[s]
@@ -647,6 +663,8 @@ class SkaterController:
             sx = (1 - b_run) * p["stance_x"] + b_run * p["run_stance_x"]
             kp = (1 - b_run) * p["kp_foot_leg"] + b_run * p["run_kp_leg"]
             kv = (1 - b_run) * p["kv_foot_x"] + b_run * p["run_kv_x"]
+            if self.capture:
+                kv = 0.0                                 # the velocity term is the swing foot's capture point below
             x_f = self.x_nom + sx + kp * pitch + p["kd_foot_leg"] * pitch_rate + self.x_int + kv * float(v_b[0])
         else:
             x_f = (self.x_nom - d_feet
@@ -655,7 +673,10 @@ class SkaterController:
         # feet toward the fall and toward the lateral motion: with kp_roll_y ~ leg drop and
         # kv_foot_y ~ sqrt(drop / g) the swing foot lands on the capture point
         dy_f = (-self.body_shift(t) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
-                + p["kv_foot_y"] * float(v_b[1]))
+                + (0.0 if self.capture else p["kv_foot_y"]) * float(v_b[1]))
+        # the swing foot's landing at the capture point: hip velocity x the pendulum time, in x and y
+        T_c = math.sqrt(max(0.05, h_com) / G)
+        cap_x, cap_y = (float(v_b[0]) * T_c, float(v_b[1]) * T_c) if self.capture else (0.0, 0.0)
         gait = self.gait_offsets(t)
         hfb_scale = 1.0 - self.blend if self.objective == "course" else 1.0   # the run sets its own height
         stance_w = self.stance_w
@@ -666,6 +687,8 @@ class SkaterController:
             self._x_bal[s], self._dy_tgt[s] = x_f, dy
             if self.contact_gait:
                 dy += self.dy_hold[s]
+            sw = self.swing_w[s]
+            gx, dy = gx + sw * cap_x, dy + sw * cap_y
             # the roll that puts the ankle dy to the left and h below the leg's hip point: with
             # the pivot roll_arm inboard of that point (pantograph body) the leg point itself
             # swings, so the roll is the target's angle about the pivot less the leg's own, and

@@ -349,3 +349,24 @@ for; a velocity integral in the controller is the alternative.
   with capture-point placement and gravity compensation; the robustness
   score (item 5) needs a stride floor or the real servo will keep choosing
   the shuffle.
+
+  Phase 1, item 2 (2026-11-08): capture-point placement, `foot_placement:
+  capture`. The first version moved both planted feet to the full capture
+  point (velocity x sqrt(h/g) plus the lean h x tilt) and fell in a second
+  on every walker, clock and ideal servo included, with 30-50 deg of roll:
+  the lean term is 43 cm of foot shift per radian of body roll, through roll
+  servos, against planted soles, where the evolved gains had settled at
+  0.5 cm per radian. The planted feet's shift is an ankle strategy and
+  belongs small; the capture point is a step strategy and belongs to the
+  swing foot. The version kept does that: swing landing at velocity x
+  sqrt(h/g), weighted over the swing, the kp / kd shift untouched, the kv
+  velocity genes dropped. Ablation on the clock gaits: swing-only capture
+  keeps the four-bar walker up on four of four starts and the round-8
+  walker on three; dropping the kv genes alone costs the round-8 walker two
+  starts; sizing the body shift to the measured feet costs two more, and was
+  dropped. The gains round on the round-9 body found nothing better than
+  its seed: at 3 cm/s the capture offset is 6 mm. The stride floor and the
+  capture point both say the same thing from different sides: the real
+  servo is the wall, and the next piece of work is finding out which servo
+  stalls in the cycle a strider falls in, and whether gravity compensation
+  or a different stride shape takes it off stall.

@@ -139,6 +139,25 @@ servo), scored against round 9 on the same four tilted starts.
    placement likewise, replacing the `kp_foot_leg` family. Correct at any
    hip width by construction, which is what broke between rounds 8 and 9.
    The body shift sized to the measured stance foot, not the gene.
+   *Done 2026-11-08, narrower than written* (task `foot_placement:
+   capture`; default `gains` keeps every score). The full capture point
+   applied to both planted feet, replacing the kp / kd gains too, fell in
+   a second on every walker: it is a 40 cm per radian body translation
+   through the roll servos against feet that do not slide. What stands is
+   the two strategies kept apart: the planted feet keep the kp / kd shift
+   (the ankle strategy, a centre-of-pressure shift within the soles, which
+   the GA has always tuned small) and only the swing foot lands at the
+   capture point, hip velocity x sqrt(h / g) ahead of its nominal landing,
+   weighted in over the swing; the `kv_foot_x` / `kv_foot_y` velocity genes
+   are ignored in this mode. Sizing the body shift to the measured feet
+   unsettled every clock-tuned gait and was dropped. Round
+   (`configs/skater_walk_phase1c.json`, from the phase-1a walker): forty
+   generations found nothing better than the seed, whose gains under the
+   capture mode stand 10.8 s on flat against 12 with the velocity genes.
+   The reason is arithmetic: at 3 cm/s the capture offset is 6 mm, and so
+   was the velocity term it replaced. Capture-point placement earns its
+   keep at walking speed, and nothing walks at walking speed under the real
+   servo yet. Keep the mode; it is right once something strides.
 3. **Gravity compensation on the horns.** The leg is a known linkage: the
    horn torques that hold the body's weight at the current pose are
    computable and fed forward, so the servos' position loops carry only the
@@ -188,7 +207,12 @@ with a 6 cm horn and a slow servo; none has run on the pantograph. Each gets
 a seed search before its round. The body is locked; the mode's gait and gain
 genes move. Modes are explicit states with sensor-triggered transitions and
 a defined stance at each switch, in place of the `trans_s` blend: blended
-controllers fall in the blend.
+controllers fall in the blend. Agreed 2026-11-08: each transition (start,
+stop, walk to run and back, the jump's crouch / thrust / tuck / land) is a
+precomputed pose-and-time table, checked offline for reach, torque and
+balance at every pose by the static check, with sensor-triggered advance
+between rows; `trans_s` goes. The walk itself is not a table: its placement
+is live (capture point) and its phase is the feet's.
 
 10. **Stand, start, stop.** Profile stand 2 s, walk 6 s, stand 4 s. The
     transition pitch and the stopping distance are the scores already in
