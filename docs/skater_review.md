@@ -190,6 +190,19 @@ for; a velocity integral in the controller is the alternative.
   the clearance, not the smoothness. Open: whether the roll gains want
   re-searching for the faster leg, and the fast servo's real speed under
   load (the model slews at the no-load figure).
+  Round 8 (`configs/skater_walk_panto8.json`) re-searched the roll gains:
+  360 random samples of the roll / lateral balance genes on the round-7
+  walker (body and stride fixed, four tilted starts) found the carried-over
+  gains already at a local optimum (the best gained 0.01 of fitness, inside
+  the noise), and every sample that cut the roll below 4 deg did it by
+  shortening the stride and dragging the feet. The GA from the best sample
+  with the leg geometry locked (`skater_walker_panto8`) traded a little of
+  the stride for a little of the roll: 15.1 cm strides at 1.27 Hz, 4.1 cm of
+  clearance, roll 5.6 deg (from 6.4), fans almost off (1.3 % duty), grace
+  0.24, fitness -0.10, the same 2.3 m in 12 s. The roll gains are not the
+  lever on this leg: the 25 mm pantograph on a 10 cm hip rolls 5.5-6.5 deg
+  whatever the gains, and the remaining smoothness gap to the 6 cm horn's
+  round 3 (grace 0.30) is in the servo acceleration, not the roll.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %
