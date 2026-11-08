@@ -220,8 +220,10 @@ for; a velocity integral in the controller is the alternative.
   roll-free body lets the GA get away with. The roll lever on that hip is
   5.8 horn lengths (roll range 22 deg, roll slew 2.4 rad/s), and the leg
   rolls 17 deg to put the foot where it stands, so the roll servo is now the
-  loaded one (the plan's roll-servo spec). Next: the same body with the
-  clearance and stride weights up, so the roll-free walk picks its feet up.
+  loaded one (the plan's roll-servo spec). Next is `skater_test_plan.md`,
+  revised after a controls review: foot sensing and a real actuator model
+  first, the controller rewritten around them second, the body third, the
+  other modes last.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %

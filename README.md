@@ -46,9 +46,13 @@ Its skeleton is in `evol_mech/skater/` and shares the GA, worker pool,
 terrains, store and video with the biped; the genome, body, controller and
 tasks are its own. `docs/skater_review.md` maps the design to the code, lists
 where the build deliberately departs from it, and the open questions.
-`docs/skater_test_plan.md` is the plan from here: free the whole body for
-the best walker, then take that body through stand / start / stop, run, gait
-changes, jump and skating.
+`docs/skater_test_plan.md` is the plan from here: model the foot sensors
+(two force-sensing resistors per foot, ankle angle, servo current) and the
+servos' real speed and latency, rewrite the controller around them
+(contact-driven gait, capture-point stepping, gravity compensation, landing
+mode, robustness as the score), then free the whole body for the best walker
+and take that body through stand / start / stop, run, gait changes, jump and
+skating.
 
     .venv\Scripts\python tools\skater_snapshot.py                 # stills, summary, 8 s skate clip
     .venv\Scripts\python tools\skater_layout.py                   # annotated servo-layout drawing
