@@ -80,6 +80,12 @@ to use it. Nothing here needs a GA round; each item is a commit with a test.
       `foot_track_y_rms_m`). Round 9's inboard feet sit 12-13 mm short of
       their lateral target standing and 18-21 mm walking: the planted soles
       will not slide, which is the roll-servo squeeze again, not the solve.
+- [x] **The roll lever's range** (`structure.roll_lever_range`, 2026-11-08,
+      found by the phase-1 stall diagnosis): the drive's horn is horizontal
+      with a vertical link to the bracket end, so the hip roll stops where
+      the link toggles, about asin(horn / arm): 8.5 deg on the round-9 body,
+      where the sweep / ratio formula gave 22. MJCF range, controller clamp
+      and static check use it; round 9's inboard stance is infeasible by it.
 - [x] **Static feasibility check** (`skater/feasibility.py`, no simulation):
       lift, fore, aft and extension reach from the crouch; the leg servos'
       torque to hold the body on one leg at the worst of those poses (with a
@@ -158,10 +164,52 @@ servo), scored against round 9 on the same four tilted starts.
    was the velocity term it replaced. Capture-point placement earns its
    keep at walking speed, and nothing walks at walking speed under the real
    servo yet. Keep the mode; it is right once something strides.
-3. **Gravity compensation on the horns.** The leg is a known linkage: the
-   horn torques that hold the body's weight at the current pose are
-   computable and fed forward, so the servos' position loops carry only the
-   error. Removes most of the "shift per rad of pitch" gains.
+   *Diagnosis before item 3 (2026-11-08): what the real servo actually
+   does to a strider.* The belief carried from phase 0, that a horn is at
+   stall in the cycle a strider falls in, was a misread of the worst-cycle
+   torque metric. A per-step trace of all six servos through the falling
+   cycles of the round-9 and round-8 striders shows the horns peak at 0.3
+   to 0.8 of stall and never stall in a fall; what stalls on the round-9
+   body is both hip ROLL servos, at 93 % of all steps, standing included,
+   and under the ideal servo too (54 %). That is a linkage limit, not a
+   load: the roll drive's horn is horizontal with a vertical link to the
+   bracket end, so the bracket end can only rise or drop by a horn length
+   before the link toggles, asin(horn / arm), 8.6 deg on the 144 mm arm and
+   25 mm horn, where `hip_roll_range` (horn sweep / lever ratio) said 22.
+   The controller asked 12 to 14 deg of roll for the inboard stance and the
+   servos pushed against the toggle at full torque for the whole run. Fixed
+   in `structure.roll_lever_range` (the loop solved; the MJCF joint range,
+   the controller's clamp and the static check all use it). The static
+   check now fails the round-9 body: its stance needs 11.2 deg of roll and
+   the lever gives 8.5. With the clamp the round-9 gaits score the same
+   (the servos could never get there anyway) with the roll servos at 0.3 to
+   0.6 of stall instead of 1.0. Memory's earlier reading, that the two roll
+   servos squeeze the planted feet against floor friction, was wrong too: a
+   frictionless floor changes nothing. Then the real servo model taken
+   apart one element at a time on the two striders, four tilted starts
+   each: on the round-9 strider the 20 ms latency alone is the fall (every
+   variant without latency stands 12 s on all four starts; latency alone
+   falls on all four), and the hold, deadband and speed-torque line do
+   little; on the round-8 strider latency alone is harmless and the 50 Hz
+   hold together with the speed-torque line is the fall (the horns at 0.5
+   to 0.8 of stall during the swing slew at half speed, the leg arrives
+   late, the body bounces: both feet leave the floor in stance). The
+   speed-torque line also costs stride on its own, 10 cm to 6 on round 9.
+   So item 3 is reframed below: latency compensation first, then the
+   swing's horn load, and gravity compensation as the second half.
+3. **Latency compensation, then gravity compensation on the horns.** The
+   real servo's 20 ms latency and 50 Hz hold are a known, fixed delay in a
+   100 Hz loop, so the controller commands for when the command lands: the
+   gait trajectory evaluated at `t + delay` (the clock or contact phase
+   advanced by the delay), and the balance terms led by the delay (tilt +
+   delay x tilt rate), which is the Smith-predictor-lite that every servo
+   biped runs. Checked first on the round-9 strider, where latency alone
+   is the fall. Then the horns: the leg is a known linkage, so the horn
+   torques that hold the body's weight (stance) and the leg's own weight
+   (swing) at the current pose are computable; the position commands are
+   offset by that torque over the horn stiffness so the position loops
+   carry only the error, and the swing horn's load falls below the
+   speed-torque knee. Removes most of the "shift per rad of pitch" gains.
 4. **Landing mode.** On a contact rise after a flight (or after a swing on
    rough ground) the leg's stiffness drops for a few hundred ms through the
    horn command, then recovers. Needed before the run and the hop.

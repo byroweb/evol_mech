@@ -370,3 +370,38 @@ for; a velocity integral in the controller is the alternative.
   servo is the wall, and the next piece of work is finding out which servo
   stalls in the cycle a strider falls in, and whether gravity compensation
   or a different stride shape takes it off stall.
+
+  Stall diagnosis (2026-11-08), before phase 1 item 3. A per-step trace of
+  all six servos through the falling cycles of the round-9 and round-8
+  striders under the real servo overturns the phase-0 reading. No horn
+  stalls in a fall: the hip-pitch and knee servos peak at 0.3 to 0.8 of
+  stall. On the round-9 body both hip roll servos are at stall for 93 % of
+  every run, standing included, under the ideal servo too (54 %), 3.5 deg
+  short of their command, each pushing with the full 22.8 N m and the two
+  in opposite directions. It is not floor friction (a frictionless floor
+  changes nothing) and not weight (the static check's 9 % of stall is
+  right): it is the roll lever's toggle. The horn is horizontal with a
+  30 mm vertical link to the bracket end, so the bracket end can only rise
+  or drop by a horn length before the horn points straight down and the
+  loop stops closing: asin(25 / 144) = 8.6 deg of hip roll, and the
+  simulation stops at 8.63 with the horn at 67 deg and the link at 86. The
+  range formula (horn sweep over the lever ratio, 22 deg) assumed the
+  linear ratio held to 130 deg of horn. `structure.roll_lever_range` now
+  solves the loop and the MJCF joint range, the controller's clamp and the
+  static check use it; the static check fails the round-9 body (11.2 deg
+  needed, 8.5 available), which is to say round 9's inboard-feet stance was
+  never reachable and its 2.6 deg roll was the body hanging on two servos
+  at stall. The clamp changes the round-9 scores by nothing worth a number
+  (the servos could not get there) and takes the roll servos to 0.3 to 0.6
+  of stall. Then the real servo model taken apart, one element removed at a
+  time, two striders, four tilted starts each. Round-9 strider: the 20 ms
+  latency is the whole fall; without it every variant stands 12 s on all
+  four starts, and latency alone falls on all four. Round-8 strider:
+  latency alone is harmless (12 s on four of four) and the 50 Hz hold with
+  the speed-torque line is the fall; its horns at 0.5 to 0.8 of stall in
+  the swing slew at half speed, the leg lands late, and the body bounces
+  with both feet off the floor in stance. The speed-torque line alone costs
+  round 9 four centimetres of stride. Phase 1 item 3 is therefore latency
+  compensation (command for when the command lands: gait phase advanced by
+  the delay, balance led by tilt rate x delay) before gravity compensation,
+  whose real job is the swing horn's load, not the stance's.

@@ -104,6 +104,8 @@ FOLD_MARGIN = math.radians(10)        # no two links of the shin drive within th
 HORN_RANGE = (math.radians(-130), math.radians(130))
 HORN_KG = 0.010                       # pantograph: a servo horn with its rod-end bearing
 ROLL_PIVOT_Y = 0.012                  # pantograph body: each roll pivot this far from the hip centre (two bolts side by side)
+BRACKET_Z = -0.02                     # the bracket bar below the leg servo axes (the roll link pulls on its outboard end)
+ROLL_LINK_LEN = 0.03                  # pantograph body: the vertical link from the roll horn's tip to the bracket end
 PIN_KG = 0.008                        # pantograph: a pinned node (bolt, bushing, spacer)
 
 
@@ -505,9 +507,37 @@ def roll_ratio(p: dict[str, float]) -> float:
     return roll_arm(p) / p["horn_len"] if is_pantograph(p) else float(p.get("roll_ratio", 1.0))
 
 
+def roll_lever_range(p: dict[str, float]) -> float:
+    """Pantograph body: the hip roll (rad, half range) at which the roll drive's loop stops closing. The
+    horn is horizontal, pointing outboard, with a vertical link from its tip down to the bracket's end,
+    so the bracket end can only rise or drop by about a horn length before the horn points straight up
+    or down and the link toggles: asin(horn / arm) to first order, 8.6 deg on a 25 mm horn and 144 mm
+    arm whatever the horn's sweep. The lever ratio arm / horn only holds for small horn angles. Found
+    the hard way: the round-9 roll servos sat at stall against this toggle at every step, 3.5 deg
+    short of a command the old formula (horn sweep / ratio, 22 deg) said was in range."""
+    if not is_pantograph(p):
+        return HIP_ROLL_RANGE
+    arm, h, link = roll_arm(p), p["horn_len"], ROLL_LINK_LEN
+    root = (arm - h, BRACKET_Z + link)                     # horn root, (y outboard, z) from the pivot
+    lo, hi = abs(h - link), h + link
+    limit = HIP_ROLL_RANGE
+    for sgn in (1.0, -1.0):
+        th = 0.0
+        while th < HIP_ROLL_RANGE:
+            c, s = math.cos(sgn * th), math.sin(sgn * th)
+            end = (arm * c - BRACKET_Z * s, arm * s + BRACKET_Z * c)     # the bracket end, rolled by th about the pivot
+            d = math.hypot(end[0] - root[0], end[1] - root[1])
+            if not (lo <= d <= hi):
+                break
+            th += math.radians(0.05)
+        limit = min(limit, th)
+    return limit
+
+
 def hip_roll_range(p: dict[str, float]) -> float:
-    """The hip roll's half range: the roll servo's horn sweep through the lever, capped at HIP_ROLL_RANGE."""
-    return min(HIP_ROLL_RANGE, HORN_RANGE[1] / max(1e-6, roll_ratio(p)))
+    """The hip roll's half range: the roll servo's horn sweep through the lever, the lever's own toggle
+    (pantograph body: roll_lever_range), capped at HIP_ROLL_RANGE."""
+    return min(HIP_ROLL_RANGE, HORN_RANGE[1] / max(1e-6, roll_ratio(p)), roll_lever_range(p))
 
 
 def horn_stiffness(p: dict[str, float]) -> float:

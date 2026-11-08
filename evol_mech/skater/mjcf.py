@@ -69,7 +69,8 @@ from .structure import (structure_from_params, foot_layout, nominal_angles, spaw
                         roller_half_len, sole_half_w, HIP_ROLL_RANGE, THIGH_RANGE, KNEE_RANGE, ANKLE_RANGE,
                         ANKLE_ROLL_RANGE, ANKLE_ROLL_STIFF, HORN_RANGE, HORN_KG, PIN_KG, JOINT_BRACKET_KG,
                         LINK_KG_PER_M, is_pantograph, panto_nominal, panto_points, hip_roll_range,
-                        horn_stiffness, series_kp, SHIN_DRIVE, roll_arm, roll_ratio, ROLL_PIVOT_Y)
+                        horn_stiffness, series_kp, SHIN_DRIVE, roll_arm, roll_ratio, ROLL_PIVOT_Y,
+                        BRACKET_Z, ROLL_LINK_LEN)
 
 SIM_DT = 0.002
 FAN_PITCH_RANGE = math.radians(90)
@@ -128,8 +129,6 @@ def _ankle(side: str, p: dict[str, float], st, ankle_rest: float, ref: float = 0
 SERVO_HALF = (0.020, 0.010, 0.020)      # a 40 x 20 x 40 mm hobby servo, its output shaft at the bottom of its long face
 
 
-BRACKET_Z = -0.02                       # the bracket bar below the leg servo axes
-ROLL_LINK_LEN = 0.03                    # pantograph body: the vertical link from the roll horn's tip to the bracket end
 VIS_KG = 1e-4                           # the roll drive's drawn horn and link (they must move, so they must weigh something)
 
 

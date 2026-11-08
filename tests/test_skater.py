@@ -122,8 +122,16 @@ def test_pantograph_kinematics_closed_chain_and_lever():
     assert roll_arm(p0) == 0.0 and roll_ratio({**p0, "roll_ratio": 5.0}) == 5.0 and hip_roll_range({**p0, "roll_ratio": 5.0}) == pytest.approx(math.radians(26))
     assert roll_arm(p) == pytest.approx(0.05 - ROLL_PIVOT_Y) and roll_ratio(p) == pytest.approx((0.05 - ROLL_PIVOT_Y) / p["horn_len"])
     assert roll_ratio({**p, "roll_ratio": 5.0}) == roll_ratio(p) and hip_roll_range(p) == pytest.approx(math.radians(30))
-    wide = {**p, "hip_width": 0.32, "horn_len": 0.02}                      # arm 0.148 / horn 0.02 = 7.4: the horn's sweep caps the roll
-    assert hip_roll_range(wide) == pytest.approx(math.radians(130) / 7.4)
+    # a wide hip: the roll lever's own toggle caps the roll, not the horn's sweep. The horn is
+    # horizontal with a vertical link to the bracket end, so the end can rise or drop by about a
+    # horn length: asin(horn / arm) to first order. The round-9 body (144 mm arm, 25 mm horn)
+    # toggles at 8.6 deg in the simulation, where the old sweep / ratio formula said 22
+    from evol_mech.skater.structure import roll_lever_range
+    wide = {**p, "hip_width": 0.32, "horn_len": 0.02}                      # arm 0.148 / horn 0.02 = 7.4
+    assert hip_roll_range(wide) == pytest.approx(roll_lever_range(wide))
+    assert roll_lever_range(wide) < math.radians(130) / 7.4
+    r9 = {**p, "hip_width": 0.311, "horn_len": 0.025}
+    assert math.radians(8.3) < roll_lever_range(r9) < math.radians(8.8)
     assert horn_stiffness(p) == pytest.approx(1000.0) and series_kp(50.0, 50.0) == pytest.approx(25.0)
     pl = {**p, "horn_k_log10": 1.0}
     model, pm = make_model(encode(pl), "flat", np.random.default_rng(0))
@@ -640,17 +648,23 @@ def test_rolled_plane_ik_lands_the_ankle_on_its_target():
 
 
 def test_static_feasibility_check():
-    """Phase 0 of the test plan: the no-simulation body check. The round-9 pantograph passes
-    with a walking step's workspace and its servos well inside stall; the four-bar leg fails
-    on fore / aft reach at the crouch (the shin drive's fold and the knee's 10 deg stop);
-    feet asked inboard past the soles, or a servo too small for the body, fail by name."""
+    """Phase 0 of the test plan: the no-simulation body check. The round-9 pantograph has a
+    walking step's workspace and its servos well inside stall, but fails on the roll range:
+    its inboard stance needs 11 deg of hip roll and the roll lever toggles at 8.5 (found by
+    the phase-1 stall diagnosis; the roll servos sat on that toggle at full torque for every
+    run of round 9). At the lever's range it passes. The four-bar leg fails on fore / aft
+    reach at the crouch (the shin drive's fold and the knee's 10 deg stop); feet asked inboard
+    past the soles, or a servo too small for the body, fail by name."""
     from evol_mech.skater.feasibility import static_check, feasible, FORE_MIN, LIFT_MIN, STATIC_TORQUE_MAX
     p9 = decode(encode(json.load(open("configs/archetypes/skater_walker_panto9.json"))["phys"]))
     r = static_check(p9)
-    assert r["ok"] and not r["reasons"], r["reasons"]
+    assert not r["ok"] and len(r["reasons"]) == 1 and "hip roll" in r["reasons"][0], r["reasons"]
     assert r["lift_m"] >= LIFT_MIN and r["fore_m"] >= FORE_MIN and r["leg_torque_frac"] < STATIC_TORQUE_MAX
-    assert r["roll_need_deg"] < r["roll_range_deg"] and r["sole_gap_m"] > 0.01 and r["stance_w_used"] < 0
-    assert 0.0 < r["roll_torque_frac"] < 0.2                      # static: the squeeze that stalls it is dynamic
+    assert 8.0 < r["roll_range_deg"] < 9.0 and r["roll_need_deg"] > r["roll_range_deg"]
+    assert r["sole_gap_m"] > 0.01 and r["stance_w_used"] < 0
+    assert 0.0 < r["roll_torque_frac"] < 0.2                      # weight is not what held the roll servos at stall
+    r = static_check({**p9, "stance_w": -0.03})                   # a stance the lever reaches
+    assert r["ok"] and not r["reasons"], r["reasons"]
     h3 = decode(encode(json.load(open("configs/archetypes/skater_walker_hip3.json"))["phys"]))
     r = static_check(h3)
     assert not r["ok"] and all("reach" in why for why in r["reasons"]) and r["lift_m"] > LIFT_MIN
