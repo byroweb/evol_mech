@@ -40,6 +40,7 @@ PARAMS: list[Param] = [
     Param("worm_ratio",       8.0,  25.0, 15.0, "foot"),
     # ---- drivetrain -----------------------------------------------------------
     Param("servo_kgcm",       10,   60,   25,   "drivetrain", 5),  # leg servo stall torque, catalogue steps
+    Param("servo_sec60",      0.06, 0.20, 0.15, "drivetrain"),     # leg servo speed, s per 60 deg (0.15 standard, 0.06-0.08 HV coreless / brushless)
     Param("tread_motor_w",    20.0, 150.0, 60.0, "drivetrain"),  # rated electrical power
     # ---- fan hardware spec (catalogue steps) ---------------------------------
     Param("fan_diam_in",      2,    6,    3,    "fan_spec", 1),

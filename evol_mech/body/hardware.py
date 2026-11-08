@@ -126,10 +126,14 @@ def tread_drive_from_params(p: dict[str, float]) -> TreadDriveSpec:
 
 # ---- metal-gear hobby servos for the skater's leg joints -----------------------
 # Stall torque in kg·cm sets mass (20 kg·cm ~ 50 g, 35 ~ 65 g, 60 ~ 95 g). Speed
-# is the usual 60 deg in 0.12-0.2 s, largely independent of size.
+# is the `servo_sec60` gene: the usual 60 deg in 0.15 s, or a high-voltage
+# coreless / brushless servo at 0.06-0.08 s, which at the same torque is a
+# heavier can (motor and gear train) by SERVO_KG_PER_SPEED per unit of speed
+# gained over the standard one.
 SERVO_KG_BASE = 0.025
 SERVO_KG_PER_KGCM = 0.0011
 SERVO_SEC_PER_60DEG = 0.15
+SERVO_KG_PER_SPEED = 0.015       # +15 g at twice the standard speed
 SERVO_DEADBAND_RAD = math.radians(4.0)   # full torque reached at this error: internal loop stiffness
 
 
@@ -145,5 +149,6 @@ class ServoSpec:
 def servo_from_params(p: dict[str, float]) -> ServoSpec:
     kgcm = p["servo_kgcm"]
     t = kgcm * 0.0981
-    return ServoSpec(kgcm, t, SERVO_KG_BASE + SERVO_KG_PER_KGCM * kgcm,
-                     math.radians(60) / SERVO_SEC_PER_60DEG, t / SERVO_DEADBAND_RAD)
+    sec60 = p.get("servo_sec60", SERVO_SEC_PER_60DEG)
+    mass = SERVO_KG_BASE + SERVO_KG_PER_KGCM * kgcm + SERVO_KG_PER_SPEED * max(0.0, SERVO_SEC_PER_60DEG / sec60 - 1.0)
+    return ServoSpec(kgcm, t, mass, math.radians(60) / sec60, t / SERVO_DEADBAND_RAD)

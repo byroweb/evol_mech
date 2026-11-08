@@ -105,7 +105,7 @@ def labels(sc: Scene, p: dict) -> list:
         servo0 = sc.geom(f"servo_{s}0")
         bracket = sc.geom(f"bracket_{s}")
         items += [
-            (sc.mid(hf, hr), [f"servo_dx {p['servo_dx'] * 100:.1f} cm", "fore-aft spacing of the two leg servos", f"servo_kgcm {p['servo_kgcm']:.0f} (all five servos one part)"], DRIVE),
+            (sc.mid(hf, hr), [f"servo_dx {p['servo_dx'] * 100:.1f} cm", "fore-aft spacing of the two leg servos", f"servo_kgcm {p['servo_kgcm']:.0f}, servo_sec60 {p['servo_sec60']:.2f} s/60 deg (all five servos one part)"], DRIVE),
             (sc.mid(hf, rod_f), [f"horn_len {p['horn_len'] * 1000:.0f} mm", f"horn_k_log10 {p['horn_k_log10']:.2f} = {horn_stiffness(p):.0f} N m/rad", "every horn: one part, flexes in its sweep plane"], LEG),
             (sc.mid(rod_f, rod_r), [f"rod_len {p['rod_len'] * 100:.1f} cm", "horn tip to the crossing pin (knee node)"], LEG),
             (sc.mid(link_b, link_c), [f"rod_ext {p['rod_ext'] * 100:.1f} cm", "rods continued past the pin and the", "parallelogram's short sides to the ankle node"], LEG),

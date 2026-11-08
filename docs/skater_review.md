@@ -174,6 +174,22 @@ for; a velocity integral in the controller is the alternative.
   1 Hz, 4.6 cm of clearance, roll 5.8 deg, saturation 57 %, grace 0.19
   on four tilted starts. The gearing is set by the servo's slew, not by
   the mass, so a faster servo spec is the round that can move it.
+  Round 7 (`configs/skater_walk_panto7.json`) is that round: a new
+  `servo_sec60` gene (seconds per 60 deg, 0.15 the standard hobby servo,
+  0.06-0.08 a high-voltage coreless or brushless one, +15 g per servo at
+  twice the speed in `hardware.servo_from_params`) locked at 0.075, so the
+  leg servos slew at 14 rad/s instead of 7, from walker_panto6. On the
+  round-6 walker alone the fast servo cut the saturation from 57 % to 12 %
+  with the gait unchanged; evolved on it (`skater_walker_panto7`), the GA
+  spent the speed on a quicker, higher step (1.15 Hz, 14 cm steps, 3 cm
+  lift) and a longer strut: 2.3 m in 12 s, 16.7 cm strides, 5.4 cm of
+  clearance, saturation 19 %, grace 0.22, fitness -0.11 on four tilted
+  starts, against round 6's 1.9 m, 4.6 cm, 57 %, 0.19, -0.15. The roll
+  grew to 6.4 deg and the servo acceleration doubled, which is what holds
+  the grace below the 6 cm horn's 0.30: the fast servo buys the stride and
+  the clearance, not the smoothness. Open: whether the roll gains want
+  re-searching for the faster leg, and the fast servo's real speed under
+  load (the model slews at the no-load figure).
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %

@@ -106,6 +106,14 @@ pantograph archetypes (6 cm horns, `skater_walker_panto*.json` up to 4) are
 history under the cap: `encode` clamps their horn and the leg no longer
 reaches a step, so they do not build.
 
+The leg servos' speed is a gene too, `servo_sec60` (seconds per 60 deg):
+0.15 is the standard metal-gear hobby servo, 0.06-0.08 a high-voltage
+coreless or brushless one, modelled as the same torque in a heavier can
+(+15 g per servo at twice the speed). With the 25 mm horn each step is more
+horn sweep, and the standard servo's 7 rad/s slew, not its torque, was the
+constraint (a leg servo at the limit 60 % of the time); at 0.075 s per 60
+deg the slew doubles and the saturation drops to 12-19 %.
+
 ## Foot: tread
 
 A short rubber tread under a flat sole, front and rear pulleys plus idlers.
