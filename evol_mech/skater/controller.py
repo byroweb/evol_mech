@@ -120,6 +120,7 @@ START_RAMP_S = 0.4
 START_LOAD_BW = 0.6
 START_TIMEOUT_S = 0.8
 ANCHOR_FROM_MEASUREMENT = True   # False: the stance sweep and swing start from the nominal +-L/2 (a diagnostic)
+HOLD_STOPS_SWEEP = False  # True: a held phase (late landing) also holds the planted foot, so the body waits; False: the sweep runs on
 # capture-point foot placement (task foot_placement "capture"; default "gains" keeps every score). Two
 # balance strategies, kept apart: the planted feet shift under the body by the kp / kd gains (the
 # ankle strategy: a centre-of-pressure shift within the soles, which the GA has always tuned small),
@@ -477,7 +478,7 @@ class SkaterController:
         # the stance sweep is the body's speed: a phase pulled forward (early landing) or held (late)
         # must not jerk or stop the planted foot, so its anchor absorbs the difference from the clock
         for s, ph in phases:
-            if (prev + ph) % 1.0 < duty:
+            if (prev + ph) % 1.0 < duty and not (HOLD_STOPS_SWEEP and rate == 0.0):
                 self._anchor[s] += L * (rate - hz) * dt / duty
         out = {}
         for s, ph in phases:
