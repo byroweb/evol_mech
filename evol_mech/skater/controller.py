@@ -130,6 +130,9 @@ class SkaterController:
         self.x_nom, z_nom = nominal_foot(p)
         self.h_nom = -z_nom                          # hip-to-ankle drop in the parked crouch
         self.roll_range, self.roll_ratio, self.roll_arm = hip_roll_range(p), roll_ratio(p), roll_arm(p)
+        # inboard feet (stance_w < 0) stop a sole's width plus a centimetre short of each other:
+        # the soles only collide with the floor in the model, so the clamp keeps them apart
+        self.stance_w = max(p["stance_w"], -(p["hip_width"] - p["tread_w"] - 0.01) / 2)
         self.panto = is_pantograph(p)
         qadr = lambda name: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)]
         if self.panto:
@@ -346,7 +349,8 @@ class SkaterController:
             u, scale = self.phase, min(1.0, self.amp / 0.2)              # the sway is there as soon as the feet move
         else:
             return 0.0
-        amp = scale * self.p["walk_shift"] * self.p["hip_width"] / 2  # 1.0 = hip over the stance foot
+        # 1.0 = hip over the stance foot: the hip point, or the foot where inboard feet have put it
+        amp = scale * self.p["walk_shift"] * max(0.0, self.p["hip_width"] / 2 + min(0.0, self.stance_w))
         return amp * math.cos(2 * math.pi * (u - self.p["shift_phase"]))
 
     def _feet_down(self, data: mujoco.MjData) -> bool:
@@ -502,10 +506,11 @@ class SkaterController:
                 + p["kv_foot_y"] * float(v_b[1]))
         gait = self.gait_offsets(t)
         hfb_scale = 1.0 - self.blend if self.objective == "course" else 1.0   # the run sets its own height
+        stance_w = self.stance_w
         for s, sign in (("l", +1.0), ("r", -1.0)):
             gx, gz, fb = gait[s]
             h = max(0.02, self.h_nom + (h_fb * hfb_scale if fb else 0.0) + gz - sign * dh_roll)
-            dy = dy_f + sign * p["stance_w"]                      # + = foot to the left, both legs
+            dy = dy_f + sign * stance_w                           # + = foot to the left, both legs
             # the roll that puts the ankle dy to the left and h below the leg's hip point: with
             # the pivot roll_arm inboard of that point (pantograph body) the leg point itself
             # swings, so the roll is the target's angle about the pivot less the leg's own, and

@@ -84,7 +84,7 @@ PARAMS: list[Param] = [
     Param("walk_shift",       0.0,  1.2,  0.5,  "roll"),        # walk: body shift toward the stance foot, fraction of the half hip width
     Param("kp_roll_y",        0.0,  1.0,  0.1,  "roll"),        # feet shifted toward a roll per rad (m/rad); ~leg drop = feet under the CoM
     Param("kd_roll_y",        0.0,  0.3,  0.01, "roll"),        # per rad/s; ~drop x sqrt(drop/g) = capture point
-    Param("stance_w",         0.0,  0.06, 0.0,  "roll"),        # feet outboard of the hip points (m), a wider track
+    Param("stance_w",        -0.06, 0.06, 0.0,  "roll"),        # feet outboard (+) or inboard (-) of the hip points (m): a wider track, or the body stepping on top of its feet
     Param("kv_foot_x",        0.0,  0.5,  0.1,  "gait"),        # legged: feet ahead per m/s of forward body speed (s)
     Param("kp_foot_leg",     -0.6,  0.6,  0.0,  "gait"),        # legged: foot fore/aft shift per rad of body pitch (m/rad)
     Param("kd_foot_leg",     -0.1,  0.1,  0.0,  "gait"),

@@ -203,6 +203,25 @@ for; a velocity integral in the controller is the alternative.
   lever on this leg: the 25 mm pantograph on a 10 cm hip rolls 5.5-6.5 deg
   whatever the gains, and the remaining smoothness gap to the 6 cm horn's
   round 3 (grace 0.30) is in the servo acceleration, not the roll.
+  Round 9 (`configs/skater_walk_panto9.json`) made `stance_w` signed (feet
+  inboard of the hip points, clamped a sole's width plus a centimetre apart;
+  the body shift sized to the stance foot where it actually is) and freed the
+  hip width, the user's idea of a wide hip for skating with the body stepping
+  on top of its feet for the walk. The round-8 gains do not carry over to
+  inboard feet (the walker falls in 2-7 s on either hip), so a random search
+  on 16, 20 and 24 cm hips seeded it (`skater_walker_panto9_seed`, 24 cm hip,
+  feet 6 cm in, roll 3.6 deg, two of 200 samples upright). The GA
+  (`skater_walker_panto9`) went to a 31 cm hip with the feet 5.4 cm inboard
+  (track 23 cm): roll 2.6 deg RMS (from 5.6), grace 0.43 (the best of any
+  round, the 6 cm horn's 0.30 included), servos never at the slew limit,
+  servo acceleration halved, fans 2.3 %, 2.1 m in 12 s, four of four tilted
+  starts, fitness -0.09 against -0.10. The cost is the gait: 10 cm strides
+  at 1.76 Hz with the swing clearance at zero, a shuffle, which is what the
+  roll-free body lets the GA get away with. The roll lever on that hip is
+  5.8 horn lengths (roll range 22 deg, roll slew 2.4 rad/s), and the leg
+  rolls 17 deg to put the foot where it stands, so the roll servo is now the
+  loaded one (the plan's roll-servo spec). Next: the same body with the
+  clearance and stride weights up, so the roll-free walk picks its feet up.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %
