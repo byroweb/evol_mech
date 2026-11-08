@@ -801,3 +801,28 @@ def test_workspace_clamp_keeps_the_pantograph_ik_on_its_branch_and_stands_the_ro
     c = SkaterController(model, phys, {**task, "leg_reach": "clamp"}, True)
     assert c.reach_clamp and c.reach_max == pytest.approx(panto_reach(phys) - REACH_MARGIN)
     assert not SkaterController(model, phys, task, True).reach_clamp
+
+
+def test_robustness_score_percentile_model_errors_and_push():
+    """Phase 1 item 5: the robustness score. `aggregate` p20 / min score a task's repeats at the
+    20th percentile / the worst instead of the mean; `mass_error`, `friction_error` and `push`
+    perturb each run (drawn after the controller has read the nominal model); absent keys leave
+    a run bit-identical to before, so every old score stands."""
+    p = json.load(open("configs/archetypes/skater_walker_panto7.json"))["phys"]
+    g = encode(p)
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 4.0,
+            "pose_noise_deg": 2.0, "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp"}
+    plain = rollout(g, task, 3)
+    assert rollout(g, task, 3)["fitness"] == plain["fitness"]
+    erred = rollout(g, {**task, "mass_error": 0.1, "friction_error": 0.2, "push": 0.5}, 3)
+    assert erred["fitness"] != plain["fitness"]
+    assert erred["time_upright"] > 2.0 and erred["fall_dir"] != "drop"   # perturbed, not broken
+    assert rollout(g, {**task, "mass_error": 0.1}, 3)["time_upright"] == pytest.approx(4.0, abs=0.02)
+    assert rollout(g, {**task, "mass_error": 0.1, "friction_error": 0.2, "push": 0.5}, 3)["fitness"] == erred["fitness"]
+    cfg = {"tasks": [{**task, "duration": 2.0, "repeats": 3, "mass_error": 0.1}]}
+    e_mean = evaluate(g, cfg, 0)
+    e_p20 = evaluate(g, {"tasks": [{**cfg["tasks"][0], "aggregate": "p20"}]}, 0)
+    e_min = evaluate(g, {"tasks": [{**cfg["tasks"][0], "aggregate": "min"}]}, 0)
+    assert e_mean["w.fitness"] == pytest.approx(e_p20["w.fitness_mean"]) == pytest.approx(e_min["w.fitness_mean"])
+    assert e_min["w.fitness"] == e_min["w.fitness_min"] <= e_p20["w.fitness"] <= e_mean["w.fitness"] + 1e-12
+    assert "w.upright_min" in e_p20

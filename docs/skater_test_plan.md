@@ -284,6 +284,26 @@ servo), scored against round 9 on the same four tilted starts.
    error and a 20 % friction error), not the mean of two; the winner is
    re-run with a dropped sensor reading every few seconds and must survive
    it. The knife-edged gaits in memory are the mean-of-two signature.
+   *Done 2026-11-08* (task keys, all default-off so every old score and
+   every seed's random stream stand): `aggregate` `pNN` / `min` scores a
+   task's repeats at that percentile / the worst instead of the mean (the
+   result carries `fitness_mean`, `fitness_min` and `upright_min` beside
+   it); `mass_error` and `friction_error` scale the hip's mass and inertia
+   and every friction coefficient by a uniform fraction per run, drawn
+   after the controller has read the nominal model, so the controller is
+   wrong by that much; `push` shoves a legged run once, at a random moment,
+   by that fraction of the stand's shove. Sensor dropouts were already in
+   every run (one per channel per 5 s). The score on the three walkers
+   that matter, phase-1e tasks (8 flat / 4 rough / 4 stand starts, 2 deg
+   tilt, 10 % mass, 20 % friction, half a shove, p20): the round-1d GA
+   "best" -1.32 (it had scored -0.15 on its two repeats: the knife edge,
+   measured), the round-7 strider -0.86 (one flat start falls at 2.5 s and
+   one stand at 2.1 s; the other seven flat starts stride 12 s), the
+   round-9 shuffler -0.39, because it never falls and stands the shove
+   best. That last number is the warning the stride floor was built for,
+   so the round carries `stride_min` 0.10. Round 1e (`configs/
+   skater_walk_phase1e.json`, round-7 body, real servo, lead, clamp) runs
+   on this score.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

@@ -247,6 +247,19 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     foot_bodies = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in ("l", "r")]
     total_mass = float(model.body_subtreemass[hip_id])
     h_nom = nominal_height(p)
+    # the robustness score's model errors (task mass_error / friction_error, fractions of the nominal, one
+    # draw per run; a push: a shove of `push` x the stand's at a random moment of a legged run), drawn after
+    # the controller has read the nominal model, so the controller is wrong by that much. Absent keys keep
+    # every score and every seed's random stream
+    if task.get("mass_error"):
+        s_m = 1.0 + float(rng.uniform(-1.0, 1.0)) * float(task["mass_error"])
+        model.body_mass[hip_id] *= s_m                # the dynamics read these directly; the derived
+        model.body_inertia[hip_id] *= s_m             # subtree masses stay nominal, as the controller's
+    if task.get("friction_error"):
+        model.geom_friction[:, 0] *= 1.0 + float(rng.uniform(-1.0, 1.0)) * float(task["friction_error"])
+    push_at = None
+    if task.get("push") and objective != "stand":
+        push_at = float(rng.uniform(1.0, max(1.0, float(task["duration"]) - 1.0)))
     floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
     names = {g: (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "") for g in range(model.ngeom)}
     feet = {g for g, n in names.items() if n.startswith("foot_")}
@@ -321,6 +334,15 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
                 next_perturb += PERTURB_PERIOD
             elif t >= perturb_until:
                 data.xfrc_applied[hip_id, :] = 0.0
+        elif push_at is not None and t >= push_at:
+            if perturb_until < 0.0:
+                ang = rng.uniform(0, 2 * math.pi)
+                f = float(task["push"]) * PERTURB_ACCEL * total_mass
+                data.xfrc_applied[hip_id, :3] = [f * math.cos(ang), f * math.sin(ang), 0.0]
+                perturb_until = t + PERTURB_LEN
+            elif t >= perturb_until:
+                data.xfrc_applied[hip_id, :] = 0.0
+                push_at = None
 
         for _ in range(SUBSTEPS):
             mujoco.mj_step(model, data)
@@ -695,8 +717,11 @@ def _course_scores(task: dict, p: dict, n_done: int, time_upright: float, feet, 
 
 def evaluate(genome: np.ndarray, cfg: dict, seed: int) -> dict:
     """Weighted sum of the tasks' fitness. A task with `repeats` n is rolled out n times on
-    different seeds (its pose noise, terrain and shoves differ) and scores the mean of them,
-    the metrics of the worst-upright one: robustness to the start, not one lucky start."""
+    different seeds (its pose noise, terrain, shoves and model errors differ) and scores the
+    mean of them, or with `aggregate` "pNN" the NN-th percentile and "min" the worst (the
+    robustness score: the mean of two is a knife edge a GA walks along, and twice it has
+    handed back a winner worse than its seed on four tilted starts); the metrics are the
+    worst-upright run's."""
     out = {"fitness": 0.0, "sim_steps": 0, "wall_s": 0.0, "invalid": False}
     for ti, task in enumerate(cfg["tasks"]):
         runs = [rollout(genome, task, seed=seed * 1000 + ti + 100 * rep,
@@ -705,9 +730,13 @@ def evaluate(genome: np.ndarray, cfg: dict, seed: int) -> dict:
                         motor_energy_cost=cfg.get("motor_energy_cost", 0.002),
                         leg_mass_penalty=cfg.get("leg_mass_penalty"))
                 for rep in range(int(task.get("repeats", 1)))]
-        mean_fit = float(np.mean([r["fitness"] for r in runs]))
+        fits = [r["fitness"] for r in runs]
+        agg = str(task.get("aggregate", "mean"))
+        score = (float(np.mean(fits)) if agg == "mean" else float(min(fits)) if agg == "min"
+                 else float(np.percentile(fits, float(agg[1:]))))
         m = min(runs, key=lambda r: (r["time_upright"], r["fitness"]))
-        m = {**m, "fitness": mean_fit, "fitness_min": min(r["fitness"] for r in runs),
+        m = {**m, "fitness": score, "fitness_mean": float(np.mean(fits)), "fitness_min": float(min(fits)),
+             "upright_min": float(min(r["time_upright"] for r in runs)),
              "sim_steps": sum(r["sim_steps"] for r in runs), "wall_s": sum(r["wall_s"] for r in runs)}
         out["fitness"] += task.get("weight", 1.0) * m["fitness"]
         out["sim_steps"] += m["sim_steps"]

@@ -475,3 +475,23 @@ for; a velocity integral in the controller is the alternative.
   between its pins, after a clearance check found the old inner-face
   placement 3 mm into the front rod's extension at a 5 cm lift; round 7's
   scores did not change for it.
+
+  Phase 1, item 5 (2026-11-08): the robustness score. Four task keys,
+  default off: `aggregate` (p20 or min over the repeats instead of the
+  mean), `mass_error` (the hip's mass and inertia scaled by a uniform
+  fraction per run), `friction_error` (every friction coefficient
+  likewise) and `push` (one shove at a random moment of a legged run, a
+  fraction of the stand's). The errors are drawn after the controller has
+  read the nominal model, which is the point: the controller is wrong by
+  that much. One wrong turn on the way, a constants refresh after scaling
+  the mass that dropped every robot at t = 0; the dynamics read the mass
+  directly and the refresh was not wanted. The score measured on the three
+  walkers in hand says what the plan said it would: the round-1d GA best,
+  -0.15 on its own two repeats, is -1.32 at the 20th percentile of eight
+  perturbed starts; the round-7 strider is -0.86, striding seven of eight
+  flat starts for 12 s and falling on the eighth and on one stand; and the
+  round-9 shuffler is -0.39, the best of the three, because it never falls
+  and stands the shove well. That is the score rewarding safe non-behaviour
+  again, now with numbers, and it is why the robustness round carries the
+  stride floor at 10 cm: a 2 cm shuffle is speed-gated to a fifth and pays
+  the stand cost. Round 1e is running on the round-7 body with that score.
