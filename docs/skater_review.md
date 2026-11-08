@@ -510,3 +510,23 @@ for; a velocity integral in the controller is the alternative.
   seconds; the rough task is the next unsolved thing on this body, and
   the contact gait and the capture point (items 1 and 2) still have to
   be re-tuned on it under this score.
+
+  Rounds 1f and 1g (2026-11-08): items 1 and 2 on the strider. The capture
+  point round kept its promise and broke a rule at the same time. Its
+  winner beats the seed on unseen seeds (-0.58 to -0.83 under capture, and
+  to -0.74 under the seed's own clock gait), stands seven of eight
+  perturbed flat walks and every stand, rolls 5.3 deg RMS where nothing
+  before rolled under 6, and runs the fans 1.5 % of the time. It also
+  drags its feet: 1.0 cm of swing clearance against the seed's 3.0 and the
+  plan's 3. The score has a stride floor and no clearance floor, and the
+  GA found the gap in one round, as it finds every gap. The next capture
+  round carries a clearance floor. The contact gait round found nothing,
+  and the probe before it said why: the strider's clock gait is a 91 ms
+  commanded swing that the real servo smears into a dynamic swap, the
+  body is never balanced on one foot, and a gait that waits for a
+  landing has nowhere to wait. Longer swings, longer waits and a paused
+  stance all fell inside two seconds. That is a controller problem for
+  item 1 on this body, not a tuning problem, and the GA's answer (improve
+  the stand, fall at 0.9 s anyway) is what a flat fitness landscape looks
+  like from the inside. A new tool out of the session: tools/live_ga.py
+  watches a run live, with the champion of each generation filmed.

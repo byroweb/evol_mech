@@ -313,6 +313,25 @@ servo), scored against round 9 on the same four tilted starts.
    its seed on unseen starts. Genes that moved most: `kp_bal` 3.2 -> 5.3,
    fan pitch/yaw gains up, `fan_base` to 0, foot velocity gains from 0,
    `ki_foot_leg` doubled. Rough terrain is unsolved by either walker.
+   Items 1 and 2 re-tuned on that walker (2026-11-08). Round 1f
+   (`configs/skater_walk_phase1f.json`, capture point, clock gait): GA
+   best -0.35; on unseen seeds -0.58 against the seed's -0.83 under
+   capture and -0.74 under its own clock gait, flat walks 7 of 8, stands 4
+   of 4, plain tilted starts 12 s x 4, 2.0 m, roll 5.3 deg RMS (the lowest
+   yet), fans 1.5 %, strides 12 cm. But swing clearance fell to 1.0 cm
+   from 3.0: the GA found dragging the feet cheaper than lifting them,
+   and nothing in the score forbids it. Kept as `skater_walker_phase1f.
+   json` as a seed only; the next capture round needs a clearance floor
+   beside the stride floor. Round 1g (contact gait + capture) found
+   nothing: the seed falls inside 1.1 s on every start under the contact
+   gait, whatever the swing length (duty 0.6 to 0.89), landing wait (0.1
+   to 0.3 s) or a stance pause during the wait (controller.
+   HOLD_STOPS_SWEEP, diagnostic), because the strider's clock gait is a
+   91 ms dynamic foot swap with no real single-support phase for a
+   sensor-gated gait to wait in; the GA's best (-0.65) still falls at 0.9 s
+   and only improved the stand. Not kept. The contact gait on a strider
+   needs a controller change (a start that builds single support, a swing
+   no shorter than the servo can make), not more generations.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
