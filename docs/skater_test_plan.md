@@ -56,21 +56,42 @@ to use it. Nothing here needs a GA round; each item is a commit with a test.
       `roll_servo_sec60`): on the wide hip the roll servo carries the leg
       through a 5-6x lever and is the stout one; on the 10 cm hip it idled
       at 3 % of its torque.
-- [ ] **Fall direction** in the result (`fall_dir`: forward, back, left,
-      right, from the body's pitch and roll at the fall).
-- [ ] **Per-servo peak torque and speed per step** in the result, since
-      those decide whether the servos survive the gait.
+- [x] **Fall direction** in the result (`fall_dir`: forward, back, left,
+      right, from the body's pitch and roll at the fall; `drop` when the hip
+      sank with neither past 10 deg).
+- [x] **Per-servo peak torque and speed per step** in the result
+      (`peak_torque_hip_roll` / `hip_pitch` / `knee` and `peak_speed_*`: the
+      median gait cycle's peak, fraction of stall and of the no-load speed at
+      the hinge, the worse side; `servo_peak_torque_frac` / `speed_frac` the
+      worst cycle of all six), since those decide whether the servos survive
+      the gait. First reading: the pantograph walkers run their horns at
+      0.6-0.65 of stall in the worst cycle on the ideal servo and hit stall
+      (1.0) in the cycle they fall under the real one; round 9's roll servos
+      sit at 1.0 standing still.
 
 ### Kinematics
 
-- [ ] **IK in the rolled leg plane.** With inboard feet the leg rolls up to
-      17 deg and a fore-aft step has a lateral component the planar IK does
-      not see; rotate the foot target into the leg plane before the solve
-      and check the foot's actual track against its target in a clip.
-- [ ] **Static feasibility check** (no simulation): reach and work space at
-      the crouch, torque margin at the worst pose, roll range to the foot's
-      standing position, soles not overlapping. The body rounds of phase 2
-      sample only bodies that pass it.
+- [x] **IK in the rolled leg plane.** Checked rather than changed: the roll
+      axis is the body's x, so a fore-aft step stays in the rolled plane and
+      the controller's roll-then-planar solve is exact (the four-bar standing
+      lands its ankles within a millimetre laterally of the target). The
+      controller now keeps the target (`foot_target`, hip frame) and the
+      result reports the ankle's RMS distance from it (`foot_track_rms_m`,
+      `foot_track_y_rms_m`). Round 9's inboard feet sit 12-13 mm short of
+      their lateral target standing and 18-21 mm walking: the planted soles
+      will not slide, which is the roll-servo squeeze again, not the solve.
+- [x] **Static feasibility check** (`skater/feasibility.py`, no simulation):
+      lift, fore, aft and extension reach from the crouch; the leg servos'
+      torque to hold the body on one leg at the worst of those poses (with a
+      30 % fore-aft shear) and the roll servo's to hold it over the standing
+      foot, as fractions of stall, under 0.8; the hip roll the standing track
+      needs against the roll range; the soles' gap at that track. Every
+      pantograph since the horn cap passes (lift 5.5 cm, fore 10.5, aft 7.5,
+      leg servo 0.33-0.36 of stall). Every four-bar body fails on reach: at
+      the crouch height the shin drive folds at 3 cm fore and the knee's 10
+      deg stop at 5 cm aft, so the four-bar's 12-16 cm strides are the body
+      riding over a foot the controller has clamped at the stops. The body
+      rounds of phase 2 sample only bodies that pass it.
 
 ## Phase 1: the controller, written for the sensors
 
@@ -170,7 +191,7 @@ controllers fall in the blend.
 
 ## Order and cost
 
-Phase 0 is code and tests, two or three sittings, no GA. Phase 1 is six
+Phase 0 is done (2026-11-08): code and tests, no GA. Phase 1 is six
 controller changes, each with a gains round of 15-20 minutes on 12 workers,
 plus the CMA-ES runs. Phase 2 is about 2.5 hours of compute including the
 long round. Phase 3 is about 3 hours plus a seed search per mode. Phase 0's

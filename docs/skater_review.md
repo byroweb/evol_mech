@@ -303,3 +303,26 @@ for; a velocity integral in the controller is the alternative.
   for 20-35 kg cm metal-gear servos; a chosen part number pins them.
 - **Ride-quality cost** is RMS hip acceleration including the spawn drop; fine
   for ranking, crude for absolute numbers.
+
+
+  Phase 0 closed with the result's last three readings and the static check.
+  `fall_dir` names the fall (forward, back, left, right, drop). Per-servo
+  peaks per gait cycle: on the ideal servo the pantograph walkers' horns peak
+  at 0.39-0.40 of stall in the median cycle and 0.62-0.67 in the worst; under
+  the real servo the worst cycle is the one they fall in, at stall (1.0), with
+  the horn moving at or past its no-load speed (1.0-1.1) as the body drops.
+  The four-bar walker's knee hinge reads 1.3-1.9 of the servo's no-load speed:
+  the knee is driven through the shin four-bar, so the hinge outruns the horn
+  by the linkage ratio, and the landing kicks it. Round 9's roll servos read
+  1.0 of stall standing still (the squeeze). The foot track check settles the
+  rolled-plane IK question: the four-bar standing lands its ankles within a
+  millimetre laterally of the controller's target, so the roll-then-planar
+  solve is exact and nothing was changed; round 9's inboard feet sit 12-13 mm
+  short standing and about 20 mm walking because the planted soles do not
+  slide. The static check (`skater/feasibility.py`) passes every pantograph
+  since the horn cap (lift 5.5 cm, fore 10.5, aft 7.5, leg servo at 0.33-0.36
+  of stall one-legged, roll servo 0.09-0.19) and fails every four-bar body on
+  reach at the crouch height: 3 cm fore (the shin drive's fold margin) and
+  5 cm aft (the knee's 10 deg stop). The four-bar's strides were the body
+  riding over a foot clamped at its stops. Phase 1 starts from here, on the
+  round-9 body, under `servo_model: real`.

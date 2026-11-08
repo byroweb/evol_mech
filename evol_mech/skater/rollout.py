@@ -280,6 +280,18 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     # never reaches; the roll servo's own saturation is reported separately, not yet scored
     roll_step = ctrl.roll_servo.max_rad_s / ctrl.roll_ratio * CONTROL_DT
     roll_sat = 0
+    # per-servo peak torque (fraction of stall) and speed (fraction of the no-load speed, at the
+    # hinge) per gait cycle: whether the servos survive the gait, not just the slew metric
+    servo_acts = ctrl.servo_acts
+    servo_stall = np.array([model.actuator_forcerange[a][1] for a in servo_acts])
+    servo_speed = np.array([ctrl.roll_servo.max_rad_s / ctrl.roll_ratio] * 2 + [ctrl.servo.max_rad_s] * 4)
+    cyc_peak_t, cyc_peak_v = np.zeros(6), np.zeros(6)
+    cycle_peaks_t: list[np.ndarray] = []
+    cycle_peaks_v: list[np.ndarray] = []
+    cycle_prev = int(ctrl.cycles)
+    track_err_sq = np.zeros(3)                        # the ankles' error from the IK target, in the hip frame
+    track_n = 0
+    fall_roll = fall_pitch = 0.0
     fan_energy = motor_energy = 0.0
     time_upright = 0.0
     fell = unstable = False
@@ -333,6 +345,15 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         cyc_hist[k] = ctrl.cycles
         servo_prev = (servo_prev + [servo_cmd])[-2:]
         motor_energy += float(np.sum(np.abs(data.actuator_force[motor_acts] * data.actuator_velocity[motor_acts]))) * CONTROL_DT
+        cyc_peak_t = np.maximum(cyc_peak_t, np.abs(data.actuator_force[servo_acts]) / servo_stall)
+        cyc_peak_v = np.maximum(cyc_peak_v, np.abs(data.actuator_velocity[servo_acts]) / servo_speed)
+        if int(ctrl.cycles) != cycle_prev:
+            cycle_peaks_t.append(cyc_peak_t); cycle_peaks_v.append(cyc_peak_v)
+            cyc_peak_t, cyc_peak_v, cycle_prev = np.zeros(6), np.zeros(6), int(ctrl.cycles)
+        R_hip = data.xmat[hip_id].reshape(3, 3)
+        for s_, b in zip("lr", foot_bodies):
+            track_err_sq += (R_hip.T @ (data.xpos[b] - data.xpos[hip_id]) - ctrl.foot_target[s_]) ** 2
+        track_n += 2
         v = data.qvel[:3].copy()
         accel_sq += float(np.sum(((v - v_prev) / CONTROL_DT) ** 2))
         v_prev = v
@@ -375,6 +396,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         roll, pitch = quat_to_roll_pitch(data.qpos[3:7])
         pitch_hist[k], roll_hist[k], z_hist[k], vx_hist[k], y_hist[k] = pitch, roll, z, float(v[0]), float(data.qpos[1])
         if _fallen(z, roll, pitch, h_nom) or _body_touching_floor(data, body_geoms, floor_geom):
+            if not fell:
+                fall_roll, fall_pitch = roll, pitch
             fell = True
             if stop_on_fall:
                 break
@@ -385,6 +408,10 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             frame_cb(model, data, t)
 
     wall = time.perf_counter() - t_wall
+    if np.any(cyc_peak_t > 0.0):                     # the unfinished last cycle
+        cycle_peaks_t.append(cyc_peak_t); cycle_peaks_v.append(cyc_peak_v)
+    peaks = _servo_peaks(cycle_peaks_t, cycle_peaks_v)
+    track_rms = np.sqrt(track_err_sq / max(1, track_n))
     dx = float(data.qpos[0]) - x0
     dy = float(data.qpos[1]) - y0
     feet_dx = float(np.mean([data.xpos[b][0] for b in foot_bodies])) - feet_x0
@@ -482,6 +509,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "mean_speed": (dx if objective != "crab" else dy) / duration,
         "time_upright": time_upright,
         "fell": fell,
+        "fall_dir": _fall_dir(fell, fall_roll, fall_pitch),
         "unstable": unstable,
         "rms_accel": rms_accel,
         "rms_lat_err": rms_lat,
@@ -499,11 +527,44 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "total_mass": total_mass,
         **ctrl.sensors.summary(),
         "roll_servo_sat_frac": roll_sat / max(1, n - 2),
+        **peaks,
+        "foot_track_rms_m": float(np.linalg.norm(track_rms)),
+        "foot_track_y_rms_m": float(track_rms[1]),
         "sim_steps": steps,
         "wall_s": wall,
         "steps_per_s": steps / wall if wall > 0 else 0.0,
         **course,
     }
+
+
+def _fall_dir(fell: bool, roll: float, pitch: float) -> str:
+    """Which way the body went at the fall: forward (nose down, pitch > 0), back, right (roll > 0,
+    right side down) or left, whichever angle was larger; "drop" when the hip sank with neither
+    past 10 deg; "none" standing."""
+    if not fell:
+        return "none"
+    if max(abs(roll), abs(pitch)) < math.radians(10):
+        return "drop"
+    if abs(pitch) >= abs(roll):
+        return "forward" if pitch > 0 else "back"
+    return "right" if roll > 0 else "left"
+
+
+def _servo_peaks(cycles_t: list, cycles_v: list) -> dict[str, float]:
+    """Per-servo peak torque and speed per gait cycle, reduced per joint (the worse side) to the
+    median cycle (`peak_torque_hip_roll`, ... fractions of stall / no-load speed) and the worst
+    cycle of all six (`servo_peak_torque_frac`, `servo_peak_speed_frac`)."""
+    if not cycles_t:
+        return {f"peak_{k}_{j}": 0.0 for k in ("torque", "speed") for j in ("hip_roll", "hip_pitch", "knee")} | {"servo_peak_torque_frac": 0.0, "servo_peak_speed_frac": 0.0}
+    T, V = np.array(cycles_t), np.array(cycles_v)             # (cycles, 6): roll l r, pitch l r, knee l r
+    out = {}
+    for k, M in (("torque", T), ("speed", V)):
+        med = np.median(M, axis=0)
+        for j, (a, b) in zip(("hip_roll", "hip_pitch", "knee"), ((0, 1), (2, 3), (4, 5))):
+            out[f"peak_{k}_{j}"] = float(max(med[a], med[b]))
+    out["servo_peak_torque_frac"] = float(T.max())
+    out["servo_peak_speed_frac"] = float(V.max())
+    return out
 
 
 def _gait_quality(pitch, roll, z, vx, thr, y, track, i0: int, i1: int) -> dict:

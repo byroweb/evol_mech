@@ -581,3 +581,81 @@ def test_real_servo_model_delays_holds_and_slows_the_commands():
     r1 = rollout(encode(stander), {**task, "servo_model": "ideal"}, 0)
     r2 = rollout(encode(stander), {**task, "servo_model": "real"}, 0)
     assert r0["fitness"] == r1["fitness"] and r2["fitness"] != r1["fitness"] and r2["time_upright"] > 0.5
+
+
+def test_result_reports_fall_direction_servo_peaks_and_foot_track():
+    """Phase 0 of the test plan: the result says which way the body fell, how hard each servo
+    worked per gait cycle (fraction of stall / no-load speed) and how far the ankles ran from
+    the IK's target in the hip frame."""
+    from evol_mech.skater.rollout import _fall_dir
+    assert _fall_dir(False, 1.0, 1.0) == "none"
+    assert _fall_dir(True, 0.1, 1.1) == "forward" and _fall_dir(True, 0.1, -1.1) == "back"
+    assert _fall_dir(True, 1.1, 0.2) == "right" and _fall_dir(True, -1.1, 0.2) == "left"
+    assert _fall_dir(True, 0.05, 0.05) == "drop"
+    seed = json.load(open("configs/archetypes/skater_walker_panto5_seed.json"))["phys"]
+    stander = decode(encode({**seed, "step_len": 0.0, "step_lift": 0.0}))
+    r = rollout(encode(stander), {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.5}, 0)
+    assert r["time_upright"] >= 1.5 and r["fall_dir"] == "none"
+    for j in ("hip_roll", "hip_pitch", "knee"):
+        assert 0.0 < r[f"peak_torque_{j}"] <= 1.0 and 0.0 <= r[f"peak_speed_{j}"] < 3.0
+    assert r["servo_peak_torque_frac"] >= max(r[f"peak_torque_{j}"] for j in ("hip_roll", "hip_pitch", "knee"))
+    assert r["foot_track_y_rms_m"] < 0.01 and r["foot_track_rms_m"] < 0.05
+    # a walker that falls names a direction
+    walker = json.load(open("configs/archetypes/skater_walker_panto7.json"))["phys"]
+    r = rollout(encode(walker), {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5,
+                                 "duration": 12.0, "pose_noise_deg": 2.0, "servo_model": "real"}, 0)
+    assert r["fell"] and r["fall_dir"] in ("forward", "back", "left", "right", "drop")
+
+
+def test_rolled_plane_ik_lands_the_ankle_on_its_target():
+    """Phase 0 of the test plan: the hip roll plus the planar IK solved in the rolled leg plane
+    puts the ankle where the controller asked, laterally to the millimetre on the four-bar
+    standing (roll about x leaves a fore-aft step with no lateral component, so there is
+    nothing for a rolled-plane rotation to fix); the wide-hip walker's inboard feet stay
+    centimetres short because the planted soles will not slide, not because of the solve."""
+    from evol_mech.skater.controller import SkaterController, CONTROL_DT
+    from evol_mech.sim.rollout import SUBSTEPS
+
+    def settle(name: str, steps: int = 300):
+        p = decode(encode(json.load(open(f"configs/archetypes/skater_walker_{name}.json"))["phys"]))
+        model, p = make_model(encode(p), "flat", np.random.default_rng(0))
+        data = make_data(model, p)
+        ctrl = SkaterController(model, p, {"objective": "stand", "terrain": "flat"})
+        hip = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hip")
+        for k in range(steps):
+            data.ctrl[:] = ctrl.act(data, k * CONTROL_DT)
+            for _ in range(SUBSTEPS):
+                mujoco.mj_step(model, data)
+        R = data.xmat[hip].reshape(3, 3)
+        return {s: R.T @ (data.xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}")] - data.xpos[hip]) - ctrl.foot_target[s]
+                for s in "lr"}
+
+    err = settle("hip3")
+    for s in "lr":
+        assert abs(err[s][1]) < 0.002, (s, err[s])
+        assert np.linalg.norm(err[s]) < 0.02, (s, err[s])
+    err = settle("panto9")
+    assert all(abs(err[s][1]) > 0.005 for s in "lr")             # the documented squeeze, reported not hidden
+    assert err["l"][1] * err["r"][1] < 0                          # mirrored: each foot short toward its own side
+
+
+def test_static_feasibility_check():
+    """Phase 0 of the test plan: the no-simulation body check. The round-9 pantograph passes
+    with a walking step's workspace and its servos well inside stall; the four-bar leg fails
+    on fore / aft reach at the crouch (the shin drive's fold and the knee's 10 deg stop);
+    feet asked inboard past the soles, or a servo too small for the body, fail by name."""
+    from evol_mech.skater.feasibility import static_check, feasible, FORE_MIN, LIFT_MIN, STATIC_TORQUE_MAX
+    p9 = decode(encode(json.load(open("configs/archetypes/skater_walker_panto9.json"))["phys"]))
+    r = static_check(p9)
+    assert r["ok"] and not r["reasons"], r["reasons"]
+    assert r["lift_m"] >= LIFT_MIN and r["fore_m"] >= FORE_MIN and r["leg_torque_frac"] < STATIC_TORQUE_MAX
+    assert r["roll_need_deg"] < r["roll_range_deg"] and r["sole_gap_m"] > 0.01 and r["stance_w_used"] < 0
+    assert 0.0 < r["roll_torque_frac"] < 0.2                      # static: the squeeze that stalls it is dynamic
+    h3 = decode(encode(json.load(open("configs/archetypes/skater_walker_hip3.json"))["phys"]))
+    r = static_check(h3)
+    assert not r["ok"] and all("reach" in why for why in r["reasons"]) and r["lift_m"] > LIFT_MIN
+    r = static_check({**p9, "stance_w": -0.2})
+    assert any("soles" in why for why in r["reasons"])
+    r = static_check({**p9, "servo_kgcm": 10.0})
+    assert any("leg servo" in why for why in r["reasons"]) and not feasible({**p9, "servo_kgcm": 10.0})
+    assert "not buildable" in static_check({**p9, "hip_width": 0.03})["reasons"][0]

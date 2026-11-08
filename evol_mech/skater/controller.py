@@ -73,7 +73,7 @@ from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .sensors import FootSensors
 from .structure import (nominal_angles, nominal_height, nominal_foot, angles_from_foot,
                         horn_from_shin, shin_from_horn, drive_stops, KNEE_RANGE, hip_roll_range,
-                        roll_ratio, roll_arm, is_pantograph, panto_nominal, panto_ik, panto_pose_allowed)
+                        roll_ratio, roll_arm, is_pantograph, panto_nominal, panto_ik, panto_pose_allowed, ROLL_PIVOT_Y)
 
 MU_FOOT = 1.2
 G = 9.81
@@ -144,6 +144,12 @@ class SkaterController:
         # the soles only collide with the floor in the model, so the clamp keeps them apart
         self.stance_w = max(p["stance_w"], -(p["hip_width"] - p["tread_w"] - 0.01) / 2)
         self.panto = is_pantograph(p)
+        # each leg's hip point (the roll pivot's y plus the bracket arm; the horns' midpoint on the
+        # pantograph) in the hip body's frame, and the ankle target the IK was last solved for, in that
+        # frame: the rollout holds the foot's actual track against it (foot_track_rms_m)
+        self.hip_point = {s: np.array([0.0, sign * (ROLL_PIVOT_Y + self.roll_arm) if self.panto else sign * p["hip_width"] / 2, 0.0])
+                          for s, sign in (("l", 1.0), ("r", -1.0))}
+        self.foot_target = {s: self.hip_point[s] + np.array([0.0, 0.0, -nominal_height(p)]) for s in "lr"}
         qadr = lambda name: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)]
         if self.panto:
             # the pantograph: both leg servos are horns; the IK warm-starts from the last pose
@@ -544,6 +550,7 @@ class SkaterController:
                 roll_cmd = math.atan2(yt, h) - math.atan2(sign * L, drop)
             roll_cmd = max(-self.roll_range, min(self.roll_range, roll_cmd))
             c[i[f"hip_roll_{s}"]] = self._slew(f"hip_roll_{s}", roll_cmd)
+            self.foot_target[s] = self.hip_point[s] + np.array([x_f + gx, dy, -h])
             if self.panto:
                 # both horns from the ankle target; an unreachable target gives the nearest pose
                 # clear of the folds, a failed solve holds the last one

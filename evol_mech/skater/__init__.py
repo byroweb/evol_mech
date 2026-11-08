@@ -7,9 +7,10 @@ from .structure import InvalidBody, structure_from_params, is_buildable, nominal
 from .mjcf import build_mjcf, nominal_qpos, ACTUATOR_NAMES, SIM_DT, n_rollers
 from .controller import SkaterController
 from .rollout import rollout, evaluate, make_model, make_data
+from .feasibility import static_check, feasible
 
 __all__ = ["PARAMS", "NAMES", "INDEX", "GROUPS", "N_PARAMS", "DEFAULT_NORM", "decode", "encode",
            "random_genome", "mutate", "crossover", "load_archetype", "archetype_center",
            "default_archetype", "InvalidBody", "structure_from_params", "is_buildable",
            "nominal_height", "build_mjcf", "nominal_qpos", "ACTUATOR_NAMES", "SIM_DT",
-           "SkaterController", "rollout", "evaluate", "make_model", "make_data"]
+           "SkaterController", "rollout", "evaluate", "make_model", "make_data", "static_check", "feasible"]
