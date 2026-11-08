@@ -659,3 +659,36 @@ def test_static_feasibility_check():
     r = static_check({**p9, "servo_kgcm": 10.0})
     assert any("leg servo" in why for why in r["reasons"]) and not feasible({**p9, "servo_kgcm": 10.0})
     assert "not buildable" in static_check({**p9, "hip_width": 0.03})["reasons"][0]
+
+
+def test_contact_driven_walk_runs_the_phase_off_the_feet():
+    """Phase 1 item 1: with task gait_phase "contact" the walk's shared phase waits at the start
+    until the first stance foot carries the body, holds briefly for a foot that has not found
+    the floor by its touchdown mark (the clock then takes over), and starts each stance sweep
+    from the foot's measured landing point. The default ("clock") is untouched: no events."""
+    from evol_mech.skater.controller import SkaterController, CONTROL_DT, START_RAMP_S, START_TIMEOUT_S
+    from evol_mech.sim.rollout import SUBSTEPS
+    walker = json.load(open("configs/archetypes/skater_walker_panto8.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 6.0, "pose_noise_deg": 2.0}
+    clock = rollout(encode(walker), task, 0)
+    assert clock["contact_events"] == {"early": 0, "late": 0, "clock": 0}
+    contact = rollout(encode(walker), {**task, "gait_phase": "contact"}, 0)
+    ev = contact["contact_events"]
+    assert contact["time_upright"] >= 6.0 and contact["feet_x_m"] > 0.5
+    assert ev["late"] + ev["clock"] + ev["early"] >= 6                 # a touchdown per half cycle, each resolved one way
+    # the start: the phase parks at the left swing start until the right foot reads the load (or the timeout)
+    model, p = make_model(encode(walker), "flat", np.random.default_rng(0), {**task, "gait_phase": "contact"})
+    data = make_data(model, p)
+    ctrl = SkaterController(model, p, {**task, "gait_phase": "contact"})
+    started_at = None
+    for k in range(int(1.2 / CONTROL_DT)):
+        t = k * CONTROL_DT
+        data.ctrl[:] = ctrl.act(data, t)
+        for _ in range(SUBSTEPS):
+            mujoco.mj_step(model, data)
+        if started_at is None and ctrl._gait_started:
+            started_at = t
+            assert abs(ctrl.cycles - p["step_duty"]) < 1e-9
+    assert started_at is not None and START_RAMP_S <= started_at <= START_TIMEOUT_S + CONTROL_DT
+    # after the start the stance anchor is the measured foot relative to the balance target
+    assert abs(ctrl._anchor["r"] - (ctrl.foot_meas["r"][0] - ctrl._x_bal["r"])) < 0.05

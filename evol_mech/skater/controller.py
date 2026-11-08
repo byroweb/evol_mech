@@ -99,6 +99,26 @@ COURSE_PROFILE = (("stand", 2.0), ("walk", 10.0), ("run", 10.0), ("walk", 10.0),
 # beside the left (the closing step) before the stepping amplitude fades: start and stop
 # are the same every time.
 JUMP_PHASES = (0.45, 0.60, 0.80)            # cycle fractions: crouch | thrust | tuck | settle
+# contact-driven walk (task gait_phase "contact"; default "clock" keeps every score). The shared phase
+# still runs at step_hz, but a swing foot that finds the floor early pulls the phase to its touchdown
+# over CATCH_S, a foot that has not found it by its touchdown mark holds the phase for up to
+# CONTACT_WAIT_S while the foot searches down at SEARCH_DOWN_M_S (then the clock takes over), and
+# each stance sweep starts from where the foot's sensor says it landed (x and y), not the nominal
+# landing point: a planted foot is never asked to slide. The start is a sequence: the body shift
+# ramps toward the first stance foot over START_RAMP_S and the first swing waits for that foot's
+# FSRs to read START_LOAD_BW (or START_TIMEOUT_S).
+CATCH_S = 0.05
+CONTACT_WAIT_S = 0.10
+SEARCH_DOWN_M_S = 0.30
+LAND_LOAD_BW = 0.25       # a landing is this much load for LAND_STEPS steps; a brush of the floor mid-swing is not
+LAND_STEPS = 2
+LIFT_STEPS = 3            # the swing foot must have read no contact this many steps running before it can land early (a shuffle cannot)
+SEARCH_MAX_M = 0.03
+SWING_MIN_FRAC = 0.4        # a landing counts only after this much of the swing (the lift-off debounce)
+START_RAMP_S = 0.4
+START_LOAD_BW = 0.6
+START_TIMEOUT_S = 0.8
+ANCHOR_FROM_MEASUREMENT = True   # False: the stance sweep and swing start from the nominal +-L/2 (a diagnostic)
 KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
                                   # closer to a rigid link but the two position loops then chatter (rms accel x3)
 
@@ -198,6 +218,25 @@ class SkaterController:
         # the feet's force-sensing resistors, ankle angles and servo load, read every control
         # step (sensors.py); phase 0 of the test plan reads them, phase 1 drives the gait off them
         self.sensors = FootSensors(model, p, self.mass, CONTROL_DT, rng=sensor_rng)
+        # contact-driven walk state (see the constants above)
+        self.contact_gait = str(task.get("gait_phase", "clock")) == "contact" and self.objective == "walk"
+        self.foot_body = {s: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in "lr"}
+        self.foot_meas = {s: np.array([0.0, 0.0, -self.h_nom]) for s in "lr"}     # ankle, hip frame, from the leg's hip point
+        self.gait_dy = {"l": 0.0, "r": 0.0}        # lateral landing offset at touchdown
+        self.dy_hold = {"l": 0.0, "r": 0.0}        # ... as applied now (held in stance, fading over the swing)
+        self._x_bal = {"l": 0.0, "r": 0.0}         # last balance x target per foot (the gait offset's reference)
+        self._dy_tgt = {"l": 0.0, "r": 0.0}        # last lateral target without the held offset
+        self._anchor = {s: p["step_len"] / 2 for s in "lr"}      # stance sweep start, as a gait x offset
+        self._swing_from = {s: -p["step_len"] / 2 for s in "lr"}   # where this swing left the floor, as a gait x offset
+        self._landed = {"l": False, "r": False}    # this swing's landing already seen
+        self._lifted = {"l": False, "r": False}    # this swing's foot has actually left the floor (a dragged foot cannot land early)
+        self._off = {"l": 0, "r": 0}               # consecutive steps without contact this swing
+        self._loaded = {"l": 0, "r": 0}            # consecutive steps the swing foot has read a landing's load
+        self._search = {"l": 0.0, "r": 0.0}        # how far the foot is searching down for the floor
+        self._wait = {"l": 0.0, "r": 0.0}          # how long the phase has waited for this foot
+        self._gait_started = False
+        self._tw_prev = None
+        self.contact_events = {"early": 0, "late": 0, "clock": 0}      # for the rollout's report
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -325,6 +364,8 @@ class SkaterController:
         objectives; zero for the others."""
         p = self.p
         if self.objective == "walk":                   # the cycle starts at the left foot's swing: the left steps first
+            if self.contact_gait:
+                return self._contact_walk(t)
             self.cycles = p["step_hz"] * t + p["step_duty"]
             return {s: (*self._walk_leg((self.cycles + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
         if self.objective == "run":
@@ -357,10 +398,91 @@ class SkaterController:
             return {"l": off, "r": off}
         return {"l": (0.0, 0.0, True), "r": (0.0, 0.0, True)}
 
+    def _contact_walk(self, t: float) -> dict[str, tuple[float, float, bool]]:
+        """The walk cycle driven by the foot sensors (see the CATCH_S block of constants)."""
+        p, sens = self.p, self.sensors
+        hz, duty, L, lift = p["step_hz"], p["step_duty"], p["step_len"], p["step_lift"]
+        dt = 0.0 if self._tw_prev is None else max(0.0, t - self._tw_prev)
+        self._tw_prev = t
+        phases = (("l", 0.0), ("r", 0.5))
+        if not self._gait_started:
+            # start: parked at the left swing start, shift ramping onto the right foot until it carries the body
+            self.cycles = duty
+            if (sens.load["r"] >= START_LOAD_BW and t >= START_RAMP_S) or t >= START_TIMEOUT_S:
+                self._gait_started = True
+                self._set_anchor("r")                   # the right foot carries; the left swings from where it stands
+                if ANCHOR_FROM_MEASUREMENT:
+                    self._swing_from["l"] = float(self.foot_meas["l"][0]) - self._x_bal["l"]
+            return {s: (*self._walk_leg((self.cycles + ph) % 1.0), True) for s, ph in phases}
+        rate = hz
+        for s, ph in phases:
+            u = (self.cycles + ph) % 1.0
+            if u < duty:
+                continue                                # stance: the sweep runs from the anchor at the clock's rate
+            w = (u - duty) / (1.0 - duty)
+            self._off[s] = self._off[s] + 1 if not sens.contact[s] else 0
+            if self._off[s] >= LIFT_STEPS:
+                self._lifted[s] = True
+            self._loaded[s] = self._loaded[s] + 1 if (sens.contact[s] and sens.load[s] >= LAND_LOAD_BW) else 0
+            if not self._landed[s] and self._lifted[s] and w >= SWING_MIN_FRAC and self._loaded[s] >= LAND_STEPS:
+                self._landed[s] = True                  # early landing: pull the phase to this foot's touchdown
+                self._set_anchor(s)
+                self.contact_events["early"] += 1
+                rate = max(rate, hz + (1.0 - u) / CATCH_S)
+            elif not self._landed[s] and u + hz * dt >= 1.0 - 1e-9 and self._wait[s] < CONTACT_WAIT_S:
+                self._wait[s] += dt                     # late: hold the phase, search down; the clock takes over after the wait
+                self._search[s] = min(SEARCH_MAX_M, self._search[s] + SEARCH_DOWN_M_S * dt)
+                rate = 0.0
+                if self._wait[s] >= CONTACT_WAIT_S:
+                    self.contact_events["late"] += 1
+        prev = self.cycles
+        self.cycles += rate * dt
+        # the stance sweep is the body's speed: a phase pulled forward (early landing) or held (late)
+        # must not jerk or stop the planted foot, so its anchor absorbs the difference from the clock
+        for s, ph in phases:
+            if (prev + ph) % 1.0 < duty:
+                self._anchor[s] += L * (rate - hz) * dt / duty
+        out = {}
+        for s, ph in phases:
+            u_prev, u = (prev + ph) % 1.0, (self.cycles + ph) % 1.0
+            if self._crossed(u_prev, u, 0.0):           # touchdown mark: stance begins where the foot is
+                if not self._landed[s]:
+                    self._set_anchor(s)
+                    self.contact_events["clock"] += 1
+                self._landed[s], self._lifted[s], self._loaded[s], self._off[s] = False, False, 0, 0
+                self._search[s], self._wait[s] = 0.0, 0.0
+            if self._crossed(u_prev, u, duty):          # lift-off: the swing leaves from where the foot is
+                self._swing_from[s] = (float(self.foot_meas[s][0]) - self._x_bal[s]) if ANCHOR_FROM_MEASUREMENT else -L / 2
+            if u < duty:
+                gx, gz = self._anchor[s] - L * (u / duty), 0.0
+                self.dy_hold[s] = self.gait_dy[s]
+            elif self._landed[s]:                       # down early: hold it there while the phase catches up
+                gx, gz = self._anchor[s], 0.0
+                self.dy_hold[s] = self.gait_dy[s]
+            else:
+                w = (u - duty) / (1.0 - duty)
+                x0 = self._swing_from[s]
+                gx, gz = x0 + (L / 2 - x0) * w, lift * math.sin(math.pi * w) - self._search[s]
+                self.dy_hold[s] = self.gait_dy[s] * (1.0 - w)
+            out[s] = (gx, gz, True)
+        return out
+
+    def _set_anchor(self, s: str) -> None:
+        """Stance from the measured foot: the sweep starts at the foot's x relative to the balance
+        target, and the lateral target keeps the landing error so the planted foot is not asked
+        to slide to the nominal track."""
+        if not ANCHOR_FROM_MEASUREMENT:
+            self._anchor[s], self.gait_dy[s] = self.p["step_len"] / 2, 0.0
+            return
+        self._anchor[s] = float(self.foot_meas[s][0]) - self._x_bal[s]
+        self.gait_dy[s] = float(self.foot_meas[s][1]) - self._dy_tgt[s]
+
     def body_shift(self, t: float) -> float:
         """Walk: lateral body offset (+ = left) over the feet, furthest toward the
         stance side mid-swing of the other foot; zero for the other objectives."""
-        if self.objective == "walk":
+        if self.objective == "walk" and self.contact_gait:
+            u, scale = self.cycles % 1.0, min(1.0, t / START_RAMP_S)
+        elif self.objective == "walk":
             u, scale = (self.p["step_hz"] * t + self.p["step_duty"]) % 1.0, 1.0
         elif self.objective == "run":
             u, scale = (self.p["run_hz"] * t + self.p["run_duty"]) % 1.0, 1.0
@@ -429,6 +551,10 @@ class SkaterController:
         p, c, i = self.p, self.ctrl, self.idx
         self._data = data
         self.sensors.update(data)
+        if self.contact_gait:
+            R = data.xmat[self.hip_id].reshape(3, 3)
+            for s in "lr":
+                self.foot_meas[s] = R.T @ (data.xpos[self.foot_body[s]] - data.xpos[self.hip_id]) - self.hip_point[s]
         pos = data.qpos[:3].copy()
         self._level_soles(data)
         if self.objective == "course":
@@ -537,6 +663,9 @@ class SkaterController:
             gx, gz, fb = gait[s]
             h = max(0.02, self.h_nom + (h_fb * hfb_scale if fb else 0.0) + gz - sign * dh_roll)
             dy = dy_f + sign * stance_w                           # + = foot to the left, both legs
+            self._x_bal[s], self._dy_tgt[s] = x_f, dy
+            if self.contact_gait:
+                dy += self.dy_hold[s]
             # the roll that puts the ankle dy to the left and h below the leg's hip point: with
             # the pivot roll_arm inboard of that point (pantograph body) the leg point itself
             # swings, so the roll is the target's angle about the pivot less the leg's own, and

@@ -326,3 +326,26 @@ for; a velocity integral in the controller is the alternative.
   5 cm aft (the knee's 10 deg stop). The four-bar's strides were the body
   riding over a foot clamped at its stops. Phase 1 starts from here, on the
   round-9 body, under `servo_model: real`.
+
+  Phase 1, item 1 (2026-11-08): the contact-driven gait phase, behind task
+  `gait_phase: contact`. What it took to make it not fall: a landing is a
+  quarter body weight for two steps on a foot that has been off the floor
+  for three (a brush mid-swing, which the 2-4 cm lifts give every step, had
+  counted as a landing and started the stance behind the hip); the stance
+  foot's sweep keeps the clock's speed through a phase pull or hold (pulling
+  the shared phase to one foot's touchdown had jerked the other foot's
+  sweep 4 cm in 50 ms); the swing leaves from where the foot measured at
+  lift-off, not from the anchor minus the step. With those, the round-8
+  walker runs 12 s under the contact gait on three of four starts with
+  every touchdown resolved late (its clock gait lands the foot by shifting
+  weight onto it, not by the swing). The gains round on the round-9 body
+  under the real servo (`skater_walk_phase1a`) gives a survivor: 12 s
+  upright on all four flat starts (round 9: 6 s), grace 0.33, roll 3 deg,
+  fans 1 %, servo saturation 2 %; strides 2.7 cm, lift 2 cm, 36 cm in 12 s.
+  Twenty early landings per run: the feet find the floor before the clock
+  says so and the phase follows them, which is the item working; the body
+  barely travels, which is the score. The same gains also stand 12 s on the
+  clock. Cobblestone: 7 s mean, one of four finishes. Phase 1 continues
+  with capture-point placement and gravity compensation; the robustness
+  score (item 5) needs a stride floor or the real servo will keep choosing
+  the shuffle.

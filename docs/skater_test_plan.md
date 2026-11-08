@@ -107,6 +107,27 @@ servo), scored against round 9 on the same four tilted starts.
    sequence on the sensors: shift, confirm the load on the stance foot,
    lift the other. Measured on flat and cobblestone, the tilted starts and
    a stand-walk-stand profile.
+   *Done 2026-11-08 for the walk* (task `gait_phase: contact`; the clock is
+   the default and every old score stands): the shared phase runs at
+   `step_hz`, a swing foot that reads a quarter body weight for two steps
+   after having been off the floor pulls the phase to its touchdown over
+   50 ms, a foot that has not found the floor by its mark holds the phase
+   for 100 ms while searching 3 cm down, then the clock takes over; each
+   stance sweep starts from the foot's measured landing point in x and
+   keeps its lateral landing error, so a planted foot is never asked to
+   slide; the stance sweep runs at the clock's speed through every phase
+   pull or hold; the start parks at the left swing until the right FSRs
+   read 0.6 body weight. Dropped onto the clock-tuned gaits it fell in two
+   steps until a mid-swing brush of the floor stopped counting as a landing
+   and the stance anchor stopped absorbing the swing foot's path. Round
+   (`configs/skater_walk_phase1a.json`, body locked, real servo): the
+   winner `skater_walker_phase1a` stands 12 s on flat where round 9 fell at
+   6 s, grace 0.33, roll 3 deg, fans 1 %, but on 4 cm steps with 2 cm of
+   lift at 1.1 Hz: 36 cm in 12 s, a shuffle (and it also stands 12 s on the
+   clock with the same gains). The real servo plus this score reward
+   survival over travel; items 2, 3 and 5 are what make a real step
+   affordable. The course (stand, walk, stand) stays on the clock until
+   item 10.
 2. **Capture-point stepping.** The lateral foot placement from the linear
    inverted pendulum (foot to the capture point, `y + v_y sqrt(h/g)`),
    replacing `kp_roll_y`, `kd_roll_y` and `kv_foot_y`; the fore-aft
