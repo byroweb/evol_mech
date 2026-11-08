@@ -302,8 +302,17 @@ servo), scored against round 9 on the same four tilted starts.
    round-9 shuffler -0.39, because it never falls and stands the shove
    best. That last number is the warning the stride floor was built for,
    so the round carries `stride_min` 0.10. Round 1e (`configs/
-   skater_walk_phase1e.json`, round-7 body, real servo, lead, clamp) runs
-   on this score.
+   skater_walk_phase1e.json`, round-7 body, real servo, lead, clamp) ran
+   on this score: GA best -0.37 (seed -0.86). Scored on seeds the GA never
+   saw (base seed 7) against the seed: weighted p20 -0.74 vs -1.16; flat
+   walks stand 8 of 8 (one at 9.7 s) vs 5 of 8, perturbed stands 4 of 4
+   vs 2 of 4, strides 12 cm vs 15 cm, clearance 3.0 vs 4.3 cm, fans 1.7 %
+   vs 5.5 %, distance 1.7 m vs 1.6 m; both fall on cobbles inside 3 s.
+   Four plain tilted starts: both 12 s, -0.38 each. Kept as
+   `skater_walker_phase1e.json`: the first gains round whose winner beats
+   its seed on unseen starts. Genes that moved most: `kp_bal` 3.2 -> 5.3,
+   fan pitch/yaw gains up, `fan_base` to 0, foot velocity gains from 0,
+   `ki_foot_leg` doubled. Rough terrain is unsolved by either walker.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

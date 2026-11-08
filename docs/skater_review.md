@@ -494,4 +494,19 @@ for; a velocity integral in the controller is the alternative.
   and stands the shove well. That is the score rewarding safe non-behaviour
   again, now with numbers, and it is why the robustness round carries the
   stride floor at 10 cm: a 2 cm shuffle is speed-gated to a fifth and pays
-  the stand cost. Round 1e is running on the round-7 body with that score.
+  the stand cost. Round 1e ran on the round-7 body with that score.
+
+  Round 1e (2026-11-08): the first gains round that kept its winner. GA
+  best -0.37 against the seed's -0.86, and, which is the point of item 5,
+  the gap holds on starts the GA never saw: -0.74 against -1.16 at the
+  20th percentile, eight of eight perturbed flat walks standing where the
+  seed stood five, four of four perturbed stands where the seed stood two.
+  The GA bought it with balance gain (`kp_bal` 3.2 to 5.3), fan pitch and
+  yaw gains, and foot velocity feedback that the seed had at zero, and it
+  paid in stride: 12 cm against 15, clearance 3.0 cm against 4.3, which is
+  the stride floor doing exactly what it was set to do and no more. Fans
+  went from 5.5 % to 1.7 % of duty with `fan_base` at zero, so the fans
+  now fire only on demand. Cobbles drop both walkers inside three
+  seconds; the rough task is the next unsolved thing on this body, and
+  the contact gait and the capture point (items 1 and 2) still have to
+  be re-tuned on it under this score.
