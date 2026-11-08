@@ -237,7 +237,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         data.qpos[3:7] = q / np.linalg.norm(q)
         data.qpos[2] += 0.005
         mujoco.mj_forward(model, data)
-    ctrl = SkaterController(model, p, task, fans_enabled)
+    # the foot sensors' dropped readings draw from their own stream, so the pose noise, terrain
+    # and shoves of a seed are what they were before the sensors existed
+    ctrl = SkaterController(model, p, task, fans_enabled, sensor_rng=np.random.default_rng(seed + 7919))
     hip_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hip")
     foot_bodies = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in ("l", "r")]
     total_mass = float(model.body_subtreemass[hip_id])
@@ -489,6 +491,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "leg_mass_fraction": leg_frac,
         "leg_mass_penalty": leg_pen,
         "total_mass": total_mass,
+        **ctrl.sensors.summary(),
         "sim_steps": steps,
         "wall_s": wall,
         "steps_per_s": steps / wall if wall > 0 else 0.0,

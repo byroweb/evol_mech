@@ -69,6 +69,7 @@ import numpy as np
 from ..body.hardware import tread_drive_from_params, servo_from_params, fan_from_params
 from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
+from .sensors import FootSensors
 from .structure import (nominal_angles, nominal_height, nominal_foot, angles_from_foot,
                         horn_from_shin, shin_from_horn, drive_stops, KNEE_RANGE, hip_roll_range,
                         roll_ratio, roll_arm, is_pantograph, panto_nominal, panto_ik, panto_pose_allowed)
@@ -112,7 +113,7 @@ def wrap(a: float) -> float:
 
 class SkaterController:
     def __init__(self, model: mujoco.MjModel, p: dict[str, float], task: dict,
-                 fans_enabled: bool = True):
+                 fans_enabled: bool = True, sensor_rng: np.random.Generator | None = None):
         self.p, self.task = p, task
         self.fans_enabled = fans_enabled
         self.idx = {n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n) for n in ACTUATOR_NAMES}
@@ -179,6 +180,9 @@ class SkaterController:
         self.floor_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
         self.foot_geoms = {g for g in range(model.ngeom)
                            if (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, g) or "").startswith("foot_")}
+        # the feet's force-sensing resistors, ankle angles and servo load, read every control
+        # step (sensors.py); phase 0 of the test plan reads them, phase 1 drives the gait off them
+        self.sensors = FootSensors(model, p, self.mass, CONTROL_DT, rng=sensor_rng)
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -403,6 +407,7 @@ class SkaterController:
     # ---- main --------------------------------------------------------------------
     def act(self, data: mujoco.MjData, t: float) -> np.ndarray:
         p, c, i = self.p, self.ctrl, self.idx
+        self.sensors.update(data)
         pos = data.qpos[:3].copy()
         self._level_soles(data)
         if self.objective == "course":

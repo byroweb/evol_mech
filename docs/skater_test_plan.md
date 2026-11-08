@@ -24,7 +24,7 @@ to use it. Nothing here needs a GA round; each item is a commit with a test.
 
 ### Foot sensing
 
-- [ ] **Two force-sensing resistors per foot**, heel and toe, under the sole
+- [x] **Two force-sensing resistors per foot** (`skater/sensors.py`), heel and toe, under the sole
       plate. In the simulator: the floor contact force on the sole summed
       into two bins by where it lands along the sole, low-pass filtered,
       quantised, with an FSR-like response (zero below a threshold, soft
@@ -33,14 +33,14 @@ to use it. Nothing here needs a GA round; each item is a commit with a test.
       controller gets, per foot: `load` (heel + toe, in body weights),
       `contact` (load above a debounced threshold) and `cop` (the centre of
       pressure along the sole, from the heel / toe split).
-- [ ] **Ankle angle** from the passive ankle's deflection (a hall sensor and
+- [x] **Ankle angle** from the passive ankle's deflection (a hall sensor and
       magnet across the joint on the build; the joint angle in the model),
       as a second, independent load estimate and the landing-stiffness
       input.
-- [ ] **Servo current** as a load estimate: the model's actuator force as
+- [x] **Servo current** as a load estimate: the model's actuator force as
       a fraction of stall, filtered with the servo's electrical lag, per
       leg servo. Reported, not yet used.
-- [ ] The result dict reports, per step: load at touchdown (the impact), the
+- [x] The result dict reports, per step: load at touchdown (the impact), the
       centre of pressure's excursion along the sole, and the stance
       fraction measured from the sensor rather than the clock.
 

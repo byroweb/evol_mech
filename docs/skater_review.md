@@ -224,6 +224,24 @@ for; a velocity integral in the controller is the alternative.
   revised after a controls review: foot sensing and a real actuator model
   first, the controller rewritten around them second, the body third, the
   other modes last.
+- **Foot sensors (plan phase 0).** `skater/sensors.py`: two force-sensing
+  resistors per foot (heel and toe) modelled from the floor's contact forces
+  on the foot geoms, split between the pads by the lever, through an FSR
+  response (nothing under 1 % of body weight, soft saturation at 1.5), an
+  8 ms low-pass, a 10-bit ADC over two body weights and a dropped reading
+  about once per 5 s per channel; per foot the controller reads `load`,
+  a debounced `contact` and the centre of pressure `cop`, plus the passive
+  ankle's angle and each leg servo's load as a fraction of stall. Read every
+  control step, not yet used by the gait, so every score is unchanged to
+  the third decimal. The rollout reports `sensor_stance_frac`,
+  `touchdown_load_bw` (mean and max), `cop_excursion_m`, `sensor_dropouts`
+  and `servo_load_peak`. First readings: the round-8 walk lands at 1.6 body
+  weights on average and 2.3 at worst (the landing mode of plan phase 1 is
+  needed), the round-9 shuffle at 0.5; and on round 9 **both roll servos sit
+  at stall 52 % of the time** (mean 66 % of stall torque; 3 % on the 10 cm
+  hip), so the wide-hip walk is carried by servos at their torque limit and
+  its 2.6 deg roll is not a build result until the roll servo has its own,
+  stouter spec (phase 0) and the walk is re-scored with it.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %

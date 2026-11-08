@@ -499,3 +499,38 @@ def test_repeats_average_tilted_starts():
     e = evaluate(DEFAULT_NORM, {"tasks": [{**task, "repeats": 2}]}, 0)
     assert abs(e["fitness"] - (a["fitness"] + b["fitness"]) / 2) < 1e-9
     assert e["stand.fitness_min"] == min(a["fitness"], b["fitness"])
+
+
+def test_foot_sensors_read_the_stance_and_survive_dropouts():
+    """Phase 0 of the test plan: two FSRs per foot. Standing, each foot carries about half the
+    weight with contact on and the centre of pressure on the sole; a lifted foot reads nothing;
+    a channel that always drops reads zero and never reports contact."""
+    from evol_mech.skater.sensors import FootSensors
+    from evol_mech.skater.controller import SkaterController, CONTROL_DT
+    from evol_mech.sim.rollout import SUBSTEPS
+    seed = json.load(open("configs/archetypes/skater_walker_panto5_seed.json"))["phys"]
+    stander = decode(encode({**seed, "step_len": 0.0, "step_lift": 0.0}))
+    task = {"name": "stand", "terrain": "flat", "objective": "stand", "duration": 1.0}
+    r = rollout(encode(stander), task, 0)
+    assert r["time_upright"] >= 1.0 and r["sensor_stance_frac"] > 0.9
+    assert 0.3 < r["touchdown_load_bw"] < 1.2            # the stand's first contact rise, both feet
+    assert r["cop_excursion_m"] < stander["sole_len"]
+    # a direct read: build, settle, inspect
+    rng = np.random.default_rng(0)
+    model, p = make_model(encode(stander), "flat", rng, task)
+    data = make_data(model, p)
+    ctrl = SkaterController(model, p, task)
+    sens = ctrl.sensors
+    for k in range(60):
+        data.ctrl[:] = ctrl.act(data, k * CONTROL_DT)
+        for _ in range(SUBSTEPS):
+            mujoco.mj_step(model, data)
+    for s in "lr":
+        assert sens.contact[s] and 0.25 < sens.load[s] < 0.8, (s, sens.load[s])
+        assert abs(sens.cop[s]) < p["sole_len"] / 2
+    assert sens.servo_load.max() < 0.6                    # no servo near stall standing
+    # a sensor that drops every reading
+    dead = FootSensors(model, p, ctrl.mass, CONTROL_DT, rng=np.random.default_rng(1), dropout=1.0)
+    for _ in range(5):
+        dead.update(data)
+    assert all(dead.load[s] == 0.0 and not dead.contact[s] for s in "lr") and dead.dropped == 20
