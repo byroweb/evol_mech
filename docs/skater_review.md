@@ -530,3 +530,25 @@ for; a velocity integral in the controller is the alternative.
   the stand, fall at 0.9 s anyway) is what a flat fitness landscape looks
   like from the inside. A new tool out of the session: tools/live_ga.py
   watches a run live, with the champion of each generation filmed.
+
+  Item 1 on the strider (2026-11-08): the controller change, found by
+  switching the contact gait's parts on one at a time rather than by
+  designing. With every part off and an instant start the contact gait is
+  the clock gait and walks like it. The parked start kills the strider on
+  its own: it cannot stand still on split feet, it is a dynamic walker
+  whose static balance gains the GA inverted long ago. The measured
+  anchors kill it on their own: under the real servo its foot lands 4 cm
+  behind its command, and a stance started from where the foot is, rather
+  than where it was asked to be, walks the support out from under the
+  body step by step. The late hold, the part that reads the sensors, is
+  the part that helps. The grand version, a true single-support gait with
+  the hip carried over the stance foot, fell in three quarters of a second
+  every time, and the mechanism is worth remembering: on this body the
+  lateral shift goes through the hip roll servos, which roll the body as
+  much as they move it, and the roll-levelling term then shortens the leg
+  the body is moving onto and lifts it off the floor. Single support on
+  this body wants an ankle, or a wider sole, or a hip that translates;
+  that is phase 2. Item 1 lands as the weak form: landing-gated timing
+  behind contact_start 'instant' and contact_anchor 'command', with the
+  shuffler's defaults untouched. The clearance floor (clear_min) went in
+  at the same time, so round 1h cannot win the way round 1f did.

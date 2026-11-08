@@ -826,3 +826,23 @@ def test_robustness_score_percentile_model_errors_and_push():
     assert e_mean["w.fitness"] == pytest.approx(e_p20["w.fitness_mean"]) == pytest.approx(e_min["w.fitness_mean"])
     assert e_min["w.fitness"] == e_min["w.fitness_min"] <= e_p20["w.fitness"] <= e_mean["w.fitness"] + 1e-12
     assert "w.upright_min" in e_p20
+
+
+def test_contact_gait_keys_let_the_strider_walk_and_the_clearance_floor_gates():
+    """Phase 1 item 1 on the strider: under the real servo the round-1e walker falls inside 1.3 s with the
+    shuffler's contact gait (parked start, measured anchors) and walks 12 s with contact_start 'instant' and
+    contact_anchor 'command', the late hold firing on most steps. clear_min gates a low-clearance walk."""
+    walker = json.load(open("configs/archetypes/skater_walker_phase1e.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 12.0, "pose_noise_deg": 2.0,
+            "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp", "gait_phase": "contact"}
+    shuffler_style = rollout(encode(walker), task, 0)
+    assert shuffler_style["time_upright"] < 2.0
+    strider_style = rollout(encode(walker), {**task, "contact_start": "instant", "contact_anchor": "command"}, 0)
+    assert strider_style["time_upright"] >= 12.0 and strider_style["feet_x_m"] > 1.2
+    assert strider_style["contact_events"]["late"] >= 10
+    # the clearance floor: the same walk scores lower under a floor above its clearance, the same under one below it
+    low = rollout(encode(walker), {**task, "contact_start": "instant", "contact_anchor": "command", "clear_min": 0.08}, 0)
+    same = rollout(encode(walker), {**task, "contact_start": "instant", "contact_anchor": "command", "clear_min": 0.01}, 0)
+    assert strider_style["swing_clear_m"] < 0.08
+    assert low["fitness"] < strider_style["fitness"] - 0.05
+    assert abs(same["fitness"] - strider_style["fitness"]) < 1e-6

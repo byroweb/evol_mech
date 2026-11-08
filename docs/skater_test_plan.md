@@ -332,6 +332,29 @@ servo), scored against round 9 on the same four tilted starts.
    and only improved the stand. Not kept. The contact gait on a strider
    needs a controller change (a start that builds single support, a swing
    no shorter than the servo can make), not more generations.
+   The controller change (2026-11-08), measured one mechanism at a time
+   on the strider under the real servo: the contact gait's machinery with
+   everything off and an instant start walks exactly like the clock gait
+   (12 s x 4); the parked start alone (shift ramp, wait for the stance
+   foot's load) drops it at 1.2 s, the strider cannot stand still on split
+   feet; the measured anchors alone drop it at 1.2 s, its foot lands 4 cm
+   behind its lagging command and a sweep started from the measurement
+   walks the support out from under the body; the early pull is harmless;
+   the late hold (0.1 s) helps, -0.30 against -0.34, 4.1 cm of clearance,
+   firing on 24 of 30 steps. A true single-support gait (body shift from
+   the gait state, hip over the stance foot through the other foot's
+   swing, full track width, a 200 ms swing floor) fell at 0.75 s on every
+   start whatever the sway amplitude or cadence: the shift goes through
+   the hip roll servos, rolls the body, and the roll-levelling term lifts
+   the foot the body is moving onto. So item 1 on a strider is the weak
+   form, landing-gated timing, behind two task keys with the shuffler's
+   defaults: `contact_start` 'instant' and `contact_anchor` 'command'. The
+   seed under that gait: -0.77 on the robustness tasks (clock -0.74),
+   -0.32 on the plain tilted starts (clock -0.38), 4.4 cm of clearance.
+   Capture on top of it falls (-1.01), untuned. `clear_min` (a clearance
+   floor on the speed gate, like `stride_min`) added after round 1f.
+   Round 1h (`configs/skater_walk_phase1h.json`: contact gait in the
+   strider form, clear_min 0.03, from the round-1e walker) runs.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

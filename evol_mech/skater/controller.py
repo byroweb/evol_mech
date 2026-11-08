@@ -121,6 +121,16 @@ START_LOAD_BW = 0.6
 START_TIMEOUT_S = 0.8
 ANCHOR_FROM_MEASUREMENT = True   # False: the stance sweep and swing start from the nominal +-L/2 (a diagnostic)
 HOLD_STOPS_SWEEP = False  # True: a held phase (late landing) also holds the planted foot, so the body waits; False: the sweep runs on
+# the contact gait on a strider (measured 2026-11-08 on the round-1e walker, real servo): the parked start
+# (shift ramp, wait for the stance foot's load) drops it inside 1.2 s, it cannot stand still on split feet; the
+# measured anchors drop it too, the foot lands 4 cm behind its lagging command and a sweep started from the
+# measurement walks the support out from under the body; the late hold and the early pull are fine (the hold
+# even helps: the strider's feet land late on nearly every step). So two task keys, defaults keep the shuffler's
+# gait: contact_start 'loaded' | 'instant' (start stepping at t = 0 like the clock gait) and contact_anchor
+# 'measured' | 'command' (each stance sweep starts from the commanded landing point, +-L/2). A body-shift from
+# the gait state (hip over the stance foot through the other foot's swing, full track width) was tried for a
+# true single-support gait and fell at 0.75 s on every start: the lateral shift goes through the hip roll
+# servos, rolls the body, and the roll-levelling term lifts the foot the body is moving onto.
 # capture-point foot placement (task foot_placement "capture"; default "gains" keeps every score). Two
 # balance strategies, kept apart: the planted feet shift under the body by the kp / kd gains (the
 # ankle strategy: a centre-of-pressure shift within the soles, which the GA has always tuned small),
@@ -269,6 +279,8 @@ class SkaterController:
         self._gait_started = False
         self._tw_prev = None
         self.contact_events = {"early": 0, "late": 0, "clock": 0}      # for the rollout's report
+        self.anchor_measured = ANCHOR_FROM_MEASUREMENT and str(task.get("contact_anchor", "measured")) != "command"
+        self.instant_start = str(task.get("contact_start", "loaded")) == "instant"
         self.capture = str(task.get("foot_placement", "gains")) == "capture"
         self.swing_w = {"l": 0.0, "r": 0.0}        # 0 in stance, the swing's progress 0..1 in swing (walk only)
         self.measure_feet = self.contact_gait or self.capture
@@ -446,10 +458,10 @@ class SkaterController:
         if not self._gait_started:
             # start: parked at the left swing start, shift ramping onto the right foot until it carries the body
             self.cycles = duty
-            if (sens.load["r"] >= START_LOAD_BW and t >= START_RAMP_S) or t >= START_TIMEOUT_S:
+            if self.instant_start or (sens.load["r"] >= START_LOAD_BW and t >= START_RAMP_S) or t >= START_TIMEOUT_S:
                 self._gait_started = True
                 self._set_anchor("r")                   # the right foot carries; the left swings from where it stands
-                if ANCHOR_FROM_MEASUREMENT:
+                if self.anchor_measured:
                     self._swing_from["l"] = float(self.foot_meas["l"][0]) - self._x_bal["l"]
             return {s: (*self._walk_leg((self.cycles + ph) % 1.0), True) for s, ph in phases}
         rate = hz
@@ -490,7 +502,7 @@ class SkaterController:
                 self._landed[s], self._lifted[s], self._loaded[s], self._off[s] = False, False, 0, 0
                 self._search[s], self._wait[s] = 0.0, 0.0
             if self._crossed(u_prev, u, duty):          # lift-off: the swing leaves from where the foot is
-                self._swing_from[s] = (float(self.foot_meas[s][0]) - self._x_bal[s]) if ANCHOR_FROM_MEASUREMENT else -L / 2
+                self._swing_from[s] = (float(self.foot_meas[s][0]) - self._x_bal[s]) if self.anchor_measured else -L / 2
             if u < duty:
                 gx, gz = self._anchor[s] - L * (u / duty), 0.0
                 self.dy_hold[s], self.swing_w[s] = self.gait_dy[s], 0.0
@@ -509,7 +521,7 @@ class SkaterController:
         """Stance from the measured foot: the sweep starts at the foot's x relative to the balance
         target, and the lateral target keeps the landing error so the planted foot is not asked
         to slide to the nominal track."""
-        if not ANCHOR_FROM_MEASUREMENT:
+        if not self.anchor_measured:
             self._anchor[s], self.gait_dy[s] = self.p["step_len"] / 2, 0.0
             return
         self._anchor[s] = float(self.foot_meas[s][0]) - self._x_bal[s]
@@ -519,7 +531,7 @@ class SkaterController:
         """Walk: lateral body offset (+ = left) over the feet, furthest toward the
         stance side mid-swing of the other foot; zero for the other objectives."""
         if self.objective == "walk" and self.contact_gait:
-            u, scale = self.cycles % 1.0, min(1.0, t / START_RAMP_S)
+            u, scale = self.cycles % 1.0, (1.0 if self.instant_start else min(1.0, t / START_RAMP_S))
         elif self.objective == "walk":
             u, scale = (self.p["step_hz"] * t + self.p["step_duty"]) % 1.0, 1.0
         elif self.objective == "run":

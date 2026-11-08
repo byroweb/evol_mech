@@ -142,6 +142,9 @@ STAND_COST = 0.3                # walk: a stander pays this x (1 - speed gate): 
 # walk: task key `stride_min` (m, default 0 = off) is a stride floor: the speed gate is also min(1, stride / stride_min),
 # so a shuffle keeps that fraction of its gait score and clearance bonus and pays the rest of the stand cost (the
 # real-servo round of phase 1 chose 2.7 cm steps that stood for 12 s over any gait that travelled)
+# walk: task key `clear_min` (m, default 0 = off) is a clearance floor on the same gate: min(1, swing clearance / clear_min)
+# (round 1f, the capture-point round on the strider, won with 1.0 cm of clearance where its seed had 3.0: dragging the feet
+# was cheaper than lifting them and nothing in the score said otherwise)
                                 # course round under the grace score shrank its walk segments to a 3 cm shuffle at 0.03 m/s,
                                 # safe and graceful and going nowhere (a slow walk is fine, standing is not)
 SWAY_REF = 0.20                 # rad of body pitch + roll RMS that halves the gait score on its own
@@ -482,6 +485,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         stride_min = float(task.get("stride_min", 0.0))
         if stride_min > 0.0:
             speed_gate = min(speed_gate, max(0.0, stride) / stride_min)
+        clear_min = float(task.get("clear_min", 0.0))
+        if clear_min > 0.0:
+            speed_gate = min(speed_gate, max(0.0, swing_clear) / clear_min)
         # the clearance bonus is gated by progress too: left outside the gate, the first track round
         # marched in place with its feet lifted 6 cm (2 cm of progress in 12 s) and won on clearance
         fitness = (gait_score * quality["grace"] * speed_gate + clear_bonus * speed_gate - accel_cost * rms_accel - 0.2 * abs(dy)
