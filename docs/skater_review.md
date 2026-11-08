@@ -459,3 +459,19 @@ for; a velocity integral in the controller is the alternative.
   servo), not round 9: round 9's inboard stance is beyond its roll lever
   and its best walk under the real servo is a 7 cm stride, while round 7
   now does 15 cm with the body it always had.
+
+  Round 1d (2026-11-08): the first gains round on the round-7 body under
+  the real servo with the lead and the clamp. Nothing kept. The GA's best
+  (-0.15 on its own two repeats, seed -0.35) stands three of four tilted
+  starts and scores -0.44 where the seed stands four and scores -0.35; it
+  is also worse under the shove. It is round 1c's result from the other
+  side: a gains round over the mean of two starts finds a knife edge, and
+  the next thing to build is the robustness score (item 5), not another
+  round. Two things the round turned up: the round-7 stand under the real
+  servo falls on one or two of four shoves (never tuned for it), and the
+  contact gait and the capture point, both tuned on the round-9 shuffler,
+  drop the round-7 strider at the start and need their own round on it.
+  The tread drive box also moved today, to the shin's outer face halfway
+  between its pins, after a clearance check found the old inner-face
+  placement 3 mm into the front rod's extension at a 5 cm lift; round 7's
+  scores did not change for it.

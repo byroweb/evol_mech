@@ -75,6 +75,13 @@ from .structure import (structure_from_params, foot_layout, nominal_angles, spaw
 SIM_DT = 0.002
 FAN_PITCH_RANGE = math.radians(90)
 NOCOL = 'contype="0" conaffinity="2"'
+# the tread drive (motor, worm, pulley) on the pantograph shin: on the OUTER face of link_c (away from the
+# parallelogram), halfway between its two pin joints, 22 mm off the link axis. Checked in the leg plane
+# over the round-7 walk and every allowed horn pair (2026-11-08): the links never collide in the model,
+# and at the old +18 mm / -30 mm (the inner face, 10 mm below the top pin) the box ran 3 mm into the
+# front rod's extension at a 5 cm lift and 8 mm into link_b at the workspace edge. Here: 19 mm clear in
+# the walk, 11 mm anywhere. The four-bar leg keeps its own placement on the shin's front
+TREAD_BOX_X, TREAD_BOX_Z = -0.022, -0.045
 FOOT_ATTR = 'friction="1.2 0.005 0.0001" rgba="0.15 0.15 0.15 1"'
 TREAD_TRACK_KV = 0.1            # velocity actuator gain on the first roller (Nm s/rad)
 SERVO_KV_FRAC = 0.02            # servo damping as a fraction of its kp (s)
@@ -235,7 +242,7 @@ def _panto_leg(side: str, sign: float, p: dict[str, float], st) -> str:
             <body name="link_c_{side}" pos="0 0 {-(r+e):.4f}" euler="0 {rr-rf:.5f} 0">
               <joint name="link_c_{side}" type="hinge" axis="0 1 0" ref="{rr-rf:.5f}" damping="0.01"/>
               <geom type="capsule" fromto="0 0 0 0 0 {-(e+s):.4f}" size="{LINK_RADIUS}" mass="{link_c_kg:.4f}" rgba="0.9 0.2 0.2 1" {NOCOL}/>
-              <geom name="tread_drive_{side}" type="box" pos="0.018 0 -0.03" size="0.012 0.012 0.02"
+              <geom name="tread_drive_{side}" type="box" pos="{TREAD_BOX_X} 0 {TREAD_BOX_Z}" size="0.012 0.012 0.02"
                     mass="{tread.mass_kg:.4f}" rgba="0.9 0.3 0.3 1" {NOCOL}/>
               {_ankle(side, p, st, ankle_rest, ref=-rr, euler=f'pos="0 0 {-(e+s):.4f}" euler="0 {-rr:.5f} 0"')}
             </body>

@@ -252,6 +252,30 @@ servo), scored against round 9 on the same four tilted starts.
    the workspace and do not move. The pantograph now has a strider that
    stands under the real servo with the body it had in round 7, which the
    round-9 body cannot match: its stance is beyond its roll lever.
+   *Round 1d (2026-11-08, `configs/skater_walk_phase1d.json`): the round-7
+   body locked, every task under the real servo with the lead, the walk
+   under the clamp, clock gait.* The contact gait and the capture point both
+   drop this gait at the start (0.9 s and 2-5 s), tuned as they were on the
+   round-9 shuffler, so they stayed off. Forty generations, GA best -0.15
+   against the seed's -0.35 on the GA's own two repeats; on four tilted
+   starts the "best" stands three of four and scores -0.44 against the
+   seed's -0.35 on four of four, and stands worse under the shove. Nothing
+   kept (the archetype was deleted). Same lesson as round 1c, from the
+   other side: the mean of two starts is a knife edge the GA walks along,
+   and item 5 (the robustness score) is now the binding item, before
+   another gains round. Found on the way: the round-7 stand under the real
+   servo falls on one or two of four shoves (its stand gains were never
+   tuned under it), and its cobblestone walk lasts 2-4 s.
+   *Also 2026-11-08: the tread drive box moved* (`mjcf.TREAD_BOX_X / _Z`)
+   from the shin's inner face 30 mm below the top pin, where it ran 3 mm
+   into the front rod's extension at a 5 cm lift and 8 mm into link_b at
+   the workspace edge (the model never collides link to link, so nothing
+   had said so), to the outer face halfway between the two pins, 22 mm off
+   the link: 19 mm clear in the walk, 11 mm anywhere in the workspace. The
+   user's reasons: crash avoidance, and a buildable model, where the drive
+   and a pair of fingers both have to fit beside the four-bar. Round 7
+   rescored identically on flat (12 s on four, -0.34), a little better on
+   cobblestone and the stand, within the noise.
 4. **Landing mode.** On a contact rise after a flight (or after a swing on
    rough ground) the leg's stiffness drops for a few hundred ms through the
    horn command, then recovers. Needed before the run and the hop.
