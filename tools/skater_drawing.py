@@ -112,7 +112,7 @@ def labels(sc: Scene, p: dict) -> list:
             (sc.mid(link_c, foot), [f"strut_len {p['strut_len'] * 100:.1f} cm", "ankle node down to the sprung foot"], LEG),
             (sc.mid(rod_f, link_c), [f"crouch {p['crouch']:.2f} rad", f"parked leg: reach {panto_reach(p) * 100:.0f} cm x cos(crouch/2)", f"= {nominal_height(p) * 100:.0f} cm hip height"], LEG),
             (bracket, [f"roll lever = bracket {roll_arm(p) * 100:.1f} cm / horn", f"-> roll ratio {roll_ratio(p):.2f} (derived, not a gene)", "pivot at the hip centre, both leg servos ride on it"], DRIVE),
-            (sc.mid(roll_horn, roll_link), ["roll servo horn + link", "(horn_len, horn_k_log10 again)"], DRIVE),
+            (sc.mid(roll_horn, roll_link), ["roll servo horn + link", "(horn_len, horn_k_log10 again)", f"roll_servo_kgcm {p['roll_servo_kgcm']:.0f}, roll_servo_sec60 {p['roll_servo_sec60']:.2f} s/60 deg"], DRIVE),
         ]
     else:
         items += [

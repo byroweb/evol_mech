@@ -60,7 +60,7 @@ import math
 import mujoco
 import numpy as np
 
-from ..body.hardware import (fan_from_params, servo_from_params, tread_drive_from_params,
+from ..body.hardware import (fan_from_params, servo_from_params, roll_servo_from_params, tread_drive_from_params,
                              FAN_PITCH_SERVO_KP, FAN_PITCH_SERVO_TORQUE)
 from ..body.structure import (hip_half_y, fan_center_y, fan_z_core, payload_z as _payload_z,
                               HIP_HALF_X, HIP_HALF_Z)
@@ -312,14 +312,14 @@ def _fan(side: str, sign: float, p: dict[str, float], mass: float, diam: float) 
 
 
 def _leg_actuators(side: str, p: dict[str, float]) -> str:
-    servo = servo_from_params(p)
+    servo, roll_servo = servo_from_params(p), roll_servo_from_params(p)
     tread = tread_drive_from_params(p)
-    # each servo's position stiffness in series with its flexing horn; the roll servo
-    # works through the bracket lever (structure.roll_ratio), reflected onto the roll hinge
+    # each servo's position stiffness in series with its flexing horn; the roll servo (its own
+    # spec) works through the bracket lever (structure.roll_ratio), reflected onto the roll hinge
     ratio = roll_ratio(p)
     kp_leg = series_kp(servo.kp, horn_stiffness(p))
-    kp_roll = kp_leg * ratio ** 2
-    gains = {"hip_roll": (kp_roll, servo.torque_nm * ratio), "hip_pitch": (kp_leg, servo.torque_nm),
+    kp_roll = series_kp(roll_servo.kp, horn_stiffness(p)) * ratio ** 2
+    gains = {"hip_roll": (kp_roll, roll_servo.torque_nm * ratio), "hip_pitch": (kp_leg, servo.torque_nm),
              "knee": (kp_leg, servo.torque_nm)}
     rows = [f'<position name="{j}_{side}" joint="{j}_{side}" kp="{gains[j][0]:.2f}" kv="{gains[j][0] * SERVO_KV_FRAC:.3f}" '
             f'forcerange="{-gains[j][1]:.3f} {gains[j][1]:.3f}"/>' for j in LEG_JOINTS]

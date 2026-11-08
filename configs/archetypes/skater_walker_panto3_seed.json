@@ -92,6 +92,8 @@
   "rod_ext": 0.03708967949202229,
   "strut_len": 0.060855681152193655,
   "roll_ratio": 1.3237019569718034,
-  "horn_k_log10": 1.4
+  "horn_k_log10": 1.4,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.15
  }
 }

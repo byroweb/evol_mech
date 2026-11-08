@@ -91,6 +91,8 @@
   "rod_ext": 0.06,
   "strut_len": 0.05,
   "roll_ratio": 1.0,
-  "horn_k_log10": 3.0
+  "horn_k_log10": 3.0,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.15
  }
 }

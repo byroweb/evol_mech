@@ -71,6 +71,8 @@
   "shift_phase": 0.025704087180422195,
   "run_stance_x": 0.0,
   "run_kv_x": 0.11919620320006435,
-  "run_kp_leg": -0.40576390799271433
+  "run_kp_leg": -0.40576390799271433,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.15
  }
 }

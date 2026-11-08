@@ -53,7 +53,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from ..body.hardware import (fan_from_params, servo_from_params, tread_drive_from_params,
+from ..body.hardware import (fan_from_params, servo_from_params, roll_servo_from_params, tread_drive_from_params,
                              TREAD_RUBBER_KG_PER_M2, ROLLER_KG_PER_M, SOLE_PLATE_KG_PER_M2)
 from ..body.structure import (HIP_HALF_X, HIP_HALF_Z, SHELL_KG_PER_M2, HIP_HARDWARE_KG,
                               FAN_ARM_KG_PER_M, ELECTRONICS_KG, BATTERY_KG_BASE, BATTERY_KG_PER_MAH,
@@ -555,7 +555,7 @@ def structure_from_params(p: dict[str, float]) -> SkaterStructure:
     lay = foot_layout(p)
 
     hip = (SHELL_KG_PER_M2 * _box_area(HIP_HALF_X, hip_half_y(p), HIP_HALF_Z)
-           + HIP_HARDWARE_KG + 2 * SERVOS_PER_LEG * servo.mass_kg)
+           + HIP_HARDWARE_KG + 2 * (SERVOS_PER_LEG - 1) * servo.mass_kg + 2 * roll_servo_from_params(p).mass_kg)
     arm = math.sqrt(p["fan_x"] ** 2 + fan_center_y(p) ** 2 + fan_z_core(p) ** 2)
     cx, cy = core_half_x(p), core_half_y(p)
     core = SHELL_KG_PER_M2 * _box_area(cx, cy, p["core_height"] / 2) + 2 * FAN_ARM_KG_PER_M * arm

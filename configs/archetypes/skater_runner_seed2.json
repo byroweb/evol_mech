@@ -79,6 +79,8 @@
   "stance_x": -0.01,
   "run_stance_x": -0.01,
   "run_kv_x": 0.1,
-  "run_kp_leg": 0.0
+  "run_kp_leg": 0.0,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.15
  }
 }

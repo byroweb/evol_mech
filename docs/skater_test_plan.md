@@ -52,7 +52,7 @@ to use it. Nothing here needs a GA round; each item is a commit with a test.
       stiffness model), a 20 ms command latency and a 50 Hz command rate so
       the derivative gains are tuned against the servo the build will have,
       not a continuous one. Expect the round-5 limit cycle to move.
-- [ ] **A roll servo spec of its own** (`roll_servo_kgcm`,
+- [x] **A roll servo spec of its own** (`roll_servo_kgcm`,
       `roll_servo_sec60`): on the wide hip the roll servo carries the leg
       through a 5-6x lever and is the stout one; on the 10 cm hip it idled
       at 3 % of its torque.

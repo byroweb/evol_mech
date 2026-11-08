@@ -66,7 +66,7 @@ import math
 import mujoco
 import numpy as np
 
-from ..body.hardware import tread_drive_from_params, servo_from_params, fan_from_params
+from ..body.hardware import tread_drive_from_params, servo_from_params, roll_servo_from_params, fan_from_params
 from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .sensors import FootSensors
@@ -122,7 +122,7 @@ class SkaterController:
         self.hip_id = hip_id
         self.mass = float(model.body_subtreemass[hip_id])
         self.tread = tread_drive_from_params(p)
-        self.servo = servo_from_params(p)
+        self.servo, self.roll_servo = servo_from_params(p), roll_servo_from_params(p)
         self.t_max = fan_from_params(p).max_thrust_n
         self.roller_q = {s: model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"roller_{s}0")]
                          for s in ("l", "r")}
@@ -378,7 +378,7 @@ class SkaterController:
             self.model.qpos_spring[self.ankle_q[s]] = -shin - self.p["ankle_rest"]
 
     def _slew(self, name: str, target: float) -> float:
-        step = self.servo.max_rad_s * CONTROL_DT / (self.roll_ratio if name.startswith("hip_roll") else 1.0)
+        step = (self.roll_servo.max_rad_s / self.roll_ratio if name.startswith("hip_roll") else self.servo.max_rad_s) * CONTROL_DT
         cur = self.servo_cmd[name]
         cur += max(-step, min(step, target - cur))
         self.servo_cmd[name] = cur

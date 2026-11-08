@@ -90,7 +90,9 @@
   "rod_ext": 0.09338720254132518,
   "strut_len": 0.052131493010755175,
   "roll_ratio": 1.2725104345149898,
-  "horn_k_log10": 1.4
+  "horn_k_log10": 1.4,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.15
  },
  "genome": [
   0.08333333333333336,

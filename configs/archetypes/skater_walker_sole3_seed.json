@@ -82,6 +82,8 @@
   "run_kp_leg": -0.1875011365843105,
   "trans_s": 1.19859748361556,
   "run_lean": 0.03448546005065755,
-  "tread_w": 0.1
+  "tread_w": 0.1,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.15
  }
 }

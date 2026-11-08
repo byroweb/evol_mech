@@ -41,6 +41,8 @@ PARAMS: list[Param] = [
     # ---- drivetrain -----------------------------------------------------------
     Param("servo_kgcm",       10,   60,   25,   "drivetrain", 5),  # leg servo stall torque, catalogue steps
     Param("servo_sec60",      0.06, 0.20, 0.15, "drivetrain"),     # leg servo speed, s per 60 deg (0.15 standard, 0.06-0.08 HV coreless / brushless)
+    Param("roll_servo_kgcm",  10,   80,   25,   "drivetrain", 5),  # hip roll servo stall torque: on a wide hip it carries the leg through the bracket lever and is the stout one
+    Param("roll_servo_sec60", 0.06, 0.20, 0.15, "drivetrain"),     # hip roll servo speed
     Param("tread_motor_w",    20.0, 150.0, 60.0, "drivetrain"),  # rated electrical power
     # ---- fan hardware spec (catalogue steps) ---------------------------------
     Param("fan_diam_in",      2,    6,    3,    "fan_spec", 1),

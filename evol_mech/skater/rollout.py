@@ -275,6 +275,11 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     servo_prev: list[np.ndarray] = []                 # last two servo command vectors (chatter metric)
     servo_acc_sq, servo_sat = 0.0, 0
     servo_step = ctrl.servo.max_rad_s * CONTROL_DT
+    # the scored saturation (servo_sat_frac, in the grace) has always measured every channel against
+    # the leg servo's slew, which the roll channel (slewed at the roll servo's speed over the lever)
+    # never reaches; the roll servo's own saturation is reported separately, not yet scored
+    roll_step = ctrl.roll_servo.max_rad_s / ctrl.roll_ratio * CONTROL_DT
+    roll_sat = 0
     fan_energy = motor_energy = 0.0
     time_upright = 0.0
     fell = unstable = False
@@ -320,6 +325,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         if len(servo_prev) == 2:
             acc_hist[k] = float(np.mean((servo_cmd - 2 * servo_prev[-1] + servo_prev[-2]) ** 2))
             sat_hist[k] = int(np.any(np.abs(servo_cmd[:6] - servo_prev[-1][:6]) >= 0.98 * servo_step))
+            roll_sat += int(np.any(np.abs(servo_cmd[:2] - servo_prev[-1][:2]) >= 0.98 * roll_step))
             servo_acc_sq += acc_hist[k]
             servo_sat += int(sat_hist[k])
         feet_hist[k] = float(np.mean([data.xpos[b][0] for b in foot_bodies]))
@@ -492,6 +498,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "leg_mass_penalty": leg_pen,
         "total_mass": total_mass,
         **ctrl.sensors.summary(),
+        "roll_servo_sat_frac": roll_sat / max(1, n - 2),
         "sim_steps": steps,
         "wall_s": wall,
         "steps_per_s": steps / wall if wall > 0 else 0.0,

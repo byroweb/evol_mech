@@ -146,9 +146,18 @@ class ServoSpec:
     kp: float                    # N·m/rad of the internal position loop
 
 
-def servo_from_params(p: dict[str, float]) -> ServoSpec:
-    kgcm = p["servo_kgcm"]
+def servo_spec(kgcm: float, sec60: float = SERVO_SEC_PER_60DEG) -> ServoSpec:
     t = kgcm * 0.0981
-    sec60 = p.get("servo_sec60", SERVO_SEC_PER_60DEG)
     mass = SERVO_KG_BASE + SERVO_KG_PER_KGCM * kgcm + SERVO_KG_PER_SPEED * max(0.0, SERVO_SEC_PER_60DEG / sec60 - 1.0)
     return ServoSpec(kgcm, t, mass, math.radians(60) / sec60, t / SERVO_DEADBAND_RAD)
+
+
+def servo_from_params(p: dict[str, float]) -> ServoSpec:
+    """The two leg servos per leg (thigh / front horn, shin / rear horn)."""
+    return servo_spec(p["servo_kgcm"], p.get("servo_sec60", SERVO_SEC_PER_60DEG))
+
+
+def roll_servo_from_params(p: dict[str, float]) -> ServoSpec:
+    """The hip roll servo, one per leg: its own spec, since on a wide hip it carries the whole
+    leg through the bracket lever. Follows the leg servo when the genes are absent."""
+    return servo_spec(p.get("roll_servo_kgcm", p["servo_kgcm"]), p.get("roll_servo_sec60", p.get("servo_sec60", SERVO_SEC_PER_60DEG)))

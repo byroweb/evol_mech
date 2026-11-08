@@ -77,7 +77,9 @@
   "run_fan": 0.0,
   "run_stance_x": 0.0,
   "run_kv_x": 0.11919620320006435,
-  "run_kp_leg": -0.46
+  "run_kp_leg": -0.46,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.15
  },
  "note": "hand-swept run genes on the round-5 walker body (fans off, kp_foot_leg -0.46): 2.0 m in 6 s, airborne 20 % of the time, no fall"
 }

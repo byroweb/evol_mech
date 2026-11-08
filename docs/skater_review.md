@@ -242,6 +242,25 @@ for; a velocity integral in the controller is the alternative.
   hip), so the wide-hip walk is carried by servos at their torque limit and
   its 2.6 deg roll is not a build result until the roll servo has its own,
   stouter spec (phase 0) and the walk is re-scored with it.
+- **Roll servo spec (plan phase 0).** `roll_servo_kgcm` and
+  `roll_servo_sec60` are genes (10-80 kg cm, 0.06-0.20 s per 60 deg), used
+  for the roll actuator's torque and stiffness, the roll channel's slew and
+  the hip's mass (`hardware.roll_servo_from_params`; every archetype was
+  given its leg servo's values, so no gait changed). The scored saturation
+  keeps measuring the roll channel against the leg servo's slew as it
+  always has; the roll servo's own saturation is reported as
+  `roll_servo_sat_frac`. Re-scoring round 9 with a stouter roll servo did
+  not take it off its limit: 53 % of the time at stall with 40 kg cm, 37 %
+  with 80, the walk otherwise unchanged (fitness -0.06 to -0.09, grace
+  0.42-0.43, roll 2.6-2.7 deg). The probe says why: the roll joint sits at
+  8.4 deg while the command is 14.4 deg and the joint is never on its stop,
+  so the two roll servos are squeezing the planted feet toward each other
+  against the floor's friction. The GA's "feet 5.4 cm inboard" is a command
+  the feet never reach (the measured track is 23 cm, the commanded 15); the
+  2.6 deg roll is bought by preloading the stance through the floor with
+  two servos at stall. That is a foot-placement rule set at swing and held
+  from the measured foot in stance, which is phase 1's capture-point step,
+  not a servo size.
   Open: the lower links' fore-aft
   reach is the horn's (a 3.5 cm horn cannot move the X 6 cm at a deep
   crouch, so the buildability check rejects it), the leg mass sits at 15 %

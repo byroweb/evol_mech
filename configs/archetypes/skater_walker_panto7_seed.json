@@ -91,6 +91,8 @@
   "strut_len": 0.06027536195834955,
   "roll_ratio": 1.3605590714674913,
   "horn_k_log10": 1.4,
-  "servo_sec60": 0.075
+  "servo_sec60": 0.075,
+  "roll_servo_kgcm": 40.0,
+  "roll_servo_sec60": 0.075
  }
 }
