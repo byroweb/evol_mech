@@ -775,3 +775,29 @@ def test_servo_lead_stands_the_round9_strider_under_the_real_servo():
     model, phys = make_model(encode(p), "flat", np.random.default_rng(0), task)
     assert SkaterController(model, phys, task, True).lead == 0.0
     assert SkaterController(model, phys, {**task, "servo_lead": "auto"}, True).lead == pytest.approx(0.04)
+
+
+def test_workspace_clamp_keeps_the_pantograph_ik_on_its_branch_and_stands_the_round7_strider():
+    """Phase 1 item 3b: the workspace clamp (task leg_reach 'clamp'). The round-7 strider ran its
+    stance leg past the pantograph's reach every cycle and lived on the IK's nearest-pose fallback;
+    under the real servo the fallback wandered onto the other solution branch and it fell in 1-4 s.
+    Clamped to the reach (and led for the latency) it strides 12 s from the seed-0 tilted start;
+    under the ideal servo the clamp changes the score by a hair and takes the slew saturation from
+    0.19 to under 0.05, the chatter having been the fallback. Default 'free' keeps every score."""
+    from evol_mech.skater.controller import SkaterController, REACH_MARGIN
+    from evol_mech.skater.structure import panto_reach
+    p = json.load(open("configs/archetypes/skater_walker_panto7.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 12.0,
+            "pose_noise_deg": 2.0, "servo_model": "real", "gait_phase": "clock", "servo_lead": "auto"}
+    free = rollout(encode(p), task, 0)
+    clamped = rollout(encode(p), {**task, "leg_reach": "clamp"}, 0)
+    assert free["fell"] and free["time_upright"] < 5.0, free["time_upright"]
+    assert not clamped["fell"] and clamped["time_upright"] == pytest.approx(12.0, abs=0.02)
+    assert clamped["stride_m"] > 0.10 and clamped["feet_x_m"] > 1.2 and clamped["swing_clear_m"] > 0.02
+    ideal = {**task, "servo_model": "ideal", "servo_lead": 0.0}
+    a, b = rollout(encode(p), ideal, 0), rollout(encode(p), {**ideal, "leg_reach": "clamp"}, 0)
+    assert a["servo_sat_frac"] > 0.1 and b["servo_sat_frac"] < 0.05 and abs(a["fitness"] - b["fitness"]) < 0.1
+    model, phys = make_model(encode(p), "flat", np.random.default_rng(0), task)
+    c = SkaterController(model, phys, {**task, "leg_reach": "clamp"}, True)
+    assert c.reach_clamp and c.reach_max == pytest.approx(panto_reach(phys) - REACH_MARGIN)
+    assert not SkaterController(model, phys, task, True).reach_clamp

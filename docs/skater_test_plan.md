@@ -226,6 +226,32 @@ servo), scored against round 9 on the same four tilted starts.
    unmoved up to 30 ms and loses a start at 40. Cobblestone unmoved
    everywhere (1.5 s): rough ground is the contact gait's job and these are
    clock striders.
+   *3b done 2026-11-08, and not as written.* The horns carry no gravity load
+   worth compensating: the leg hung still in the air reads 0.00 of stall on
+   every horn, and the stance horns read 0.03 to 0.10. What the round-8 and
+   round-7 striders' horns were doing was the IK's fault, not the servo's.
+   Their stance leg runs 1 to 2 cm past the pantograph's straight-down
+   reach (31 cm; the crouch sits 2.3 cm inside it) for a third of every
+   stance, and 4 cm past it in the first 0.4 s, even under the ideal servo:
+   the GA had learned to lean on `panto_ik`'s nearest-pose fallback, which
+   the stiff ideal servo tracked with 15-50 mm of foot error and a slew
+   saturation of 0.19-0.26 that was this chatter. Under the real servo the
+   fallback's damped Newton wandered onto the other solution branch (both
+   horns at +130 deg) and stayed there for the whole run. The fix is the
+   workspace clamp (task `leg_reach: clamp`; default `free` keeps every
+   score): the ankle target is pulled radially toward the hip point to
+   `REACH_MARGIN` (1 cm) inside the reach before the IK, and an IK that
+   does not converge from the last pose is solved again from the crouch.
+   With the clamp and the lead, under the real servo and four tilted
+   starts: round 7 stands 12 s on all four with 14.6 cm strides, 4.7 cm
+   clearance, 2.0 m in 12 s, fitness -0.35 (from -0.72 and 1.4 s); round 8
+   three of four, 12 cm strides, 1.6 m (from 0.4 m). The clamp alone,
+   without the lead, gives three of four on each. Under the ideal servo the
+   clamp changes their scores by 0.00 to 0.02 and takes the saturation from
+   0.19-0.26 to 0.01-0.04. The round-9 body and the shuffler never leave
+   the workspace and do not move. The pantograph now has a strider that
+   stands under the real servo with the body it had in round 7, which the
+   round-9 body cannot match: its stance is beyond its roll lever.
 4. **Landing mode.** On a contact rise after a flight (or after a swing on
    rough ground) the leg's stiffness drops for a few hundred ms through the
    horn command, then recovers. Needed before the run and the hop.

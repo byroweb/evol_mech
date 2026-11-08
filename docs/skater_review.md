@@ -425,3 +425,37 @@ for; a velocity integral in the controller is the alternative.
   phase-1a shuffler neither gains nor loses up to 30 ms. The round-9 body
   now has a strider that stands under the real servo, which no gains round
   had produced; the next gains round should run with `servo_lead auto`.
+
+  Phase 1, item 3b (2026-11-08): the workspace clamp, task `leg_reach:
+  clamp`, in place of gravity compensation, which turned out to have
+  nothing to compensate. Hung still in the air the leg reads 0.00 of stall
+  on every horn, and in stance the horns read 0.03 to 0.10: the pantograph's
+  horns are not loaded by weight. The swing-horn "load" the ablation
+  blamed was the position gain meeting a staircase of commands, and the
+  staircase was the IK's. A trace of every `panto_ik` call on the round-8
+  strider shows its stance leg 1 to 2 cm past the pantograph's 31 cm
+  straight-down reach for a third of every stance and 4 cm past it for the
+  first 0.4 s, under the ideal servo too: the GA had learned to lean on the
+  IK's nearest-pose fallback, which returns the closest pose the damped
+  Newton found with 15 to 50 mm of residual, and the stiff ideal servo
+  tracked that, which is where the ideal servo's 0.19 to 0.26 of slew
+  saturation came from. Under the real servo the fallback wandered onto
+  the other solution branch, both horns at +130 deg, and stayed there for
+  the whole run. The clamp pulls the ankle target radially toward the hip
+  point to a centimetre inside the reach before the IK, and an IK that does
+  not converge from the last pose is solved again from the crouch. Under
+  the real servo with the lead, four tilted starts: the round-7 strider
+  stands 12 s on all four with 14.6 cm strides, 4.7 cm clearance, 2.0 m in
+  12 s and fitness -0.35 (from -0.72 and 1.4 s); the round-8 strider three
+  of four, 12 cm strides, 1.6 m. The clamp without the lead gives three of
+  four on each; the lead without the clamp gives nothing, which is why item
+  3a looked like it had missed them. Under the ideal servo the clamp costs
+  0.00 to 0.02 of fitness and removes the saturation. The round-9 body and
+  the shuffler never leave the workspace and are unchanged. Two things
+  follow. The static check's 2 cm of extension headroom is a real
+  constraint the controller now honours, and the GA will have to pick a
+  deeper crouch or a longer leg if it wants a longer stance. And the
+  pantograph's strider is the round-7 body (10 cm hip, 25 mm horn, fast
+  servo), not round 9: round 9's inboard stance is beyond its roll lever
+  and its best walk under the real servo is a 7 cm stride, while round 7
+  now does 15 cm with the body it always had.

@@ -73,7 +73,8 @@ from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .sensors import FootSensors
 from .structure import (nominal_angles, nominal_height, nominal_foot, angles_from_foot,
                         horn_from_shin, shin_from_horn, drive_stops, KNEE_RANGE, hip_roll_range,
-                        roll_ratio, roll_arm, is_pantograph, panto_nominal, panto_ik, panto_pose_allowed, ROLL_PIVOT_Y)
+                        roll_ratio, roll_arm, is_pantograph, panto_nominal, panto_ik, panto_pose_allowed, ROLL_PIVOT_Y,
+                        panto_reach)
 
 MU_FOOT = 1.2
 G = 9.81
@@ -129,6 +130,7 @@ ANCHOR_FROM_MEASUREMENT = True   # False: the stance sweep and swing start from 
 # 40 cm/rad body translation through the roll servos against feet that do not slide. Sizing the body
 # shift to the measured feet was tried too and dropped: it unsettled every clock-tuned gait, and the
 # shift's gene formula already sizes it to the stance foot. Correct at any hip width by construction.
+REACH_MARGIN = 0.01         # the workspace clamp keeps the ankle this far inside the leg's straight-down reach
 KNEE_FROM_MEASURED_THIGH = False  # knee target: four-bar at the commanded thigh. True = at the measured thigh,
                                   # closer to a rigid link but the two position loops then chatter (rms accel x3)
 
@@ -193,6 +195,17 @@ class SkaterController:
             # the pantograph: both leg servos are horns; the IK warm-starts from the last pose
             hf, hr = panto_nominal(p)
             self.ik_guess = {s: (hf, hr) for s in ("l", "r")}
+            self.ik_nominal = (hf, hr)
+            # the workspace clamp (task leg_reach "clamp"; default off keeps every score): the ankle
+            # target is held inside the leg's reach, REACH_MARGIN short of full extension, before the
+            # IK, and an IK that does not converge from the last pose is retried from the crouch.
+            # Found by the phase-1 stall diagnosis: the round-8 strider ran its stance leg 1-2 cm
+            # past the pantograph's reach for a third of every stance even under the ideal servo
+            # (the GA had learned to lean on the IK's nearest-pose fallback), and under the real
+            # servo the fallback wandered onto the other solution branch (both horns at +130 deg)
+            # and stayed there: 20-50 mm of foot error, half the horn slew in chatter, a fall in 2 s
+            self.reach_clamp = str(task.get("leg_reach", "free")) == "clamp"
+            self.reach_max = panto_reach(p) - REACH_MARGIN
             self.servo_cmd = {f"{j}_{s}": (hf if j == "hip_pitch" else hr if j == "knee" else 0.0)
                               for s in ("l", "r") for j in ("hip_roll", "hip_pitch", "knee")}
             # the foot hangs from link_c: its body-relative angle is the chain's qpos sum
@@ -718,7 +731,16 @@ class SkaterController:
             if self.panto:
                 # both horns from the ankle target; an unreachable target gives the nearest pose
                 # clear of the folds, a failed solve holds the last one
-                hf, hr, res = panto_ik(p, x_f + gx, -drop, self.ik_guess[s])
+                xa, za = x_f + gx, -drop
+                if self.reach_clamp:
+                    r_a = math.hypot(xa, za)
+                    if r_a > self.reach_max:                 # radially, toward the hip point
+                        xa, za = xa * self.reach_max / r_a, za * self.reach_max / r_a
+                hf, hr, res = panto_ik(p, xa, za, self.ik_guess[s])
+                if self.reach_clamp and not res < 1e-4:      # off the branch: solve again from the crouch
+                    hf2, hr2, res2 = panto_ik(p, xa, za, self.ik_nominal)
+                    if res2 < res:
+                        hf, hr, res = hf2, hr2, res2
                 if math.isfinite(res) and panto_pose_allowed(p, hf, hr):
                     self.ik_guess[s] = (hf, hr)
                 hf, hr = self.ik_guess[s]
