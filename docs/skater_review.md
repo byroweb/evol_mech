@@ -567,3 +567,16 @@ for; a velocity integral in the controller is the alternative.
   starts. That is the case for the population-shape test and for CMA-ES
   (item 6), and it is the case for stopping the gains rounds on this body
   until the score's starts are drawn fresh each generation.
+
+  The population-shape test (2026-11-08) asked whether round 1e's 96 x 40
+  was the right way to spend 3840 evaluations. Wide and short (192 x 20)
+  found its best at generation 6 and scored -0.91 on unseen seeds. Long and
+  narrow (48 x 80) kept climbing to a GA best of -0.25, the best number any
+  round has shown, and scored -0.71 on unseen seeds against round 1e's
+  -0.74. So the long run learned its eight starts far better and the walk
+  in general only a little better. What it did learn is the kind the user
+  asks for: the steadiest walk yet (roll 5.1 deg RMS, servos saturated 5 %
+  of the time), slightly longer strides, but feet lifted only 2.1 cm and one
+  perturbed stand lost. Kept as a seed. The shape question is answered
+  (long and narrow), and the answer matters less than the overfitting it
+  exposed: the next change is fresh starts each generation.

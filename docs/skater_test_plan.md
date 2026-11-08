@@ -364,6 +364,21 @@ servo), scored against round 9 on the same four tilted starts.
    with stride. Items 1 and 2 on the strider are done in the forms the
    body allows; capture on top of the contact gait is untuned (-1.01 as a
    seed) and would be the next gains round if wanted.
+   Population-shape test (2026-11-08, round-1e setup from panto7, the same
+   3840 evaluations three ways). 96 x 40 (round 1e): GA best -0.37, unseen
+   -0.74. 192 x 20 (`shape_wide`): GA best -0.59 found at generation 6 and
+   never bettered, unseen -0.91. 48 x 80 (`shape_long`): GA best -0.25 at
+   generation 68, unseen -0.71. Long and narrow climbs furthest on its own
+   starts, but the unseen score barely moves: the GA number gains 0.12 over
+   96 x 40, the unseen number 0.03. Beside phase1e on the same unseen seeds
+   the 48 x 80 winner walks better (flat p20 -0.28 vs -0.49, roll 5.1 vs 6.7
+   deg RMS, servo saturation 5 vs 19 %, strides 12.8 vs 11.8 cm) and stands
+   worse (one of four perturbed stands falls at 1.9 s; phase1e 4 of 4), and
+   its clearance is 2.1 cm (phase1e 3.0): no clearance floor in the round-1e
+   score. Kept as `skater_walker_shape_long.json`, a seed only, like phase1f.
+   Conclusion: use 48 x 80 for later rounds, and treat the gap between the
+   GA best and the unseen score as the real limit: the starts must be drawn
+   fresh each generation before the population shape matters.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

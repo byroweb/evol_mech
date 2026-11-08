@@ -26,6 +26,7 @@ overstated every round.
 | phase1e | round 1e: gains on the robustness score | -0.74 | 7/8, 4/4 stands, 12 cm strides, 3.0 cm clearance, fans 1.7 % |
 | phase1f | round 1f: + capture point | -0.58 (its score) | 7/8, roll 5.3 deg (lowest), but 1.0 cm clearance: seed only |
 | phase1h | round 1h: + contact gait (strider form) + 3 cm clearance floor | -0.91 (its score, seed -1.10) | the item-1 walker; 10.5 cm strides sit on the floor |
+| shape_long | round-1e setup as 48 x 80 | -0.71 (GA best -0.25) | steadiest walk (roll 5.1 deg, 5 % servo saturation), 2.1 cm clearance, 3/4 stands: seed only |
 
 Every one falls on cobbles inside 3 s. Roll is 5-7 deg RMS on all of them against the plan's
 4: the only lateral tool is the hip roll servos, which roll the body as much as they move it.
@@ -46,20 +47,17 @@ Every one falls on cobbles inside 3 s. Roll is 5-7 deg RMS on all of them agains
 6. CMA-ES: not started. The case for it: the GA best wanders 0.1 after generation 20 and
    overfits its eight fixed starts (round 1h: GA best -0.29, unseen flat -0.70).
 
-Running at handoff: the population-shape test, round-1e setup at 3840 evaluations as 192 x 20
-(`shape_wide`, finished, GA best -0.59) and 48 x 80 (`shape_long`, GA best -0.25 at
-generation 69). Score both with `tools\score_round.py shape_wide panto7` and
-`shape_long panto7` and compare with round 1e's -0.74. Do not trust the GA best.
+Population-shape test, done: at 3840 evaluations 192 x 20 scored -0.91 on unseen seeds,
+96 x 40 (round 1e) -0.74, 48 x 80 -0.71 with a GA best of -0.25. Use 48 x 80 from now on; the
+gap between the GA best and the unseen score is the real limit.
 
 ## Recommended next steps, in order
 
-1. Score the shape test (above), write it into the plan and review, delete the two
-   `skater_walker_shape_*` archetypes unless one beats phase1e on unseen seeds.
-2. Draw the robustness starts fresh each generation (seed the tasks by generation in
+1. Draw the robustness starts fresh each generation (seed the tasks by generation in
    `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
-   round so far memorised its starts.
-3. Item 6, CMA-ES over the gain genes on the fixed body with the robustness score.
-4. Phase 2 body round from phase1h, carrying: the roll-lever range (`structure.roll_lever_range`),
+   round so far memorised its starts. Run the next round as 48 x 80 with `clear_min 0.03`.
+2. Item 6, CMA-ES over the gain genes on the fixed body with the robustness score.
+3. Phase 2 body round from phase1h, carrying: the roll-lever range (`structure.roll_lever_range`),
    the 2.3 cm extension headroom, the tread box on the shin's outer face, a mass rule with
    servos and brackets at the pivots, and whatever gives a lateral ankle strategy (actuated
    or stiffer ankle roll, wider sole, or a translating hip). That is where single support,

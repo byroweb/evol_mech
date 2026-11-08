@@ -39,7 +39,7 @@ def save_best():
     base = decode(encode(json.load(open(A + f"skater_walker_{SEED}.json"))["phys"]))
     note = f"configs/skater_walk_{ROUND}.json best, from skater_walker_{SEED}: " + cfg.get("_note", "").split(". Seed check")[0]
     json.dump({"name": f"skater_walker_{ROUND}", "note": note, "phys": phys}, open(A + f"skater_walker_{ROUND}.json", "w"), indent=1)
-    print(f"GA fitness {best.get('fitness', best.get('best_fitness'))}")
+    print(f"GA fitness {best.get('fitness', best.get('result', {}).get('fitness'))} (generation {best.get('gen')})")
     moved = sorted([(k, base[k], phys[k]) for k in phys if abs(phys[k] - base[k]) > 1e-9], key=lambda m: -abs(m[2] - m[1]) / (abs(m[1]) + 1e-9))
     print(f"{len(moved)} genes moved; the 15 largest relative moves:")
     for k, a, b in moved[:15]:
