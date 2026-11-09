@@ -64,6 +64,49 @@ def fit_projection(model, data, seg):
     return lambda q: tuple((np.append(q, 1.0) @ M).tolist())
 
 
+def overall_box(model, data):
+    """The robot's overall extent in the world (m): min and max corners over every geom's bounding box (fans,
+    treads and all), the floor left out. x = length (forward), y = width, z = height."""
+    lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+    floor = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+    for g in range(model.ngeom):
+        if g == floor or model.geom_type[g] in (mujoco.mjtGeom.mjGEOM_PLANE, mujoco.mjtGeom.mjGEOM_HFIELD):
+            continue
+        c, h = model.geom_aabb[g][:3], model.geom_aabb[g][3:]
+        R = data.geom_xmat[g].reshape(3, 3)
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                for sz in (-1, 1):
+                    q = data.geom_xpos[g] + R @ (c + h * np.array([sx, sy, sz]))
+                    lo, hi = np.minimum(lo, q), np.maximum(hi, q)
+    return lo, hi
+
+
+DIM = (0, 0, 0)
+
+
+def dimension(img, proj, a, b, off, text, font):
+    """A dimension line between world points a and b, drawn offset by the world vector off, with extension lines
+    and the measurement at its middle."""
+    d = ImageDraw.Draw(img)
+    a2, b2 = np.asarray(a) + off, np.asarray(b) + off
+    pa, pb, pa0, pb0 = proj(a2), proj(b2), proj(a), proj(b)
+    d.line([pa0, pa], fill=(150, 150, 150), width=1)
+    d.line([pb0, pb], fill=(150, 150, 150), width=1)
+    d.line([pa, pb], fill=DIM, width=2)
+    v = np.array(pb) - np.array(pa)
+    n = v / (np.linalg.norm(v) + 1e-9)
+    for p0, sgn in ((pa, 1), (pb, -1)):                    # arrowheads
+        tip = np.array(p0)
+        base = tip + sgn * 9 * n
+        perp = np.array([-n[1], n[0]]) * 4
+        d.polygon([tuple(tip), tuple(base + perp), tuple(base - perp)], fill=DIM)
+    mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
+    tw = d.textlength(text, font=font)
+    d.rectangle([mx - tw / 2 - 4, my - 10, mx + tw / 2 + 4, my + 10], fill=(255, 255, 230), outline=DIM)
+    d.text((mx - tw / 2, my - 8), text, fill=DIM, font=font)
+
+
 class Scene:
     def __init__(self, model, data):
         self.model, self.data = model, data
@@ -162,13 +205,22 @@ def annotate(img, proj, items, font):
                 d.text((bx, ly - th / 2 + 16 * j), t, fill=col if j == 0 else GEOM, font=font)
 
 
-def view(model, data, p, azimuth, elevation, dist, look, title, font, big):
+def view(model, data, p, azimuth, elevation, dist, look, title, font, big, dims=None):
     rgb, seg = render(model, data, azimuth, elevation, dist, look)
     img = Image.new("RGB", (PW, PH), "white")
     img.paste(Image.fromarray(rgb), (PX, PY))
     proj0 = fit_projection(model, data, seg)
     proj = lambda q: (proj0(q)[0] + PX, proj0(q)[1] + PY)
     annotate(img, proj, labels(Scene(model, data), p), font)
+    if dims:
+        lo, hi = overall_box(model, data)
+        gap = 0.04
+        if dims == "front":     # width along y above the top, height along z beside the robot
+            dimension(img, proj, (0, lo[1], hi[2]), (0, hi[1], hi[2]), np.array([0, 0, gap]), f"width {100 * (hi[1] - lo[1]):.1f} cm", font)
+            dimension(img, proj, (0, lo[1], lo[2]), (0, lo[1], hi[2]), np.array([0, -gap, 0]), f"height {100 * (hi[2] - lo[2]):.1f} cm", font)
+        else:                   # side: length along x above the top, height along z behind the robot
+            dimension(img, proj, (lo[0], 0, hi[2]), (hi[0], 0, hi[2]), np.array([0, 0, gap]), f"length {100 * (hi[0] - lo[0]):.1f} cm", font)
+            dimension(img, proj, (lo[0], 0, lo[2]), (lo[0], 0, hi[2]), np.array([-gap, 0, 0]), f"height {100 * (hi[2] - lo[2]):.1f} cm", font)
     ImageDraw.Draw(img).text((PX, 14), title, fill=(0, 0, 0), font=big)
     return img
 
@@ -199,9 +251,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("best", nargs="?", help="archetype json (phys) or a GA best.json; default body otherwise")
     ap.add_argument("--out", default="runs/skater_drawing.png")
+    ap.add_argument("--set", default="", help="override genes, e.g. sole_len=0.24,tread_w=0.07")
     args = ap.parse_args()
     if args.best and "phys" in json.load(open(args.best)):
-        genome = encode(json.load(open(args.best))["phys"])
+        phys = json.load(open(args.best))["phys"]
+        for kv in filter(None, args.set.split(",")):
+            k, v = kv.split("=")
+            phys[k.strip()] = float(v)
+        genome = encode(phys)
     elif args.best:
         genome = load_genome(args.best)
     else:
@@ -217,14 +274,18 @@ def main():
 
     look = [0.0, 0.0, nominal_height(p) * 0.55 + 0.04]
     dist = 1.6 * (nominal_height(p) + p["core_height"])
-    front = view(model, data, p, 180, 0, dist, look, "FRONT VIEW", font, big)
-    side = view(model, data, p, 90, 0, dist, look, "SIDE VIEW  (forward = right)", font, big)
+    front = view(model, data, p, 180, 0, dist, look, "FRONT VIEW", font, big, dims="front")
+    side = view(model, data, p, 90, 0, dist, look, "SIDE VIEW  (forward = right)", font, big, dims="side")
+    lo, hi = overall_box(model, data)
+    size = hi - lo
     iso = view(model, data, p, 135, -28, dist * 1.15, look, "ISOMETRIC  (from the front-left, above)", font, big)
 
     drive = "pantograph leg (leg_drive 1)" if is_pantograph(p) else "four-bar leg (leg_drive 0)"
     name = Path(args.best).stem if args.best else "default body"
-    note = (f"{name}: {drive}, hip {p['hip_width'] * 100:.0f} cm, leg reach {leg_reach(p) * 100:.0f} cm, "
-            f"hip height {nominal_height(p) * 100:.0f} cm. Gene values (red leg, green drive, blue body, purple fan, brown foot):")
+    note = (f"{name}: {drive}. Overall W x L x H {size[1] * 100:.1f} x {size[0] * 100:.1f} x {size[2] * 100:.1f} cm, "
+            f"hip {p['hip_width'] * 100:.0f} cm, leg reach {leg_reach(p) * 100:.0f} cm, hip height {nominal_height(p) * 100:.0f} cm, "
+            f"foot {p['sole_len'] * 100:.0f} x {p['tread_w'] * 100:.0f} cm. Gene values (red leg, green drive, blue body, purple fan, brown foot):")
+    print(f"overall W x L x H cm: {size[1] * 100:.1f} x {size[0] * 100:.1f} x {size[2] * 100:.1f}")
     table = gene_table(p, font, big, 2 * PW, note)
     sheet = Image.new("RGB", (2 * PW, 2 * PH + table.height), "white")
     sheet.paste(front, (0, 0))
