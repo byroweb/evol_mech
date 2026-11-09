@@ -222,9 +222,11 @@ def main():
     band_y = HEADER_H + grid.h + BAND_PAD        # top of the best tile's copy
     copy_x = (W - tw) // 2
     bot_y = HEADER_H + grid.h + gap_h
-    # crf 30 at the full tile size: a 48 x 80 run is about 50 MB instead of 466 MB (quality=7), the labels still readable
+    # half resolution at crf 32: a 48 x 80 run of walkers is about 25 MB (under the 30 MB phone upload limit); at quality=7
+    # and full size it was 466 MB; the labels stay readable
     writer = imageio.get_writer(str(out), fps=FPS, codec="libx264", quality=None, macro_block_size=1,
-                                output_params=["-crf", "30", "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
+                                output_params=["-vf", "scale=trunc(iw/4)*2:-2", "-crf", "32", "-preset", "slow",
+                                               "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
 
     def labels_for(g, with_fitness=True):
         gen = gens[g]
