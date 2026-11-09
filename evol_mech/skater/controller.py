@@ -62,6 +62,7 @@ that side is carried while the foot is off the ground.
 from __future__ import annotations
 
 import math
+from collections import deque
 
 import mujoco
 import numpy as np
@@ -203,27 +204,42 @@ class SkaterController:
         # the left. Placement: slope_kx m/rad shifts the feet fore-aft (+ = feet back uphill), slope_ky m/rad sideways
         # (+ = toward the downhill side), slope_follow (0-1) lays the foot targets on the ground's plane instead of a
         # level one, slope_lean (0-1) pitches the body with the grade (the feet hold it; the parallelogram keeps
-        # the sole parallel to the body, so only that takes the slope's bend off the ankle spring). Best found
-        # (docs/skater_handoff.md, 2026-11-09): kx 0.15, ky 0.3, follow 0.5, lean 0.3, holds 4, plane, tau 0.1
+        # the sole parallel to the body, so only that takes the slope's bend off the ankle spring). "map" = the grade
+        # under the hip from a ground map of the lidar's last second of frames (map_* keys), its across reading held
+        # within slope_confirm_deg of the two current footfalls. Best found (docs/skater_handoff.md, 2026-11-09):
+        # map, confirm 1 deg, tau_lidar 0.2; kx 0.15, ky 0.3, follow 0.5, lean 0.3
         self.slope_est = task.get("slope_est") or None
         self.slope_true = ((float(task.get("slope_deg", 0.0)), float(task.get("slope_heading_deg", 0.0)))
                            if task.get("terrain") == "slope" else (0.0, 0.0))
         self.slope_kx = float(task.get("slope_kx", 0.0))
         self.slope_ky = float(task.get("slope_ky", 0.0))
         self.slope_follow = float(task.get("slope_follow", 0.0))
+        self.slope_follow_y = float(task.get("slope_follow_y", self.slope_follow))   # the across share, if set apart
         self.slope_tau = float(task.get("slope_tau", 0.5))
         self.slope_tau_lidar = float(task.get("slope_tau_lidar", self.slope_tau))
         self.slope_along = str(task.get("slope_along", "sole"))     # "sole": along from the flat soles' pitch; "plane": footholds
         self.slope_lean = float(task.get("slope_lean", 0.0))         # body pitch held per rad of grade along (0-1)
         self.task_oracle_dx = float(task.get("slope_oracle_dx", 0.0))
+        self.oracle_noise = math.radians(float(task.get("slope_oracle_noise_deg", 0.0)))
+        self._oracle_rng = np.random.default_rng(int(task.get("slope_oracle_seed", 0)))
+        self._oracle_bias = np.radians(np.array(task.get("slope_oracle_bias_deg", (0.0, 0.0)), dtype=float))
         self.slope_rows = int(task.get("slope_rows", 5))            # lidar: how many rows from the near edge feed the fit
         self.grade = np.zeros(2)
         self._g_feet, self._g_lidar = np.zeros(2), np.zeros(2)
         # "fused": the lidar's share of (along, across); the feet carry the rest
         self.slope_lidar_w = np.array(task.get("slope_lidar_w", (0.0, 1.0)), dtype=float)
+        # "map": a ground map of the lidar's last map_s seconds of frames, the grade fitted over map_ahead (m, from
+        # the hip along the heading) and map_half_w either side; points within map_foot_r of a foot are dropped
+        self.map_s = float(task.get("map_s", 1.0))
+        self.map_ahead = tuple(float(v) for v in task.get("map_ahead", (-0.05, 0.2)))
+        self.map_half_w = float(task.get("map_half_w", 0.15))
+        self.map_foot_r = float(task.get("map_foot_r", 0.09))
+        self._map = deque()
+        c = task.get("slope_confirm_deg")                            # map + footfall confirmation (deg), None = off
+        self.slope_confirm = math.radians(float(c)) if c is not None else None
         self._sole0 = None
-        from collections import deque
         self._holds = deque(maxlen=int(task.get("slope_holds", 6)))   # recent footholds (ankle positions), world
+        self._hold_last = {"l": None, "r": None}   # each foot's latest foothold (kept through its swing)
         self._hold_cur = {"l": None, "r": None}    # this foot's current stance entry in _holds, while it is down
         self.x_nom, z_nom = nominal_foot(p)
         self.h_nom = -z_nom                          # hip-to-ankle drop in the parked crouch
@@ -681,7 +697,29 @@ class SkaterController:
             x, y, e = float(pos[0]) + dx * cy, float(pos[1]) + dx * sy, 0.01
             gx = (slope_height(x + e, y, deg, head) - slope_height(x - e, y, deg, head)) / (2 * e)
             gy = (slope_height(x, y + e, deg, head) - slope_height(x, y - e, deg, head)) / (2 * e)
-            self.grade[:] = (math.atan(cy * gx + sy * gy), math.atan(-sy * gx + cy * gy))
+            g_true = np.array((math.atan(cy * gx + sy * gy), math.atan(-sy * gx + cy * gy)))
+            if self.oracle_noise:                                # experiments: how much estimate error a gait takes
+                g_true = g_true + self._oracle_rng.normal(0.0, self.oracle_noise, 2) + self._oracle_bias
+                self.grade += min(1.0, CONTROL_DT / max(CONTROL_DT, self.slope_tau)) * (g_true - self.grade)
+            else:
+                self.grade[:] = g_true
+            return
+        if self.slope_est == "map":
+            if self.lidar is not None and self.lidar.new_frame:
+                self._map_add(data)
+            m = self._grade_from_map(pos, cy, sy)
+            if m is not None and self.slope_confirm is not None:
+                # the two current footfalls confirm the map: the across grade it may report is held within
+                # slope_confirm of what the latest left and right footholds say (the map sees a change first,
+                # the feet stand on it a step later)
+                self._grade_from_feet(data, cy, sy)              # keeps the foothold record current
+                f2 = self._across_two_footfalls(cy, sy, m[0])
+                if f2 is not None:
+                    m = (m[0], min(f2 + self.slope_confirm, max(f2 - self.slope_confirm, m[1])))
+            if m is not None:
+                a = CONTROL_DT / max(CONTROL_DT, self.slope_tau_lidar)
+                self._g_lidar += a * (np.asarray(m) - self._g_lidar)
+            self.grade[:] = self._g_lidar
             return
         if self.slope_est in ("lidar", "fused") and self.lidar is not None and self.lidar.new_frame:
             m = self._grade_from_lidar(cy, sy)
@@ -718,6 +756,7 @@ class SkaterController:
                 if self._hold_cur[s] is None:                    # a new stance: a new foothold
                     self._hold_cur[s] = [pos]
                     self._holds.append(self._hold_cur[s])
+                    self._hold_last[s] = self._hold_cur[s]
                 else:                                            # the latest reading of this stance's foothold
                     self._hold_cur[s][0] = pos
         if not along:
@@ -735,6 +774,44 @@ class SkaterController:
                 r = z - xh * math.tan(ga)
                 gc = math.atan(float(yh @ r) / float(yh @ yh))
         return ga, gc
+
+    def _map_add(self, data) -> None:
+        """A lidar frame into the ground map: its valid points placed in the world with the body's pose at the
+        frame's sample (on the build: the IMU's attitude and leg odometry over the map's second), less those on
+        or just above the robot's own feet (their position known from the leg kinematics)."""
+        P = self.lidar.points_world().reshape(-1, 3)
+        P = P[np.isfinite(P).all(axis=1)]
+        for s in "lr":
+            f = data.xpos[self.foot_body[s]]
+            near = (np.abs(P[:, 0] - f[0]) < self.map_foot_r) & (np.abs(P[:, 1] - f[1]) < self.map_foot_r)
+            P = P[~(near & (P[:, 2] > f[2] - 0.06))]
+        self._map.append((self.lidar.frame_t, P))
+        while self._map and self._map[0][0] < self.lidar.frame_t - self.map_s:
+            self._map.popleft()
+
+    def _grade_from_map(self, pos, cy, sy):
+        """The grade at the hip, from the ground map: the points from map_ahead[0] to map_ahead[1] m ahead of the
+        hip and within map_half_w of its line, a plane z = a x + b y + c in the heading frame, refitted twice
+        without points more than 1.5 cm above it. The map's last second of frames covers the ground the hip is
+        over now: the sensor saw it from up to 45 cm ahead before the robot got there."""
+        if not self._map:
+            return None
+        P = np.concatenate([q for _, q in self._map])
+        fwd, left = np.array([cy, sy, 0.0]), np.array([-sy, cy, 0.0])
+        d = P - pos
+        xh, yh = d @ fwd, d @ left
+        sel = (xh > self.map_ahead[0]) & (xh < self.map_ahead[1]) & (np.abs(yh) < self.map_half_w)
+        if sel.sum() < 12 or np.ptp(yh[sel]) < 0.06 or np.ptp(xh[sel]) < 0.06:
+            return None
+        x, y, z = xh[sel], yh[sel], P[sel, 2]
+        A = np.c_[x, y, np.ones(len(x))]
+        keep = np.ones(len(x), dtype=bool)
+        for _ in range(3):
+            if keep.sum() < 12:
+                return None
+            coef, *_ = np.linalg.lstsq(A[keep], z[keep], rcond=None)
+            keep = (z - A @ coef) < 0.015
+        return math.atan(float(coef[0])), math.atan(float(coef[1]))
 
     def _grade_from_lidar(self, cy, sy):
         """The grade of the ground just ahead, from the downward VL53L8CX's latest frame: its valid zones in the
@@ -756,6 +833,17 @@ class SkaterController:
             coef, *_ = np.linalg.lstsq(A[keep], q[keep, 2], rcond=None)
             keep = (q[:, 2] - A @ coef) < 0.015
         return math.atan(float(coef[0])), math.atan(float(coef[1]))
+
+    def _across_two_footfalls(self, cy, sy, along):
+        """The across grade from the latest left and the latest right foothold, the along grade given."""
+        if self._hold_last["l"] is None or self._hold_last["r"] is None:
+            return None
+        fwd, left = np.array([cy, sy, 0.0]), np.array([-sy, cy, 0.0])
+        d = self._hold_last["l"][0] - self._hold_last["r"][0]
+        dy = float(d @ left)
+        if abs(dy) < 0.04:
+            return None
+        return math.atan((float(d[2]) - float(d @ fwd) * math.tan(along)) / dy)
 
     def _sole_pitch(self, data, s: str, fwd: np.ndarray) -> float:
         x = data.xmat[self.foot_body[s]].reshape(3, 3)[:, 0]          # the sole's forward axis, world
@@ -989,12 +1077,12 @@ class SkaterController:
                 dy += self.dy_hold[s]
             sw = self.swing_w[s]
             gx, dy = gx + sw * cap_x, dy + sw * cap_y
-            if self.slope_est and self.slope_follow and self.legged:
+            if self.slope_est and (self.slope_follow or self.slope_follow_y) and self.legged:
                 # the ground under the target sits (x tan along + y tan across) above the level the height loop holds
                 # (the targets are in the hip frame, so the grade relative to the body's own pitch and roll)
                 tga, tgc = math.tan(float(self.grade[0]) + pitch), math.tan(float(self.grade[1]) - roll)
                 y_t = float(self.hip_point[s][1]) + dy
-                h = max(0.02, h - self.slope_follow * ((x_f + gx) * tga + y_t * tgc))
+                h = max(0.02, h - self.slope_follow * (x_f + gx) * tga - self.slope_follow_y * y_t * tgc)
             if self.catch_on:
                 if s == self.catch_side:
                     # the catch foot, placed in the level heading frame and turned back into the tilted hip frame:

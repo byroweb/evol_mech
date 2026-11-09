@@ -179,6 +179,37 @@ Best found: `slope_kx 0.15, slope_ky 0.3, slope_follow 0.5, slope_lean 0.3`, wit
   it alone hurt the downhill (0/8): something in its view (the toes, the legs) skews it on a downhill. 10 deg
   downhill fails with every estimate, the true grade included.
 
+### Lidar ground map, confirmed by the footfalls (user: footfalls point to the past; 2026-11-09)
+
+`slope_est: "map"` (needs `lidar: 1`): every VL53L8CX frame's valid points go into a world-frame map of the last
+`map_s` (1 s) of frames, less the points on the robot's own feet; the grade is a robust plane over the map from
+5 cm behind to 20 cm ahead of the hip (`map_ahead`), 15 cm either side. The sensor saw that ground from up to 45 cm
+ahead, so the estimate is current at the hip instead of a step or two behind it. `slope_confirm_deg` (1) holds its
+across reading within that of the across grade the latest left and right footholds give: the map sees a change
+first, the two current footfalls confirm it. Map points are placed with the true body pose (on the build: IMU
+attitude plus leg odometry over the map's second, not modelled yet).
+
+Estimate error with the walker upright (rms, deg): on the grade 0.3-0.45 both ways (the 1 deg mounting error adds
+~0.15); where the grade starts, 1.0-1.4 across against the footholds' 1.8-2.1, and it reads the grade early.
+Cross-slope walking takes 1 deg of random grade error or a 0.5 deg bias with no loss (true grade plus noise);
+the estimate's behaviour where the slope starts is what matters: reading early (true grade 0.15 m ahead) or
+late (0.2 m behind) both cost 6 deg crossings, which is what the footfall check fixes.
+
+24 tilted starts each, 12 s, no shove, the placement gains above, upright of 24:
+
+| grade estimate | flat | 3 up | 3 dn | 6 up | 6 dn | 10 up | 10 dn | 3 across | 6 across L | 6 across R | 10 across |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| none | 24 | 24 | 24 | 15 | 4 | 0 | 0 | 2 | 0 | 0 | 0 |
+| true grade | 24 | 24 | 24 | 24 | 19 | 6 | 5 | 24 | 13 | 5 | 2 |
+| feet, 4 footholds (previous commit) | 24 | 24 | 24 | 18 | 17 | 3 | 0 | 19 | 0 | 0 | 0 |
+| lidar map | 24 | 24 | 23 | 23 | 16 | 7 | 1 | 21 | 6 | 2 | 1 |
+| lidar map + footfall check 1 deg | 24 | 24 | 24 | 22 | 14 | 8 | 0 | 20 | 11 | 8 | 0 |
+
+Shoved flat starts: 20/24 with the map and check (19/24 as scored). Even the true grade crosses 6 deg only about
+half the time: the rest is the placement itself (bigger sideways shifts, ky 0.5-0.9, and laying the across
+targets fully on the slope both made it worse). The falls come where the grade starts: the walker stalls, the
+uphill foot pins on its heel, it tips back.
+
 ## Parked ideas (the user's, for later)
 
 - After LIDAR is simulated (the module is, 2026-11-09; the fused height map is next): cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads

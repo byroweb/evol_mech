@@ -988,3 +988,19 @@ def test_slope_aware_foot_placement_walks_a_6_degree_grade():
     a, b = rollout(g, task, 1), rollout(g, {**task, **slope}, 1)
     assert a["time_upright"] < 5.0 and a["fall_dir"] == "back"
     assert b["time_upright"] == 8.0 and b["feet_x_m"] > 0.9
+
+
+def test_lidar_map_with_footfall_check_crosses_a_6_degree_slope():
+    """slope_est "map": the grade under the hip from a ground map of the VL53L8CX's last second of frames, its
+    across reading held within slope_confirm_deg of the two current footfalls. On a 6 deg cross-slope (rising to
+    the left) the walker falls at 2.7 s without it and walks the run with it."""
+    from evol_mech.skater.rollout import rollout
+    g = encode(json.load(open("configs/archetypes/skater_walker_phase1m_seed.json"))["phys"])
+    task = {"name": "w", "terrain": "slope", "slope_deg": 6.0, "slope_heading_deg": 90.0, "objective": "walk",
+            "speed": 0.4, "duration": 8.0, "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp",
+            "step_hz_max": 2.5, "waist_link": 1.0, "fall_pitch_deg": 20, "height_ref": "feet", "lidar": 1}
+    slope = {"slope_est": "map", "slope_kx": 0.15, "slope_follow": 0.5, "slope_lean": 0.3, "slope_ky": 0.3,
+             "slope_tau_lidar": 0.2, "slope_tau": 0.1, "slope_confirm_deg": 1.0}
+    a, b = rollout(g, task, 1), rollout(g, {**task, **slope}, 1)
+    assert a["time_upright"] < 4.0
+    assert b["time_upright"] == 8.0 and b["feet_x_m"] > 1.0
