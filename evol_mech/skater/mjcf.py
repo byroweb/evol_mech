@@ -340,6 +340,25 @@ def _roller_couplings(side: str, p: dict[str, float]) -> str:
         for k in range(1, n_rollers(p)))
 
 
+WAIST_RANGE = math.radians(30)   # the waist roll joint's travel either way
+
+
+def _waist(p: dict[str, float]) -> str:
+    """The waist: a sprung, damped roll hinge between the hip box (the pelvis, which carries the root and the
+    balance sensor) and the core (shell, payload, fans), so the pelvis can roll under a step while the core
+    stays nearer level. Off (core rigid on the hip box, every old model) unless the task sets
+    `waist_stiffness` (N m/rad); `waist_damping` (N m s/rad, default 0.1 x stiffness) and `waist_pivot`
+    (m above the core's base, default 0: a pivot above the core's centre of mass hangs it) go with it."""
+    k = p.get("waist_stiffness")
+    if k is None:
+        return ""
+    c = p.get("waist_damping")
+    c = 0.1 * k if c is None else c
+    z = -p["core_height"] / 2 + p.get("waist_pivot", 0.0)
+    return (f'\n        <joint name="waist" type="hinge" axis="1 0 0" pos="0 0 {z:.4f}" range="{-WAIST_RANGE:.4f} {WAIST_RANGE:.4f}"'
+            f' stiffness="{k:.4f}" springref="0" damping="{c:.5f}"/>')
+
+
 def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
                terrain_zmax: float = 0.0, scene_geoms: str = "") -> str:
     """scene_geoms: extra static worldbody geoms (task obstacles such as slalom cones)."""
@@ -370,7 +389,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
       <freejoint name="root"/>
       <geom name="hip" type="box" size="{HIP_HALF_X} {hy:.4f} {HIP_HALF_Z}" mass="{st.hip_kg:.4f}"
             rgba="0.6 0.6 0.6 0.35"/>{_roll_drive('l', +1.0, p)}{_roll_drive('r', -1.0, p)}
-      <body name="core" pos="0 0 {core_z:.4f}">
+      <body name="core" pos="0 0 {core_z:.4f}">{_waist(p)}
         <geom name="core" type="box" size="{st.core_half_x:.4f} {st.core_half_y:.4f} {p['core_height']/2:.4f}"
               mass="{st.core_kg:.4f}" rgba="0.7 0.3 0.3 0.6"/>
         <geom name="payload" type="box" pos="{p['payload_x']:.4f} 0 {_payload_z(p):.4f}" size="{px:.4f} {py:.4f} {pz:.4f}"

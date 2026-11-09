@@ -51,8 +51,16 @@ Population-shape test, done: at 3840 evaluations 192 x 20 scored -0.91 on unseen
 96 x 40 (round 1e) -0.74, 48 x 80 -0.71 with a GA best of -0.25. Use 48 x 80 from now on; the
 gap between the GA best and the unseen score is the real limit.
 
+Sway (2026-11-08): commanded by the hip roll servos, not the ankle (the ankle roll spring
+does nothing; the joint flexes 0.5 deg). Foot lift and torso roll are the same motion on this
+body. The waist (task keys `waist_stiffness 2.0`, `waist_damping 0.1`, `waist_pivot 0.14`: the
+core hung from a sprung roll pivot at its top) keeps the core within 1.7 deg on shape_long,
+untuned. Round 1i (half shift, cheap fans, exploratory) was running at this writing.
+
 ## Recommended next steps, in order
 
+0. A gains round on the hung waist, scoring the core's roll (the score's roll term reads the
+   pelvis): the cheapest route to the 4 deg target found so far.
 1. Draw the robustness starts fresh each generation (seed the tasks by generation in
    `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
    round so far memorised its starts. Run the next round as 48 x 80 with `clear_min 0.03`.
@@ -82,7 +90,7 @@ gap between the GA best and the unseen score is the real limit.
   curve, scoreboard, ancestry, the champion of each generation filmed into `runs/<run>/live/`,
   about 250 KB a clip).
 - Score a round: `tools\score_round.py <round> <seed archetype>`; it also saves the archetype.
-- Tests: `.venv\Scripts\python -m pytest tests\ -q` (52 pass). Commits go to main with
+- Tests: `.venv\Scripts\python -m pytest tests\ -q` (53 pass). Commits go to main with
   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` (or the model doing the work);
   `.claude/` and the two "leg layout sketch" PNGs stay untracked; `runs/` is gitignored.
 - Memory file for the project: `project-skater-legged-gaits.md` in the Claude memory

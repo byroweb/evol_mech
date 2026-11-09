@@ -52,7 +52,8 @@ def one(a):
     t = TASKS.get(tname, PLAIN)
     g = encode(json.load(open(A + f"skater_walker_{name}.json"))["phys"])
     seed = (7000 + list(TASKS).index(tname) + 100 * rep) if tname in TASKS else rep
-    r = rollout(g, t, seed)
+    r = rollout(g, t, seed, fans_enabled=cfg.get("fans_enabled", True), fan_energy_cost=cfg.get("fan_energy_cost", 0.2),
+                motor_energy_cost=cfg.get("motor_energy_cost", 0.002), leg_mass_penalty=cfg.get("leg_mass_penalty"))   # the GA's own costs
     return name, tname, rep, {k: r.get(k, float("nan")) for k in KEYS}
 
 

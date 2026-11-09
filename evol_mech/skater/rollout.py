@@ -189,6 +189,9 @@ def _cones_xml(xs: list[float], hdata, zmax: float) -> str:
     return "\n    ".join(out)
 
 
+WAIST_KEYS = ("waist_stiffness", "waist_damping", "waist_pivot")
+
+
 def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, task: dict | None = None):
     """Compile a model. Raises InvalidBody for un-buildable genomes. With a slalom
     task the cones are placed in the scene."""
@@ -196,6 +199,9 @@ def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, 
     for hz in GAIT_HZ.values():                   # a task may cap the cadence (slower, longer steps)
         if task and f"{hz}_max" in task:
             p[hz] = min(p[hz], float(task[f"{hz}_max"]))
+    for k in WAIST_KEYS:                          # the waist roll joint is a task option (mjcf._waist); off by default
+        if task and task.get(k) is not None:
+            p[k] = float(task[k])
     asset, geom, hdata = terrain_mod.build(terrain_kind, rng)
     zmax = TERRAIN_ZMAX.get(terrain_kind, 0.0)
     scene = _cones_xml(slalom_cones(task), hdata, zmax) if task and task.get("objective") == "slalom" else ""

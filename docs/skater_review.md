@@ -580,3 +580,20 @@ for; a velocity integral in the controller is the alternative.
   perturbed stand lost. Kept as a seed. The shape question is answered
   (long and narrow), and the answer matters less than the overfitting it
   exposed: the next change is fresh starts each generation.
+
+  Then the sway itself. The user's guess was the ankle; the measurement
+  said otherwise. Sweeping the ankle roll spring over a twelvefold range
+  did nothing because the ankle barely moves. The torso rolls because the
+  controller rolls it: the hip roll servos are the only lateral tool, and
+  the only way they can put the weight over the stance foot is to tilt the
+  heavy part of the robot. Halving the weight shift levels the torso and
+  makes the most stable walk yet, a shuffle that never lifts its feet. The
+  user's next idea came from watching their own walk: the pelvis rolls
+  under a step while the shoulders stay level. The simulated version is a
+  waist, a sprung damped roll hinge between the hip box and the core. Put
+  under the core it makes things worse (the core is an upturned pendulum).
+  Hung from a pivot at the core's top, at 2 N m/rad with light damping, it
+  keeps the core within 1.7 deg on the best walker, untuned, while the
+  pelvis keeps rolling enough to lift the feet. That is the first change
+  that separates the roll from the foot lift, and it is a spring and a
+  pivot, cheap to print.

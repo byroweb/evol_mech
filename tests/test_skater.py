@@ -846,3 +846,32 @@ def test_contact_gait_keys_let_the_strider_walk_and_the_clearance_floor_gates():
     assert strider_style["swing_clear_m"] < 0.08
     assert low["fitness"] < strider_style["fitness"] - 0.05
     assert abs(same["fitness"] - strider_style["fitness"]) < 1e-6
+
+
+def test_waist_roll_joint_is_off_by_default_and_a_hung_waist_keeps_the_core_level():
+    """The waist (task keys waist_stiffness / waist_damping / waist_pivot): no key, no joint and the old model;
+    the core hung from a sprung damped roll pivot at its top (2 N m/rad, 0.1 N m s/rad) rolls under half as much
+    as the rigid core on a plain walk of the 48 x 80 walker, which stays upright (measured 2026-11-08: 1.7 vs 5.0 deg)."""
+    import math
+    import mujoco
+    walker = json.load(open("configs/archetypes/skater_walker_shape_long.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 12.0, "pose_noise_deg": 2.0,
+            "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp", "stride_min": 0.1}
+    hung = {**task, "waist_stiffness": 2.0, "waist_damping": 0.1, "waist_pivot": 0.14}
+    m0, _ = make_model(encode(walker), "flat", np.random.default_rng(0), task)
+    m1, _ = make_model(encode(walker), "flat", np.random.default_rng(0), hung)
+    assert mujoco.mj_name2id(m0, mujoco.mjtObj.mjOBJ_JOINT, "waist") == -1
+    assert mujoco.mj_name2id(m1, mujoco.mjtObj.mjOBJ_JOINT, "waist") >= 0
+
+    def core_roll(t):
+        rolls = []
+        def cb(model, data, tt):
+            R = data.xmat[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "core")].reshape(3, 3)
+            if tt > 1.0:
+                rolls.append(math.atan2(R[2, 1], R[2, 2]))
+        r = rollout(encode(walker), t, 0, frame_cb=cb)
+        return r, float(np.sqrt(np.mean(np.square(rolls))))
+    r0, c0 = core_roll(task)
+    r1, c1 = core_roll(hung)
+    assert r1["time_upright"] >= 12.0
+    assert c1 < 0.5 * c0

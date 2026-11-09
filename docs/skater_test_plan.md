@@ -379,6 +379,32 @@ servo), scored against round 9 on the same four tilted starts.
    Conclusion: use 48 x 80 for later rounds, and treat the gap between the
    GA best and the unseen score as the real limit: the starts must be drawn
    fresh each generation before the population shape matters.
+   Where the sway comes from (2026-11-08, phase1e and shape_long, unseen
+   seeds). The ankle roll spring swept from 0.25 to 3 x the pitch spring
+   changed nothing: the ankle roll joint flexes about 0.5 deg. The torso's
+   roll is commanded: the hip roll servos track their setpoint within 1 deg
+   and the torso's roll on the stance leg is the setpoint, the stance leg
+   leaning against it by a fifth to a third. The weight shift (`walk_shift`)
+   is what unloads the swing foot: at half shift shape_long rolls 2.0 deg and
+   never falls on the perturbed flat walks, but drags its feet (-0.7 cm) on
+   6 cm strides; at its own shift 4.9 deg, 2.1 cm, 13 cm. On this body foot
+   lift and torso roll are the same motion. Round 1i
+   (`configs/skater_walk_phase1i.json`): gains re-tuned at half shift, 48 x
+   80, clear_min 0.03, fans charged at a quarter as an exploratory round.
+   The waist (task keys `waist_stiffness`, `waist_damping`, `waist_pivot`;
+   off by default): a sprung damped roll hinge between the hip box (the
+   pelvis, which carries the balance sensor) and the core (shell, payload,
+   fans, 0.75 kg of the 2.0). A pivot at the core's base makes the core an
+   upturned pendulum and it rolls more (12 deg at 1 N m/rad). Hung from a
+   pivot at its top (14 cm above its base, the core's centre of mass 8 cm
+   below the pivot), 2 N m/rad and 0.1 N m s/rad, untuned gains: shape_long's
+   core rolls 1.7 deg against 5.0 rigid, weighted p20 -0.31 against -0.58
+   (the GA's costs), 1/8 perturbed flat falls, 0/4 stands lost, 13 cm
+   strides, 1.9 cm clearance (2.1); phase1e's core 3.0 deg against 6.7,
+   -0.51 against -0.56, clearance 2.6 cm (3.0). Softer or less damped hangs
+   swing near the step rate and the feet drag; stiffer ones approach the
+   rigid core. The score's roll term still reads the pelvis, so a waist
+   round should score the core's roll.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
