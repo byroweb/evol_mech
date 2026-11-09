@@ -405,6 +405,20 @@ servo), scored against round 9 on the same four tilted starts.
    swing near the step rate and the feet drag; stiffer ones approach the
    rigid core. The score's roll term still reads the pelvis, so a waist
    round should score the core's roll.
+   The user preferred a linkage slaved to both hip roll servos over the
+   sprung waist (a passive core takes fan torque on its own, leaves the pose
+   undefined in flight, and its damping would differ between walk and run).
+   Task key `waist_link` r: the core's roll on the hip box = r x the mean of
+   the two hip roll angles (a rocker on both roll horns, a whiffletree; the
+   mean cancels the legs' fixed splay), a rigid coupling with the load going
+   back into the roll servos. r 0 is the rigid core. Pivot at the core's
+   base, r 1.0, untuned gains: phase1e's core 3.0 deg against 6.7, clearance
+   3.5 cm (3.0), 1/8 flat falls, -0.53 against -0.56; shape_long's core 3.2
+   against 5.0, clearance 2.4 cm (2.1), -0.33 against -0.58 (r 0.5: 3.8 deg,
+   -0.29). Roll servo torque unchanged (0.4 N m RMS, 0.8 N m peak of 3.9 N m
+   stall). r 2 and above overdrives the core and falls; a pivot at the
+   core's top drops the clearance. Unlike the spring, the linkage gains
+   clearance: it is the waist to carry into the next round.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

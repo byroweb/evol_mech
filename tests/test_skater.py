@@ -875,3 +875,32 @@ def test_waist_roll_joint_is_off_by_default_and_a_hung_waist_keeps_the_core_leve
     r1, c1 = core_roll(hung)
     assert r1["time_upright"] >= 12.0
     assert c1 < 0.5 * c0
+
+
+def test_waist_linkage_slaved_to_the_hip_roll_servos_levels_the_core_and_keeps_the_feet_lifting():
+    """task key waist_link r: the core's roll on the hip box = r x the mean hip roll angle, a rigid coupling (a
+    rocker on both roll horns), no spring. r 0 is the rigid core; r 1 with the pivot at the core's base levels
+    the 48 x 80 walker's core (measured 2026-11-08: 3.2 vs 4.9 deg) with no loss of clearance, upright."""
+    import math
+    import mujoco
+    walker = json.load(open("configs/archetypes/skater_walker_shape_long.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 12.0, "pose_noise_deg": 2.0,
+            "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp", "stride_min": 0.1}
+
+    def run(t):
+        rows = []
+        def cb(model, data, tt):
+            R = data.xmat[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "core")].reshape(3, 3)
+            q = lambda n: data.qpos[model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n)]]
+            w = q("waist") if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "waist") >= 0 else 0.0
+            if tt > 1.0:
+                rows.append((math.atan2(R[2, 1], R[2, 2]), w - t.get("waist_link", 0.0) * (q("hip_roll_l") + q("hip_roll_r")) / 2))
+        r = rollout(encode(walker), t, 0, frame_cb=cb)
+        A = np.array(rows)
+        return r, float(np.sqrt(np.mean(A[:, 0] ** 2))), float(np.max(np.abs(A[:, 1])))
+    r0, c0, _ = run(task)
+    r1, c1, slack = run({**task, "waist_link": 1.0})
+    assert slack < math.radians(0.2)                       # the coupling holds
+    assert r1["time_upright"] >= 12.0
+    assert c1 < 0.75 * c0
+    assert r1["swing_clear_m"] >= r0["swing_clear_m"] - 0.002

@@ -55,11 +55,14 @@ Sway (2026-11-08): commanded by the hip roll servos, not the ankle (the ankle ro
 does nothing; the joint flexes 0.5 deg). Foot lift and torso roll are the same motion on this
 body. The waist (task keys `waist_stiffness 2.0`, `waist_damping 0.1`, `waist_pivot 0.14`: the
 core hung from a sprung roll pivot at its top) keeps the core within 1.7 deg on shape_long,
-untuned. Round 1i (half shift, cheap fans, exploratory) was running at this writing.
+untuned, but the user prefers a linkage: `waist_link 1.0` (core roll on the hip box = the mean hip
+roll angle, pivot at the core's base) keeps the core within 3.0-3.2 deg on both walkers with more
+clearance and no extra roll-servo load. Round 1i (half shift, cheap fans, exploratory) was running
+at this writing.
 
 ## Recommended next steps, in order
 
-0. A gains round on the hung waist, scoring the core's roll (the score's roll term reads the
+0. A gains round with `waist_link` (ratio free or 1.0), scoring the core's roll (the score's roll term reads the
    pelvis): the cheapest route to the 4 deg target found so far.
 1. Draw the robustness starts fresh each generation (seed the tasks by generation in
    `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
@@ -90,7 +93,7 @@ untuned. Round 1i (half shift, cheap fans, exploratory) was running at this writ
   curve, scoreboard, ancestry, the champion of each generation filmed into `runs/<run>/live/`,
   about 250 KB a clip).
 - Score a round: `tools\score_round.py <round> <seed archetype>`; it also saves the archetype.
-- Tests: `.venv\Scripts\python -m pytest tests\ -q` (53 pass). Commits go to main with
+- Tests: `.venv\Scripts\python -m pytest tests\ -q` (54 pass). Commits go to main with
   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` (or the model doing the work);
   `.claude/` and the two "leg layout sketch" PNGs stay untracked; `runs/` is gitignored.
 - Memory file for the project: `project-skater-legged-gaits.md` in the Claude memory

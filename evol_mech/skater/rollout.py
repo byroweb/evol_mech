@@ -189,7 +189,7 @@ def _cones_xml(xs: list[float], hdata, zmax: float) -> str:
     return "\n    ".join(out)
 
 
-WAIST_KEYS = ("waist_stiffness", "waist_damping", "waist_pivot")
+WAIST_KEYS = ("waist_stiffness", "waist_damping", "waist_pivot", "waist_link")
 
 
 def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, task: dict | None = None):

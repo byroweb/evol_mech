@@ -597,3 +597,14 @@ for; a velocity integral in the controller is the alternative.
   pelvis keeps rolling enough to lift the feet. That is the first change
   that separates the roll from the foot lift, and it is a spring and a
   pivot, cheap to print.
+
+  The user then turned the spring down for good reasons: a free core would
+  be torqued on its own by the fans, would leave the legs' pose undefined
+  in a jump, and would want a different damper for running than for
+  walking. Their alternative is a linkage from both hip roll servos to the
+  core, so the core's angle is always a fixed function of the servo angles.
+  Simulated as a rigid coupling to the mean of the two hip roll angles at
+  a 1:1 ratio, pivot at the core's base, it halves the core's roll on both
+  walkers, untuned, and the feet lift slightly higher rather than lower.
+  The roll servos do no extra work. It beats the spring on every count the
+  user cares about, and it is a rocker and two pushrods.

@@ -349,6 +349,10 @@ def _waist(p: dict[str, float]) -> str:
     stays nearer level. Off (core rigid on the hip box, every old model) unless the task sets
     `waist_stiffness` (N m/rad); `waist_damping` (N m s/rad, default 0.1 x stiffness) and `waist_pivot`
     (m above the core's base, default 0: a pivot above the core's centre of mass hangs it) go with it."""
+    if p.get("waist_link") is not None:          # slaved to the hip roll servos (_waist_link): no spring
+        z = -p["core_height"] / 2 + p.get("waist_pivot", 0.0)
+        return (f'\n        <joint name="waist" type="hinge" axis="1 0 0" pos="0 0 {z:.4f}" range="{-WAIST_RANGE:.4f} {WAIST_RANGE:.4f}"'
+                f' damping="0.05"/>')
     k = p.get("waist_stiffness")
     if k is None:
         return ""
@@ -357,6 +361,20 @@ def _waist(p: dict[str, float]) -> str:
     z = -p["core_height"] / 2 + p.get("waist_pivot", 0.0)
     return (f'\n        <joint name="waist" type="hinge" axis="1 0 0" pos="0 0 {z:.4f}" range="{-WAIST_RANGE:.4f} {WAIST_RANGE:.4f}"'
             f' stiffness="{k:.4f}" springref="0" damping="{c:.5f}"/>')
+
+
+def _waist_link(p: dict[str, float]) -> tuple[str, str]:
+    """The waist slaved to both hip roll servos by a linkage (a rocker driven by both roll horns, a whiffletree):
+    the core's roll on the hip box = `waist_link` x the mean of the two hip roll angles. The mean cancels the
+    legs' fixed splay and keeps the common roll the weight shift commands; the core's load goes back into the
+    roll servos through the constraint, and the core has no motion of its own (fan torque, flight). A fixed
+    tendon (waist - r/2 hip_roll_l - r/2 hip_roll_r) held at zero length. Returns (tendon block, equality)."""
+    r = p.get("waist_link")
+    if r is None:
+        return "", ""
+    tendon = (f'\n  <tendon>\n    <fixed name="waist_link"><joint joint="waist" coef="1"/>'
+              f'<joint joint="hip_roll_l" coef="{-r / 2:.5f}"/><joint joint="hip_roll_r" coef="{-r / 2:.5f}"/></fixed>\n  </tendon>')
+    return tendon, '<tendon name="waist_link" tendon1="waist_link" polycoef="0 0 0 0 0"/>'
 
 
 def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
@@ -400,8 +418,9 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
       {_leg('l', +1.0, p, st)}
       {_leg('r', -1.0, p, st)}
     </body>
-  </worldbody>
+  </worldbody>{_waist_link(p)[0]}
   <equality>
+    {_waist_link(p)[1]}
     {_roller_couplings('l', p)}
     {_roller_couplings('r', p)}
     {_panto_loops('l', p)}
