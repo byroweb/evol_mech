@@ -138,7 +138,7 @@ Best walker (phase1m_seed), 12 s walks from 4 tilted starts, no shove, height_re
   downhill. Half the stiffness walks 6 deg uphill 4/4 and downhill 2/4 with level walking intact; a quarter
   (below m g h) fails everywhere. A fixed rest angle matched to the slope tips it on the flat run-up, so the
   trim or lean must change on the slope: the controller has to know the grade.
-- Across-slope walking fails from 3 deg (mostly forward falls): not looked into yet.
+- Across-slope walking fails from 3 deg (mostly forward falls) without slope-aware placement (next section).
 - Knowing the grade: a plane fitted to one VL53L8CX frame, levelled with the IMU, reads it within about 1-2 deg
   (median per frame); a simulated MEMS IMU's complementary filter adds ~0.7 deg of tilt error. Averaged over a second, ~1 deg.
 
@@ -146,6 +146,38 @@ Cobbles from the feet (1 s windows, flat vs cobble, phase1m_seed walking): how o
 reverses direction while a foot is planted separates them 95 % of the time; the core gyro's jitter 99 %; feet
 alone in a fitted classifier 92 % on held-out windows. Few cobble windows (20: the walker falls on cobbles), and
 gyro jitter may partly be pre-fall wobble.
+
+## Slope-aware foot placement (user: no powered ankle, let the controller pick foot positions; 2026-11-09)
+
+Task key `slope_est` (off by default; every score unchanged) turns on a grade estimate and four placement terms
+(controller.py, the `slope_*` keys in `__init__`): feet back on an uphill and forward on a downhill (`slope_kx`
+m/rad), feet toward the downhill side across a slope (`slope_ky`), foot targets laid on the ground's plane
+(`slope_follow`), and the body pitched with the grade by where the feet are put (`slope_lean`). Why the lean: the
+passive parallelogram holds the sole parallel to the body, so a level body on a grade always bends the ankle
+spring by the full grade; moving the feet alone cannot undo that, a body pitched with the ground can.
+
+Best found: `slope_kx 0.15, slope_ky 0.3, slope_follow 0.5, slope_lean 0.3`, with `height_ref feet`.
+12 s walks, 8 tilted starts each, no shove (upright of 8):
+
+| grade estimate | flat | 3 up | 3 dn | 6 up | 6 dn | 10 up | 10 dn | 3 across | 6 across L | 6 across R | 10 across |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| none (terms off) | 8 | 8 | 8 | 3 | 3 | 0 | 0 | 1 | 0 | 0 | 0 |
+| true grade (upper bound) | 8 | 8 | 8 | 8 | 6 | 1 | 1 | 8 | 5 | 4 | 0 |
+| feet: plane through the last 4 footholds, tau 0.1 s | 8 | 8 | 8 | 7 | 7 | 0 | 0 | 8 | 0 | 0 | 0 |
+| fused: half lidar, half feet, both axes (lidar tau 0.3 s) | 8 | 8 | 8 | 8 | 7 | 4 | 0 | 8 | 1 | 0 | 0 |
+
+- Shoved flat starts (the walk_flat task, 24 seeds) are unharmed: 19/24 as scored (world height), 18/24 with the
+  feet estimate, 20/24 fused.
+- Lag is what the estimate must avoid: the true grade read 0.2 m behind the hip loses most of the gain (6 across
+  5/8 -> 1/8), read 0.15 m ahead is as good as at the hip. Six footholds lagged too much; four is better.
+- Estimate accuracy with the walker upright on the grade: the foothold plane is within 0.3-0.7 deg rms along and
+  0.3-0.5 across; the lidar's plane 0.8-1.7 along, 0.5-0.6 across. The soles' own pitch reads 1.3 deg rms noise.
+  The foothold positions come from the true body pose and leg kinematics; on the build that is IMU tilt plus the
+  servo angles, so expect more noise there.
+- 6 deg across still fails: the falls come where the grade starts (x ~0.5 m), where the footholds still hold the
+  flat run-up and read ~1 deg of a 5 deg grade. The lidar sees the grade ahead but taking the across grade from
+  it alone hurt the downhill (0/8): something in its view (the toes, the legs) skews it on a downhill. 10 deg
+  downhill fails with every estimate, the true grade included.
 
 ## Parked ideas (the user's, for later)
 

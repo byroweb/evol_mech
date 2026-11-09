@@ -972,3 +972,19 @@ def test_slope_terrain_and_feet_height_reference():
     assert a["time_upright"] == b["time_upright"] == 6.0 and abs(a["feet_x_m"] - b["feet_x_m"]) < 0.1
     c = rollout(g, {**task, "terrain": "slope", "slope_deg": 3.0, "height_ref": "feet"}, 1)
     assert c["time_upright"] == 6.0 and c["feet_x_m"] > 0.5
+
+
+def test_slope_aware_foot_placement_walks_a_6_degree_grade():
+    """slope_est "feet": the grade read from the planted feet's footholds moves the feet (fore-aft, sideways, onto
+    the ground's plane) and leans the body with it. Off by default; on a 6 deg uphill without it the walker falls
+    back at 3.3 s, with it it walks the run."""
+    from evol_mech.skater.rollout import rollout
+    g = encode(json.load(open("configs/archetypes/skater_walker_phase1m_seed.json"))["phys"])
+    task = {"name": "w", "terrain": "slope", "slope_deg": 6.0, "objective": "walk", "speed": 0.4, "duration": 8.0,
+            "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp", "step_hz_max": 2.5, "waist_link": 1.0,
+            "fall_pitch_deg": 20, "height_ref": "feet"}
+    slope = {"slope_est": "feet", "slope_kx": 0.15, "slope_follow": 0.5, "slope_lean": 0.3, "slope_ky": 0.3,
+             "slope_holds": 4, "slope_along": "plane", "slope_tau": 0.1}
+    a, b = rollout(g, task, 1), rollout(g, {**task, **slope}, 1)
+    assert a["time_upright"] < 5.0 and a["fall_dir"] == "back"
+    assert b["time_upright"] == 8.0 and b["feet_x_m"] > 0.9
