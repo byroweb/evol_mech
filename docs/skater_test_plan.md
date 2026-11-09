@@ -511,6 +511,20 @@ servo), scored against round 9 on the same four tilted starts.
    because it memorised eight starts. Config `patience` / `min_delta`
    (default off) stops a round on a plateau: round 1k's best last rose by
    more than 0.005 at generation 11 of 80.
+   Round 1k (12 x 4 cm cap; stopped by hand at generation 67, no gain
+   since 11): kept as `skater_walker_phase1k.json` (walk it with
+   waist_link 1.0). The GA chose a 12.0 x 3.0 cm foot (76 g). Unseen seeds
+   -0.37 against the cut-down seed's -0.48 (-0.41 under the 20 deg rule):
+   flat walks 6/8 upright (seed 5/8; phase1j on 16 x 3: 8/8), stands 4/4,
+   plain starts 12 s x 4 with the core at 3.0 deg RMS, 3.3 cm clearance,
+   10.5 cm strides (phase1j 11.4). The capped foot costs two flat falls in
+   eight and a centimetre of stride. Round 1l: from it, heel-toe feedback
+   genes free, falls at 20 deg, patience 20.
+   The waist whippletree drawn (docs/waist_whippletree.png,
+   tools/waist_whippletree.py): pickups on the leg roll brackets 3.8 cm
+   from their pivots (the right one pointing inboard so both move the same
+   way), a 2.4 cm rocker, and a 3.8 cm crank on the core give core roll =
+   the mean of the two leg rolls, 1:1, with every link vertical.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
