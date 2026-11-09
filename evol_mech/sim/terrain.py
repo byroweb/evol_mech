@@ -43,21 +43,23 @@ def height_at(hdata, zmax: float, x: float, y: float) -> float:
     return float(hdata[min(max(r, 0), nrow - 1), min(max(c, 0), ncol - 1)]) * zmax
 
 
-def slope_height(x, y, slope_deg: float, heading_deg: float = 0.0):
+def slope_height(x, y, slope_deg: float, heading_deg: float = 0.0, x0: float = SLOPE_X0, blend: float = SLOPE_BLEND):
     """Ground elevation of the "slope" terrain: flat for x < SLOPE_X0, then a plane of grade slope_deg whose uphill
     direction is heading_deg from +x (0 uphill ahead, 180 downhill ahead, 90 rising to the robot's left, -90 to its
-    right), blended in over SLOPE_BLEND so the start has no edge. 0 at the origin, where the robot starts."""
+    right), blended in over SLOPE_BLEND so the start has no edge. 0 at the origin, where the robot starts. x0 and
+    blend override SLOPE_X0 and SLOPE_BLEND (task keys slope_x0, slope_blend)."""
     x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
-    u = np.clip((x - SLOPE_X0) / SLOPE_BLEND, 0.0, 1.0)
+    u = np.clip((x - x0) / blend, 0.0, 1.0)
     w = u * u * (3 - 2 * u)                                    # smoothstep 0 -> 1
     g, h = np.tan(np.radians(slope_deg)), np.radians(heading_deg)
-    along = np.where(x > SLOPE_X0, x - SLOPE_X0, 0.0)
+    along = np.where(x > x0, x - x0, 0.0)
     # the along-x part integrates the blend so the grade (not the height) ramps in
-    ramp = np.where(u < 1, SLOPE_BLEND * (u ** 3 - u ** 4 / 2), SLOPE_BLEND / 2 + (along - SLOPE_BLEND))
+    ramp = np.where(u < 1, blend * (u ** 3 - u ** 4 / 2), blend / 2 + (along - blend))
     return g * (np.cos(h) * ramp + np.sin(h) * y * w)
 
 
-def build(kind: str, rng: np.random.Generator, slope_deg: float = 0.0, slope_heading_deg: float = 0.0):
+def build(kind: str, rng: np.random.Generator, slope_deg: float = 0.0, slope_heading_deg: float = 0.0,
+          slope_x0: float = SLOPE_X0, slope_blend: float = SLOPE_BLEND):
     if kind == "flat":
         geom = ('<geom name="floor" type="plane" size="0 0 0.05" '
                 'friction="1.0 0.005 0.0001" contype="3" conaffinity="1" material="grid"/>')
@@ -106,7 +108,7 @@ def build(kind: str, rng: np.random.Generator, slope_deg: float = 0.0, slope_hea
         y, x = np.mgrid[0:HF_ROWS, 0:HF_COLS]
         xs = -HF_HALF_X + 2 * HF_HALF_X * x / (HF_COLS - 1)
         ys = -HF_HALF_Y + 2 * HF_HALF_Y * y / (HF_ROWS - 1)
-        h = slope_height(xs, ys, slope_deg, slope_heading_deg)
+        h = slope_height(xs, ys, slope_deg, slope_heading_deg, slope_x0, slope_blend)
         lo, hi = float(h.min()), float(h.max())
         span = max(hi - lo, 1e-4)
         asset = (GRID_ASSET + f'<hfield name="slope" nrow="{HF_ROWS}" ncol="{HF_COLS}" '

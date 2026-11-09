@@ -206,7 +206,7 @@ def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, 
     for k in WAIST_KEYS:                          # the waist roll joint is a task option (mjcf._waist); off by default
         if task and task.get(k) is not None:
             p[k] = float(task[k])
-    slope = {k: float(task[k]) for k in ("slope_deg", "slope_heading_deg") if task and k in task}
+    slope = {k: float(task[k]) for k in ("slope_deg", "slope_heading_deg", "slope_x0", "slope_blend") if task and k in task}
     asset, geom, hdata = terrain_mod.build(terrain_kind, rng, **slope)
     zmax = TERRAIN_ZMAX.get(terrain_kind, 0.0)
     scene = _cones_xml(slalom_cones(task), hdata, zmax) if task and task.get("objective") == "slalom" else ""
@@ -290,7 +290,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     # fall height and the swing clearance are measured from the ground below, not from z = 0
     if task["terrain"] == "slope":
         _sd, _sh = float(task.get("slope_deg", 0.0)), float(task.get("slope_heading_deg", 0.0))
-        ground = lambda x, y: float(terrain_mod.slope_height(x, y, _sd, _sh))
+        _sx = (float(task.get("slope_x0", terrain_mod.SLOPE_X0)), float(task.get("slope_blend", terrain_mod.SLOPE_BLEND)))
+        ground = lambda x, y: float(terrain_mod.slope_height(x, y, _sd, _sh, *_sx))
     else:
         ground = lambda x, y: 0.0
     swing_max = {"l": None, "r": None}            # highest ankle rise during the current swing

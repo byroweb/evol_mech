@@ -210,6 +210,33 @@ half the time: the rest is the placement itself (bigger sideways shifts, ky 0.5-
 targets fully on the slope both made it worse). The falls come where the grade starts: the walker stalls, the
 uphill foot pins on its heel, it tips back.
 
+### The slope's start is the hard part, not the slope (user's hunch, confirmed 2026-11-09)
+
+Task keys `slope_x0` (where the grade starts, default 0.15 m) and `slope_blend` (how long it takes to reach the
+full grade, default 0.4 m). Lidar map + footfall check, 16 tilted starts each, upright of 16:
+
+| transition | 6 across L | 6 across R | 6 dn | 10 up | 10 dn | 10 across | 15 up |
+|---|---|---|---|---|---|---|---|
+| 0.4 m (default), placement off | 0 | 0 | 3 | 0 | 0 | 0 | 0 |
+| 0.4 m | 8 | 6 | 8 | 5 | 0 | 0 | 0 |
+| 0.8 m | 11 | 9 | 15 | 13 | 1 | 2 | 3 |
+| 1.5 m | 13 | 16 | 14 | 16 | 5 | 10 | 15 |
+| 1.5 m, placement off | 1 | 1 | 13 | 14 | 1 | 0 | 0 |
+
+- A settled gait first (`slope_x0` 1-2 m, the grade starting well after the walk's own start) helps only a little
+  at the sharp 0.4 m knee (6 across 9/16 -> 12/16 left, 6/16 -> 7/16 right).
+- Shorter steps (`step_len_scale` 0.5-0.7: the walk's pace is the step_len gene, the task's speed key does not set
+  it) do not help, they hurt. So it is not the grade change per step: it is a knee about as long as the robot's
+  own stride, its feet and body on different grades at once.
+- Foot landing heights read off the lidar map at each target (`slope_follow_map`, `map_r`; swing foot only)
+  did not help either (6 dn 8 -> 13/16 at 0.5, other cases equal or worse).
+- What a sharp-knee fall looks like (true grade, 6 across, rising left): each stance on the uphill foot runs its
+  centre of pressure from toe to heel and pitches the body further back (-6, -9, -15 deg), the walker stalls in
+  x through those stances, and it turns toward uphill (yaw +20-30 deg) without a way to turn back (no hip yaw,
+  the fans near idle).
+- `slope_oracle_noise_deg` / `slope_oracle_bias_deg`: cross-slope walking takes 1 deg of noise or 0.5 deg of
+  bias on the true grade with no loss.
+
 ## Parked ideas (the user's, for later)
 
 - After LIDAR is simulated (the module is, 2026-11-09; the fused height map is next): cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads
