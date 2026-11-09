@@ -84,9 +84,43 @@ at this writing.
    or stiffer ankle roll, wider sole, or a translating hip). That is where single support,
    the 4 deg roll target and cobbles get solved.
 
+## The downward LIDAR (VL53L8CX), simulated 2026-11-09
+
+The user picked ST's VL53L8CX (datasheet DS14161 rev 12) and asked for the module and its field only, not its
+board. `evol_mech/skater/lidar.py` models it; task key `lidar` (off by default: no site, no change to any model or
+score) mounts it on the core's front face, 2 cm above the core's base (`lidar_z`), pitched 25 deg forward of straight
+down (`lidar_pitch_deg`), about 40 cm up on the current walker. The controller reads it every step (`ctrl.lidar`);
+nothing drives off it yet. `rollout(..., lidar_cb=f)` hands each new frame to `f(sensor, t)`.
+
+- 8 x 8 zones over a 45 x 45 deg field, 15 Hz (the part's 60 Hz is 4 x 4 only), a frame about 33 ms old when read.
+- Each zone is a 3 x 3 ray bundle. Surfaces within 60 cm of each other along the beam blend into one signal-weighted
+  range (a zone half on a toe reads between toe and floor); farther apart, the strongest return wins.
+- 2 cm to 4 m (`lidar_max_range_m` 1.1 for daylight on a dark floor), shorter at grazing incidence.
+- Noise from the datasheet's accuracy (+-11 mm under 20 cm, +-5 % beyond, at 2.7 sigma), 2 % random invalid zones,
+  and a mounting tilt of up to 1 deg per run that the robot does not know.
+- The grid is in scene order (row 0 far, column 0 the robot's left); the real part's lens flips both axes, and
+  `lidar.zone_ids` converts to the driver's zone order.
+- The robot's own toes enter the near row as they swing (they read 6-8 cm high), as they will on the build.
+
+Footprint on the current walker (`tools/lidar_view.py`, video and sheet in runs/lidar_view/<terrain>/): from 5 cm
+to about 45 cm ahead of the module, 27 cm wide at the near edge and 39 cm at the far edge. At 0.16 m/s a patch of
+ground stays in view about 2.5 s, some 35 frames, before the feet reach it.
+
+What it can and cannot see, per frame, measured height against the true ground at the zone centres:
+
+| terrain | true relief (sd) | reading error (rms) | correlation |
+|---|---|---|---|
+| flat | 0.2 cm | 0.9 cm | 0.22 |
+| cobblestone (6 cm stones, 1-2 cm relief) | 0.4 cm | 1.0 cm | 0.19 |
+| potholes (12-30 cm, 3 cm deep) | 1.4 cm | 2.2 cm | 0.62 |
+
+A zone covers 4-7 cm of ground, the size of a cobble, and the noise is about 1 cm at these ranges: single frames see
+potholes, steps and obstacles, not individual cobbles. Fusing the ~35 frames each patch gets into a height map
+should cut the noise about six times; the zone blur stays. That map is the next step before footholds.
+
 ## Parked ideas (the user's, for later)
 
-- After LIDAR is simulated: cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads
+- After LIDAR is simulated (the module is, 2026-11-09; the fused height map is next): cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads
   should help the skate balance), and alternate gaits (low walk on smooth ground, high steps where the map says).
 - A flying variant: 6 inch props on 28 x 10 mm motors (the fan model: 21 N each, 42 N for the pair against the
   robot's 19.4 N, 2.2 x weight, about 700 W each, 88 g each). Two thrusts plus the two fan pitch servos make a

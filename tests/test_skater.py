@@ -916,3 +916,39 @@ def test_roll_score_core_reads_the_core_and_changes_nothing_on_a_rigid_core():
     link = {**task, "waist_link": 1.0}
     c, d = rollout(encode(walker), link, 0), rollout(encode(walker), {**link, "roll_score": "core"}, 0)
     assert d["roll_rms"] < 0.8 * c["roll_rms"]
+
+
+def test_lidar_is_off_by_default_and_reads_a_flat_floor_at_15_hz_within_the_datasheet_accuracy():
+    """The VL53L8CX (skater/lidar.py): no lidar key, no site and the same model; with it, 8 x 8 frames at 15 Hz,
+    each about 33 ms old, ranges within +-5 % (2.7 sigma) of the floor's true distance, the physics untouched."""
+    from evol_mech.skater.rollout import make_model, rollout
+    from evol_mech.skater.lidar import VL53L8CX, zone_ids
+    g = encode(json.load(open("configs/archetypes/skater_walker_phase1m_seed.json"))["phys"])
+    m0, _ = make_model(g, "flat", np.random.default_rng(0), {})
+    m1, p1 = make_model(g, "flat", np.random.default_rng(0), {"lidar": 1})
+    assert mujoco.mj_name2id(m0, mujoco.mjtObj.mjOBJ_SITE, "lidar") < 0
+    assert m1.nbody == m0.nbody and np.isclose(m1.body_subtreemass[1], m0.body_subtreemass[1])
+    # parked, sensor on: every valid zone sees the floor at the geometric range
+    d = mujoco.MjData(m1)
+    mujoco.mj_forward(m1, d)
+    L = VL53L8CX(m1, np.random.default_rng(1), mount_error_deg=0.0, invalid_rate=0.0)
+    t, got = 0.0, []
+    while t < 1.0:
+        if L.update(d, t):
+            got.append((t, L.frame_t, L.dist.copy(), L.hits_world.copy(), L.origin_world.copy()))
+        t += 0.01
+    assert len(got) == 14 or len(got) == 15
+    assert all(0.025 <= a - b <= 0.045 for a, b, *_ in got)
+    _, _, dist, hits, org = got[-1]
+    assert dist.shape == (8, 8) and np.all(np.isfinite(dist))
+    true = np.linalg.norm(hits - org, axis=-1)
+    floor = hits[..., 2] < 0.002                              # parked, the near row also sees the toes
+    assert floor.sum() >= 56 and np.all(floor[:6])
+    assert np.all(np.abs(dist - true)[floor] < 0.06 * true[floor])
+    assert np.all(hits[0, :, 0] > hits[7, :, 0])              # row 0 is the far edge
+    assert np.all(hits[:, 0, 1] > hits[:, 7, 1])              # column 0 is the robot's left
+    assert zone_ids(np.arange(64).reshape(8, 8))[0] == 63 and np.array_equal(zone_ids(zone_ids(dist)), dist)
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 2.0, "servo_model": "real",
+            "waist_link": 1.0, "fall_pitch_deg": 20}
+    a, b = rollout(g, task, 0), rollout(g, {**task, "lidar": 1}, 0)
+    assert a["fitness"] == b["fitness"] and b["lidar_frames"] in (29, 30) and b["lidar_valid_frac"] > 0.9

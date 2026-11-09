@@ -71,6 +71,7 @@ from ..body.hardware import (tread_drive_from_params, servo_from_params, roll_se
 from ..sim.controller import quat_to_roll_pitch
 from .mjcf import ACTUATOR_NAMES, FAN_PITCH_RANGE
 from .sensors import FootSensors
+from .lidar import VL53L8CX
 from .structure import (nominal_angles, nominal_height, nominal_foot, angles_from_foot,
                         horn_from_shin, shin_from_horn, drive_stops, KNEE_RANGE, hip_roll_range,
                         roll_ratio, roll_arm, is_pantograph, panto_nominal, panto_ik, panto_pose_allowed, ROLL_PIVOT_Y,
@@ -160,7 +161,8 @@ def wrap(a: float) -> float:
 
 class SkaterController:
     def __init__(self, model: mujoco.MjModel, p: dict[str, float], task: dict,
-                 fans_enabled: bool = True, sensor_rng: np.random.Generator | None = None):
+                 fans_enabled: bool = True, sensor_rng: np.random.Generator | None = None,
+                 lidar_rng: np.random.Generator | None = None):
         self.p, self.task = p, task
         self.fans_enabled = fans_enabled
         self.idx = {n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n) for n in ACTUATOR_NAMES}
@@ -263,6 +265,13 @@ class SkaterController:
         # the feet's force-sensing resistors, ankle angles and servo load, read every control
         # step (sensors.py); phase 0 of the test plan reads them, phase 1 drives the gait off them
         self.sensors = FootSensors(model, p, self.mass, CONTROL_DT, rng=sensor_rng)
+        # the core's downward-looking VL53L8CX (lidar.py), task key `lidar`: 8 x 8 ranges at 15 Hz, read every
+        # control step; nothing drives off it yet. lidar_max_range_m / lidar_invalid_rate / lidar_mount_error_deg
+        # override the datasheet defaults (1.1 m models daylight on a dark floor)
+        self.lidar = None
+        if task.get("lidar"):
+            kw = {k: float(task[f"lidar_{k}"]) for k in ("max_range_m", "invalid_rate", "mount_error_deg") if f"lidar_{k}" in task}
+            self.lidar = VL53L8CX(model, rng=lidar_rng, **kw)
         # contact-driven walk state (see the constants above)
         self.contact_gait = str(task.get("gait_phase", "clock")) == "contact" and self.objective == "walk"
         self.foot_body = {s: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in "lr"}
@@ -671,6 +680,8 @@ class SkaterController:
         p, c, i = self.p, self.ctrl, self.idx
         self._data = data
         self.sensors.update(data)
+        if self.lidar is not None:
+            self.lidar.update(data, t)
         if self.measure_feet:
             R = data.xmat[self.hip_id].reshape(3, 3)
             for s in "lr":

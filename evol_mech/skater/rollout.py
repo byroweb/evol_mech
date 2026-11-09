@@ -189,6 +189,7 @@ def _cones_xml(xs: list[float], hdata, zmax: float) -> str:
     return "\n    ".join(out)
 
 
+LIDAR_KEYS = ("lidar", "lidar_pitch_deg", "lidar_z")
 WAIST_KEYS = ("waist_stiffness", "waist_damping", "waist_pivot", "waist_link")
 
 
@@ -199,6 +200,9 @@ def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, 
     for hz in GAIT_HZ.values():                   # a task may cap the cadence (slower, longer steps)
         if task and f"{hz}_max" in task:
             p[hz] = min(p[hz], float(task[f"{hz}_max"]))
+    for k in LIDAR_KEYS:                          # the core's VL53L8CX (mjcf._lidar, lidar.py); off by default
+        if task and task.get(k) is not None:
+            p[k] = float(task[k])
     for k in WAIST_KEYS:                          # the waist roll joint is a task option (mjcf._waist); off by default
         if task and task.get(k) is not None:
             p[k] = float(task[k])
@@ -229,7 +233,7 @@ def _fallen(z: float, roll: float, pitch: float, h_nom: float, pitch_max: float 
 def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             fans_enabled: bool = True, fan_energy_cost: float = 0.2,
             motor_energy_cost: float = 0.002, leg_mass_penalty: float | None = None,
-            frame_cb=None, stop_on_fall: bool = True, **_ignored) -> dict:
+            frame_cb=None, lidar_cb=None, stop_on_fall: bool = True, **_ignored) -> dict:
     rng = np.random.default_rng(seed)
     objective = task["objective"]
     if objective not in OBJECTIVES:
@@ -253,7 +257,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         mujoco.mj_forward(model, data)
     # the foot sensors' dropped readings draw from their own stream, so the pose noise, terrain
     # and shoves of a seed are what they were before the sensors existed
-    ctrl = SkaterController(model, p, task, fans_enabled, sensor_rng=np.random.default_rng(seed + 7919))
+    ctrl = SkaterController(model, p, task, fans_enabled, sensor_rng=np.random.default_rng(seed + 7919),
+                            lidar_rng=np.random.default_rng(seed + 104729))
     hip_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hip")
     # task key roll_score 'core': the ride-quality roll (roll_rms, grace) is the core's roll in the world, not the hip
     # box's (with a waist the two differ, and the core is what carries the electronics and fans); falls stay on the hip box
@@ -449,6 +454,8 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
 
         if frame_cb is not None:
             frame_cb(model, data, t)
+        if lidar_cb is not None and ctrl.lidar is not None and ctrl.lidar.new_frame:
+            lidar_cb(ctrl.lidar, t)
 
     wall = time.perf_counter() - t_wall
     if np.any(cyc_peak_t > 0.0):                     # the unfinished last cycle
@@ -577,6 +584,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         "leg_mass_penalty": leg_pen,
         "total_mass": total_mass,
         **ctrl.sensors.summary(),
+        **(ctrl.lidar.summary() if ctrl.lidar is not None else {}),
         "roll_servo_sat_frac": roll_sat / max(1, n - 2),
         **peaks,
         "foot_track_rms_m": float(np.linalg.norm(track_rms)),

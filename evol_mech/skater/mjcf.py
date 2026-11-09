@@ -377,6 +377,22 @@ def _waist_link(p: dict[str, float]) -> tuple[str, str]:
     return tendon, '<tendon name="waist_link" tendon1="waist_link" polycoef="0 0 0 0 0"/>'
 
 
+def _lidar(p: dict[str, float], st) -> str:
+    """The VL53L8CX multizone ToF module (skater/lidar.py) on the core's front face, `lidar_z` above the core's
+    base (default 2 cm), its axis pitched `lidar_pitch_deg` forward of straight down (default 25: the field runs
+    from the toes to about half a metre ahead). The `lidar` site's z axis is the sensor's axis; the module itself
+    is a 6.4 x 3.0 x 1.75 mm massless box that touches nothing. Off (nothing added, every old model unchanged)
+    unless the task sets `lidar`."""
+    if not p.get("lidar"):
+        return ""
+    t = math.radians(p.get("lidar_pitch_deg", 25.0))
+    x, z = st.core_half_x + 0.001, -p["core_height"] / 2 + p.get("lidar_z", 0.02)
+    ax = f'zaxis="{math.sin(t):.5f} 0 {-math.cos(t):.5f}"'
+    return (f'\n        <site name="lidar" pos="{x:.4f} 0 {z:.4f}" {ax} size="0.003" rgba="0.1 0.9 0.1 1"/>'
+            f'\n        <geom name="lidar_module" type="box" pos="{x:.4f} 0 {z:.4f}" {ax} size="0.0015 0.0032 0.000875"'
+            f' mass="0" contype="0" conaffinity="0" rgba="0.05 0.05 0.05 1"/>')
+
+
 def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
                terrain_zmax: float = 0.0, scene_geoms: str = "") -> str:
     """scene_geoms: extra static worldbody geoms (task obstacles such as slalom cones)."""
@@ -413,7 +429,7 @@ def build_mjcf(p: dict[str, float], terrain_asset: str, terrain_geom: str,
         <geom name="payload" type="box" pos="{p['payload_x']:.4f} 0 {_payload_z(p):.4f}" size="{px:.4f} {py:.4f} {pz:.4f}"
               mass="{st.payload_kg:.4f}" rgba="0.2 0.2 0.6 1" {NOCOL}/>
         {_fan('l', +1.0, p, st.fan_kg, fan.diam_m)}
-        {_fan('r', -1.0, p, st.fan_kg, fan.diam_m)}
+        {_fan('r', -1.0, p, st.fan_kg, fan.diam_m)}{_lidar(p, st)}
       </body>
       {_leg('l', +1.0, p, st)}
       {_leg('r', -1.0, p, st)}
