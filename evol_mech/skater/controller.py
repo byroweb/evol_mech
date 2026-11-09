@@ -193,6 +193,7 @@ class SkaterController:
                          for s in ("l", "r")}
         self.tread_ref = {"l": 0.0, "r": 0.0}       # tracked roller angle
         self.z_ref = nominal_height(p)
+        self.height_ref = str(task.get("height_ref", "world"))
         self.x_nom, z_nom = nominal_foot(p)
         self.h_nom = -z_nom                          # hip-to-ankle drop in the parked crouch
         self.roll_range, self.roll_ratio, self.roll_arm = hip_roll_range(p), roll_ratio(p), roll_arm(p)
@@ -275,6 +276,8 @@ class SkaterController:
         # contact-driven walk state (see the constants above)
         self.contact_gait = str(task.get("gait_phase", "clock")) == "contact" and self.objective == "walk"
         self.foot_body = {s: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in "lr"}
+        self.ankle_z0 = 0.0                          # the ankles' parked height above the ground, set on the first act()
+        self._ground_z = None
         self.foot_meas = {s: np.array([0.0, 0.0, -self.h_nom]) for s in "lr"}     # ankle, hip frame, from the leg's hip point
         self.gait_dy = {"l": 0.0, "r": 0.0}        # lateral landing offset at touchdown
         self.dy_hold = {"l": 0.0, "r": 0.0}        # ... as applied now (held in stance, fading over the swing)
@@ -623,6 +626,19 @@ class SkaterController:
         amp = scale * self.p["walk_shift"] * max(0.0, self.p["hip_width"] / 2 + min(0.0, self.stance_w))
         return amp * math.cos(2 * math.pi * (u - self.p["shift_phase"]))
 
+    def _hip_height(self, data: mujoco.MjData, pos) -> float:
+        """The hip's height for the height loop. Default (task height_ref "world"): its world z, which only means
+        height above the ground on level ground and which the build cannot measure. height_ref "feet": the hip's
+        height above the planted feet (the mean of the soles the pressure pads call loaded, from the leg's joint
+        angles), plus the parked ankle height; held through a flight. That works on a slope and is what the
+        build can measure."""
+        if self.height_ref != "feet":
+            return float(pos[2])
+        down = [s for s in "lr" if self.sensors.contact[s]]
+        if down:
+            self._ground_z = float(np.mean([data.xpos[self.foot_body[s]][2] for s in down])) - self.ankle_z0
+        return float(pos[2]) - self._ground_z
+
     def _feet_down(self, data: mujoco.MjData) -> bool:
         for ci in range(data.ncon):
             g1, g2 = data.contact[ci].geom1, data.contact[ci].geom2
@@ -680,6 +696,9 @@ class SkaterController:
         p, c, i = self.p, self.ctrl, self.idx
         self._data = data
         self.sensors.update(data)
+        if self._ground_z is None:          # parked, both soles down: the ankles' height above the ground
+            self.ankle_z0 = float(np.mean([data.xpos[self.foot_body[s]][2] for s in "lr"])) - float(data.qpos[2]) + self.z_ref
+            self._ground_z = float(data.qpos[2]) - self.z_ref
         if self.lidar is not None:
             self.lidar.update(data, t)
         if self.measure_feet:
@@ -768,7 +787,7 @@ class SkaterController:
         # kinematics in the rolled leg plane. Feet shift back for the lean and
         # forward under a nose-down body; sideways toward a roll (positive roll
         # = right side down) and away from the body's walk shift.
-        h_fb = p["kp_height"] * (self.z_ref - float(pos[2])) - p["kd_height"] * float(v_world[2])
+        h_fb = p["kp_height"] * (self.z_ref - self._hip_height(data, pos)) - p["kd_height"] * float(v_world[2])
         if self.legged:
             # on locked soles the passive ankle is the only pitch pivot and its spring is
             # softer than gravity, so the feet are the balance: shifted under the body by

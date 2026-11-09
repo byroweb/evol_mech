@@ -13,7 +13,10 @@ HF_COLS = 200
 HF_HALF_X = 6.0   # metres, field spans [-6, 6]
 HF_HALF_Y = 3.0
 
-TERRAINS = ["flat", "cobblestone", "potholes", "gravel"]
+TERRAINS = ["flat", "cobblestone", "potholes", "gravel", "slope"]
+
+SLOPE_X0 = 0.15     # the slope begins this far ahead of the start; flat behind it
+SLOPE_BLEND = 0.4   # and reaches its full grade over this length (a smooth knee, no edge)
 
 
 # 10 cm checker so motion is readable in the viewer; texuniform makes texrepeat per metre
@@ -40,7 +43,21 @@ def height_at(hdata, zmax: float, x: float, y: float) -> float:
     return float(hdata[min(max(r, 0), nrow - 1), min(max(c, 0), ncol - 1)]) * zmax
 
 
-def build(kind: str, rng: np.random.Generator):
+def slope_height(x, y, slope_deg: float, heading_deg: float = 0.0):
+    """Ground elevation of the "slope" terrain: flat for x < SLOPE_X0, then a plane of grade slope_deg whose uphill
+    direction is heading_deg from +x (0 uphill ahead, 180 downhill ahead, 90 rising to the robot's left, -90 to its
+    right), blended in over SLOPE_BLEND so the start has no edge. 0 at the origin, where the robot starts."""
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    u = np.clip((x - SLOPE_X0) / SLOPE_BLEND, 0.0, 1.0)
+    w = u * u * (3 - 2 * u)                                    # smoothstep 0 -> 1
+    g, h = np.tan(np.radians(slope_deg)), np.radians(heading_deg)
+    along = np.where(x > SLOPE_X0, x - SLOPE_X0, 0.0)
+    # the along-x part integrates the blend so the grade (not the height) ramps in
+    ramp = np.where(u < 1, SLOPE_BLEND * (u ** 3 - u ** 4 / 2), SLOPE_BLEND / 2 + (along - SLOPE_BLEND))
+    return g * (np.cos(h) * ramp + np.sin(h) * y * w)
+
+
+def build(kind: str, rng: np.random.Generator, slope_deg: float = 0.0, slope_heading_deg: float = 0.0):
     if kind == "flat":
         geom = ('<geom name="floor" type="plane" size="0 0 0.05" '
                 'friction="1.0 0.005 0.0001" contype="3" conaffinity="1" material="grid"/>')
@@ -82,5 +99,20 @@ def build(kind: str, rng: np.random.Generator):
         # light smoothing so it is lumpy, not spiky
         h = (h + np.roll(h, 1, 0) + np.roll(h, 1, 1) + np.roll(h, -1, 0) + np.roll(h, -1, 1)) / 5
         return asset, geom, h
+
+    if kind == "slope":
+        # a heightfield plane (exact on the grid's triangles) placed so the start is at z = 0; the robot spawns as on
+        # flat ground (TERRAIN_ZMAX 0) and the rollout reads the ground height from slope_height()
+        y, x = np.mgrid[0:HF_ROWS, 0:HF_COLS]
+        xs = -HF_HALF_X + 2 * HF_HALF_X * x / (HF_COLS - 1)
+        ys = -HF_HALF_Y + 2 * HF_HALF_Y * y / (HF_ROWS - 1)
+        h = slope_height(xs, ys, slope_deg, slope_heading_deg)
+        lo, hi = float(h.min()), float(h.max())
+        span = max(hi - lo, 1e-4)
+        asset = (GRID_ASSET + f'<hfield name="slope" nrow="{HF_ROWS}" ncol="{HF_COLS}" '
+                 f'size="{HF_HALF_X} {HF_HALF_Y} {span:.5f} 0.05"/>')
+        geom = (f'<geom name="floor" type="hfield" hfield="slope" pos="0 0 {lo:.5f}" friction="1.0 0.005 0.0001" '
+                f'condim="3" contype="3" conaffinity="1" material="grid" rgba="0.75 0.7 0.65 1"/>')
+        return asset, geom, ((h - lo) / span).astype(np.float32)
 
     raise ValueError(f"unknown terrain {kind!r}; choose from {TERRAINS}")

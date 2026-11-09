@@ -118,6 +118,35 @@ A zone covers 4-7 cm of ground, the size of a cobble, and the noise is about 1 c
 potholes, steps and obstacles, not individual cobbles. Fusing the ~35 frames each patch gets into a height map
 should cut the noise about six times; the zone blur stays. That map is the next step before footholds.
 
+## Slopes are the near-term target; cobbles de-prioritised (user, 2026-11-09)
+
+Terrain `slope` (task keys `slope_deg`, `slope_heading_deg`: 0 uphill ahead, 180 downhill, 90 rising to the left,
+-90 to the right): flat start, the grade blended in from 15 cm ahead over 40 cm. Falls and swing clearance are
+measured from the ground below on it. Task key `height_ref: "feet"` makes the height loop hold the hip above the
+planted feet (pressure-pad contact plus leg kinematics) instead of world z, which the build cannot measure and
+which is wrong on any slope; on level ground it walks as before.
+
+Best walker (phase1m_seed), 12 s walks from 4 tilted starts, no shove, height_ref feet:
+
+| slope | uphill | downhill | across (either way) |
+|---|---|---|---|
+| 3 deg | 4/4 | 4/4 | 1/4 |
+| 6 deg | 2/4 | 1/4 | 0/4 |
+| 10, 15 deg | 0/4, falls back | 0/4, falls forward | 0/4 |
+
+- The passive ankle spring is the uphill/downhill limit: a sole on a grade bends it and it shoves the body
+  downhill. Half the stiffness walks 6 deg uphill 4/4 and downhill 2/4 with level walking intact; a quarter
+  (below m g h) fails everywhere. A fixed rest angle matched to the slope tips it on the flat run-up, so the
+  trim or lean must change on the slope: the controller has to know the grade.
+- Across-slope walking fails from 3 deg (mostly forward falls): not looked into yet.
+- Knowing the grade: a plane fitted to one VL53L8CX frame, levelled with the IMU, reads it within about 1-2 deg
+  (median per frame); a simulated MEMS IMU's complementary filter adds ~0.7 deg of tilt error. Averaged over a second, ~1 deg.
+
+Cobbles from the feet (1 s windows, flat vs cobble, phase1m_seed walking): how often the centre of pressure
+reverses direction while a foot is planted separates them 95 % of the time; the core gyro's jitter 99 %; feet
+alone in a fitted classifier 92 % on held-out windows. Few cobble windows (20: the walker falls on cobbles), and
+gyro jitter may partly be pre-fall wobble.
+
 ## Parked ideas (the user's, for later)
 
 - After LIDAR is simulated (the module is, 2026-11-09; the fused height map is next): cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads

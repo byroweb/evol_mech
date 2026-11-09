@@ -206,7 +206,8 @@ def make_model(genome: np.ndarray, terrain_kind: str, rng: np.random.Generator, 
     for k in WAIST_KEYS:                          # the waist roll joint is a task option (mjcf._waist); off by default
         if task and task.get(k) is not None:
             p[k] = float(task[k])
-    asset, geom, hdata = terrain_mod.build(terrain_kind, rng)
+    slope = {k: float(task[k]) for k in ("slope_deg", "slope_heading_deg") if task and k in task}
+    asset, geom, hdata = terrain_mod.build(terrain_kind, rng, **slope)
     zmax = TERRAIN_ZMAX.get(terrain_kind, 0.0)
     scene = _cones_xml(slalom_cones(task), hdata, zmax) if task and task.get("objective") == "slalom" else ""
     xml = build_mjcf(p, asset, geom, zmax, scene)
@@ -285,6 +286,13 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     feet = {g for g, n in names.items() if n.startswith("foot_")}
     foot_side = {g: n[5] for g, n in names.items() if n.startswith("foot_")}      # geom -> "l" / "r"
     foot_z0 = {s: float(data.xpos[b][2]) for s, b in zip("lr", foot_bodies)}   # ankle height with the sole on the floor
+    # the ground's height under a point: 0 except on the "slope" terrain (task slope_deg, slope_heading_deg), where the
+    # fall height and the swing clearance are measured from the ground below, not from z = 0
+    if task["terrain"] == "slope":
+        _sd, _sh = float(task.get("slope_deg", 0.0)), float(task.get("slope_heading_deg", 0.0))
+        ground = lambda x, y: float(terrain_mod.slope_height(x, y, _sd, _sh))
+    else:
+        ground = lambda x, y: 0.0
     swing_max = {"l": None, "r": None}            # highest ankle rise during the current swing
     clearances: list[tuple[float, float]] = []    # (time, rise) per swing, at touchdown
     cone_of = {g: int(n.split("_")[1]) for g, n in names.items() if n.startswith("cone_")}
@@ -414,7 +422,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
             elif g2 in cone_of:
                 cones_hit.add(cone_of[g2])
         for s, b in zip("lr", foot_bodies):          # swing-foot clearance: the ankle's rise per swing
-            rise = float(data.xpos[b][2]) - foot_z0[s]
+            rise = float(data.xpos[b][2]) - foot_z0[s] - ground(float(data.xpos[b][0]), float(data.xpos[b][1]))
             if not side_down[s]:
                 swing_max[s] = rise if swing_max[s] is None else max(swing_max[s], rise)
             elif swing_max[s] is not None:
@@ -437,7 +445,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
                     mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_BODY, b, vel6, 1)
                     scrub += abs(float(vel6[4])) * CONTROL_DT   # local-frame lateral speed
 
-        z = float(data.qpos[2])
+        z = float(data.qpos[2]) - ground(float(data.qpos[0]), float(data.qpos[1]))
         roll, pitch = quat_to_roll_pitch(data.qpos[3:7])
         pitch_hist[k], roll_hist[k], z_hist[k], vx_hist[k], y_hist[k] = pitch, roll, z, float(v[0]), float(data.qpos[1])
         if core_roll_id >= 0:

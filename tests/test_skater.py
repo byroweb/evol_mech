@@ -952,3 +952,23 @@ def test_lidar_is_off_by_default_and_reads_a_flat_floor_at_15_hz_within_the_data
             "waist_link": 1.0, "fall_pitch_deg": 20}
     a, b = rollout(g, task, 0), rollout(g, {**task, "lidar": 1}, 0)
     assert a["fitness"] == b["fitness"] and b["lidar_frames"] in (29, 30) and b["lidar_valid_frac"] > 0.9
+
+
+def test_slope_terrain_and_feet_height_reference():
+    """terrain "slope": flat start at z = 0, the full grade beyond the blend, the uphill direction from
+    slope_heading_deg; height_ref "feet" holds the hip above the planted feet and walks level ground as before."""
+    from evol_mech.sim.terrain import slope_height, SLOPE_X0, SLOPE_BLEND
+    from evol_mech.skater.rollout import rollout
+    assert slope_height(0.0, 0.3, 10, 90) == 0.0
+    x = np.array([SLOPE_X0 + SLOPE_BLEND + 0.5, SLOPE_X0 + SLOPE_BLEND + 1.5])
+    up = slope_height(x, 0 * x, 10, 0)
+    assert np.isclose(up[1] - up[0], math.tan(math.radians(10)), rtol=1e-6)
+    assert np.allclose(slope_height(x, 0 * x, 10, 180), -up)
+    assert slope_height(2.0, 0.1, 10, 90) > 0 > slope_height(2.0, 0.1, 10, -90)
+    g = encode(json.load(open("configs/archetypes/skater_walker_phase1m_seed.json"))["phys"])
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 6.0, "servo_model": "real",
+            "servo_lead": "auto", "leg_reach": "clamp", "step_hz_max": 2.5, "waist_link": 1.0, "fall_pitch_deg": 20}
+    a, b = rollout(g, task, 1), rollout(g, {**task, "height_ref": "feet"}, 1)
+    assert a["time_upright"] == b["time_upright"] == 6.0 and abs(a["feet_x_m"] - b["feet_x_m"]) < 0.1
+    c = rollout(g, {**task, "terrain": "slope", "slope_deg": 3.0, "height_ref": "feet"}, 1)
+    assert c["time_upright"] == 6.0 and c["feet_x_m"] > 0.5
