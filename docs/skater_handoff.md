@@ -91,7 +91,10 @@ at this writing.
   The use the user has in mind: point-to-point flights. Pick a spot; the Raspberry Pi plans takeoff, a short
   efficient trajectory and landing, seconds long, energy-hungry but brief. A leg hop gives the initial vertical
   speed (the most expensive part for the fans), the legs take the landing. Rough scale from the fan model: hover
-  near 450 W (46 % thrust), so 5 s of flight is about 2 kJ, a few percent of a 3S 2200 mAh pack (voltage assumed).
+  near 450 W (46 % thrust), so 5 s of flight is about 2 kJ. The user's pack: Tattu 2200 mAh 4S1P 14.8 V 45C, XT60
+  (32.6 Wh, ~117 kJ, ~94 kJ usable at 80 %): a 5 s flight is ~2 % of it, hovering lasts ~3.5 min, full throttle on
+  both big fans (1.4 kW) ~1 min. 45C is 99 A, ~1.47 kW at 14.8 V: just covers both fans at full throttle, with
+  little margin for the servos and electronics. The model carries the battery as 240 g (2200 mAh).
 
 ## How the work is done (the rules that bit)
 
