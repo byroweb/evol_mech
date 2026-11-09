@@ -312,8 +312,9 @@ class SkaterController:
         # task key level_swing k: the same levelling for the swing foot only, fading out over the first LEVEL_FADE of its
         # stance (levelling the stance leg frees the torso in pitch: a pendulum 8 cm tall, too quick for the servos)
         self.level_swing = float(task.get("level_swing", 0.0))
-        self.cop_gain = float(task.get("cop_gain", 0.0))       # heel-toe pressure feedback (see act); 0 = off
-        self.cop_dead = float(task.get("cop_dead", 0.4))
+        # heel-toe pressure feedback (see act): the genes cop_gain / cop_dead, a task key of the same name overriding
+        self.cop_gain = float(task.get("cop_gain", p.get("cop_gain", 0.0)))
+        self.cop_dead = float(task.get("cop_dead", p.get("cop_dead", 0.4)))
         self.cop_e = 0.0
         self.u_phase = {"l": 0.0, "r": 0.0}
 

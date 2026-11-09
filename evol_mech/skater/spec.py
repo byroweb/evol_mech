@@ -119,6 +119,9 @@ PARAMS: list[Param] = [
     Param("strut_len",        0.02, 0.15, 0.05, "leg"),         # pantograph: lower node to the ankle, along the rear rod's direction (m)
     Param("roll_ratio",       1.0,  5.0,  1.0,  "drivetrain"),  # four-bar leg only: hip roll lever, bracket arm in horn lengths (torque x, speed and range / ratio). On the pantograph the arm is the bracket itself (structure.roll_arm) and this gene is ignored
     Param("horn_k_log10",     0.0,  3.0,  3.0,  "drivetrain"),  # log10 of a horn's in-plane flexural stiffness about its servo axis (N m/rad), in series with the servo; one part, so one value for all three horns
+    # ---- heel-toe pressure feedback (controller.act; appended last so older 88-gene genomes decode with it off) ----
+    Param("cop_gain",        -0.04, 0.04, 0.0,  "gait"),        # walk: fore-aft foot shift (m) per unit of planted-feet centre of pressure past the deadband (+ = toward the pressure); 0 = off
+    Param("cop_dead",         0.0,  0.95, 0.4,  "gait"),        # walk: the heel-toe deadband, fraction of the pad spacing
 ]
 
 NAMES = [p.name for p in PARAMS]
@@ -136,7 +139,10 @@ def snap(name: str, v: float) -> float:
 
 
 def decode(genome: np.ndarray) -> dict[str, float]:
-    g = np.clip(np.asarray(genome, dtype=float), 0.0, 1.0)
+    g = np.asarray(genome, dtype=float)
+    if g.shape[0] < N_PARAMS:          # a genome saved before genes were appended: the new ones at their defaults
+        g = np.concatenate([g, DEFAULT_NORM[g.shape[0]:]])
+    g = np.clip(g, 0.0, 1.0)
     phys = LO + g * (HI - LO)
     return {n: snap(n, v) for n, v in zip(NAMES, phys)}
 
