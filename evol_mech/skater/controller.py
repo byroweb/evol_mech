@@ -312,6 +312,9 @@ class SkaterController:
         # task key level_swing k: the same levelling for the swing foot only, fading out over the first LEVEL_FADE of its
         # stance (levelling the stance leg frees the torso in pitch: a pendulum 8 cm tall, too quick for the servos)
         self.level_swing = float(task.get("level_swing", 0.0))
+        self.cop_gain = float(task.get("cop_gain", 0.0))       # heel-toe pressure feedback (see act); 0 = off
+        self.cop_dead = float(task.get("cop_dead", 0.4))
+        self.cop_e = 0.0
         self.u_phase = {"l": 0.0, "r": 0.0}
 
     # ---- 1. planner ------------------------------------------------------------
@@ -770,6 +773,22 @@ class SkaterController:
             if self.capture:
                 kv = 0.0                                 # the velocity term is the swing foot's capture point below
             x_f = self.x_nom + sx + kp * pitch + p["kd_foot_leg"] * pitch_rate + self.x_int + kv * float(v_b[0])
+            if self.cop_gain and self.objective in ("walk", "stand"):
+                # heel-toe feedback (task keys cop_gain m, cop_dead 0-1): the planted feet's load-weighted centre of
+                # pressure from the heel and toe pads, as a fraction of the pad spacing (-1 heel .. +1 toe); past the
+                # deadband the feet shift the same way (heel -> feet back, the hip comes forward over them). In every
+                # traced cobble and shove fall the pressure pinned at an edge a fraction of a second before the tip
+                # could not be undone.
+                sens, num, den = self.sensors, 0.0, 0.0
+                for s in "lr":
+                    if sens.contact[s] and sens.load[s] > 0.0:
+                        num += sens.load[s] * sens.cop[s]
+                        den += sens.load[s]
+                if den > 0.0:
+                    c_n = max(-1.0, min(1.0, num / den / max(1e-6, sens.pad_x)))
+                    e = math.copysign(max(0.0, abs(c_n) - self.cop_dead) / max(1e-6, 1.0 - self.cop_dead), c_n)
+                    x_f += self.cop_gain * e
+                    self.cop_e = e
         else:
             x_f = (self.x_nom - d_feet
                    + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)

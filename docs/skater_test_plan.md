@@ -494,6 +494,17 @@ servo), scored against round 9 on the same four tilted starts.
    back from past ~15 deg). On phase1j at 20 deg: flat 0/8 and stands 0/8 as
    before (the gait peaks near 10 deg), cobble falls register earlier. From
    round 1l on, rounds use fall_pitch_deg 20.
+   Heel-toe pressure feedback (task keys `cop_gain` m, `cop_dead`; off by
+   default): the planted feet's load-weighted centre of pressure from the
+   heel and toe pads, past a deadband, shifts the feet fore-aft. The first
+   use of the pressure pads by the clock walk (until now only the contact
+   gait and the catch step read them). On phase1j and on the 12 x 4 seed,
+   fall at 20 deg, untuned: positive gains 0.02-0.08 m collapse the walk
+   inside 1-4 s (every step rolls heel to toe through the deadband);
+   negative gains do nothing up to -0.02 and add falls at -0.04; a 0.9
+   deadband is within noise of off. As a fixed reflex it rescues no shove
+   (the planted foot moves too slowly for a tip that takes ~0.3 s); if it
+   is worth more it is as genes the GA co-tunes with the gait.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
