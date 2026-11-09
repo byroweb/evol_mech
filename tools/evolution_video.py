@@ -222,7 +222,9 @@ def main():
     band_y = HEADER_H + grid.h + BAND_PAD        # top of the best tile's copy
     copy_x = (W - tw) // 2
     bot_y = HEADER_H + grid.h + gap_h
-    writer = imageio.get_writer(str(out), fps=FPS, codec="libx264", quality=7, macro_block_size=1)
+    # crf 30 at the full tile size: a 48 x 80 run is about 50 MB instead of 466 MB (quality=7), the labels still readable
+    writer = imageio.get_writer(str(out), fps=FPS, codec="libx264", quality=None, macro_block_size=1,
+                                output_params=["-crf", "30", "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
 
     def labels_for(g, with_fitness=True):
         gen = gens[g]
