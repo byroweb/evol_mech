@@ -116,6 +116,8 @@ LAND_STEPS = 2
 LIFT_STEPS = 3            # the swing foot must have read no contact this many steps running before it can land early (a shuffle cannot)
 SEARCH_MAX_M = 0.03
 SWING_MIN_FRAC = 0.4        # a landing counts only after this much of the swing (the lift-off debounce)
+CATCH_ARM_S = 0.5           # the catch step is armed only after the start's settling (the first steps rock the body)
+CROUCH_RATE = 0.3           # m/s the hip drops during a catch (task key catch_crouch)
 START_RAMP_S = 0.4
 START_LOAD_BW = 0.6
 START_TIMEOUT_S = 0.8
@@ -284,6 +286,23 @@ class SkaterController:
         self.capture = str(task.get("foot_placement", "gains")) == "capture"
         self.swing_w = {"l": 0.0, "r": 0.0}        # 0 in stance, the swing's progress 0..1 in swing (walk only)
         self.measure_feet = self.contact_gait or self.capture
+        # catch step (task key catch_step, clock walk only): see _catch_update
+        self.catch_on = bool(task.get("catch_step", False)) and self.objective == "walk" and not self.contact_gait
+        self.catch_pitch = float(task.get("catch_pitch", 0.08))     # rad of pitch away from upright ...
+        self.catch_rate = float(task.get("catch_rate", 0.3))        # ... and rad/s still growing, to trigger
+        self.catch_gain = float(task.get("catch_gain", 1.0))        # x the capture point (hip speed x pendulum time)
+        self.catch_down = float(task.get("catch_down", 0.01))       # m below the stance foot's ground the catch reaches
+        self.catch_timeout = float(task.get("catch_timeout", 0.5))  # s before a catch that has not landed gives up
+        self.clock_off = 0.0                       # cycles added to the walk clock (frozen during a catch, re-phased after)
+        self.catch_side, self.catch_t0, self.catch_land = None, 0.0, 0
+        self.catch_x = {"l": 0.0, "r": 0.0}        # the catch foot's fore-aft target (hip frame, beside x_f) while catching
+        self.x_bias = {"l": 0.0, "r": 0.0}         # after a catch: the planted foot's offset from the stance path, fading
+        self.x_bias_rate = {"l": 0.0, "r": 0.0}
+        self.catch_events = 0
+        # the leg walks nearly straight (34 cm hip, 31 cm reach), so a foot placed behind and down at the ground is out
+        # of reach: during a catch the stance leg bends catch_crouch (m), lowering the hip so the catch can land
+        self.catch_crouch = float(task.get("catch_crouch", 0.0))
+        self.crouch_now = 0.0
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -413,7 +432,7 @@ class SkaterController:
         if self.objective == "walk":                   # the cycle starts at the left foot's swing: the left steps first
             if self.contact_gait:
                 return self._contact_walk(t)
-            self.cycles = p["step_hz"] * t + p["step_duty"]
+            self.cycles = p["step_hz"] * t + p["step_duty"] + self.clock_off
             for s, ph in (("l", 0.0), ("r", 0.5)):
                 u = (self.cycles + ph) % 1.0
                 self.swing_w[s] = 0.0 if u < p["step_duty"] else (u - p["step_duty"]) / (1.0 - p["step_duty"])
@@ -516,6 +535,42 @@ class SkaterController:
                 self.dy_hold[s], self.swing_w[s] = self.gait_dy[s] * (1.0 - w), w
             out[s] = (gx, gz, True)
         return out
+
+    def _catch_update(self, t: float, t_g: float, pitch: float, pitch_rate: float) -> None:
+        """The catch step (task key catch_step, clock walk). On cobbles the walkers fell after a touchdown: the body
+        pitched away at about 1 rad/s, the swing foot, held at its height below the tilted hip, rose with the body and
+        never landed, and the stance foot tipped over its heel edge. So: when the pitch is past catch_pitch and still
+        growing at catch_rate with a foot in the air, that foot is taken over (act places it level on the ground at the
+        capture point) and the walk clock is frozen, so the stance foot stays down. When the catch foot carries
+        LAND_LOAD_BW for LAND_STEPS steps the clock is re-phased with it at touchdown, and both feet's offsets from
+        their new path fade out over half a stance. A catch that has not landed in catch_timeout lets the clock run."""
+        p = self.p
+        if self.catch_side is None:
+            if (t >= CATCH_ARM_S and abs(pitch) > self.catch_pitch and pitch * pitch_rate > 0
+                    and abs(pitch_rate) > self.catch_rate):
+                # a foot in its swing that has actually left the floor (one still carrying load is not falling free)
+                swing = [s for s in "lr" if self.swing_w[s] > 0.0 and self.sensors.load[s] < LAND_LOAD_BW]
+                if swing:
+                    self.catch_side, self.catch_t0, self.catch_land = swing[0], t, 0
+                    self.catch_events += 1
+            return
+        s = self.catch_side
+        self.clock_off -= p["step_hz"] * CONTROL_DT          # the clock holds still while the catch is in the air
+        self.catch_land = self.catch_land + 1 if self.sensors.load[s] >= LAND_LOAD_BW else 0
+        if self.catch_land >= LAND_STEPS and t - self.catch_t0 > 2 * CONTROL_DT:
+            duty, hz = p["step_duty"], p["step_hz"]
+            cyc = hz * t_g + duty + self.clock_off
+            ph = {"l": 0.0, "r": 0.5}
+            self.clock_off += (-(cyc + ph[s])) % 1.0          # the catch foot at touchdown
+            cyc2 = hz * t_g + duty + self.clock_off
+            fade = max(CONTROL_DT, 0.5 * duty / hz)
+            for side in "lr":
+                x_new = self._walk_leg((cyc2 + ph[side]) % 1.0)[0]
+                self.x_bias[side] = self._gx_last[side] - x_new
+                self.x_bias_rate[side] = abs(self.x_bias[side]) / fade
+            self.catch_side = None
+        elif t - self.catch_t0 > self.catch_timeout:
+            self.catch_side = None
 
     def _set_anchor(self, s: str) -> None:
         """Stance from the measured foot: the sweep starts at the foot's x relative to the balance
@@ -715,6 +770,16 @@ class SkaterController:
         # the swing foot's landing at the capture point: hip velocity x the pendulum time, in x and y
         T_c = math.sqrt(max(0.05, h_com) / G)
         cap_x, cap_y = (float(v_b[0]) * T_c, float(v_b[1]) * T_c) if self.capture else (0.0, 0.0)
+        if self.catch_on:
+            self._catch_update(t, t_g, pitch, pitch_rate)
+            if not hasattr(self, "_gx_last"):
+                self._gx_last = {"l": 0.0, "r": 0.0}
+            R_w = data.xmat[self.hip_id].reshape(3, 3)
+            R_h = np.array([[cy, sy, 0.0], [-sy, cy, 0.0], [0.0, 0.0, 1.0]]) @ R_w     # hip frame -> heading frame
+            # the catch crouch: down at CROUCH_RATE while a catch is in the air, back up over half a stance after
+            rate = CROUCH_RATE if self.catch_side else self.catch_crouch / max(CONTROL_DT, 0.5 * p["step_duty"] / p["step_hz"])
+            target = self.catch_crouch if self.catch_side else 0.0
+            self.crouch_now += max(-rate * CONTROL_DT, min(rate * CONTROL_DT, target - self.crouch_now))
         gait = self.gait_offsets(t_g)
         hfb_scale = 1.0 - self.blend if self.objective == "course" else 1.0   # the run sets its own height
         stance_w = self.stance_w
@@ -727,6 +792,27 @@ class SkaterController:
                 dy += self.dy_hold[s]
             sw = self.swing_w[s]
             gx, dy = gx + sw * cap_x, dy + sw * cap_y
+            if self.catch_on:
+                if s == self.catch_side:
+                    # the catch foot, placed in the level heading frame and turned back into the tilted hip frame:
+                    # fore-aft at the capture point of the falling body (centre of mass + hip speed x pendulum time),
+                    # down at the stance foot's ground less catch_down, sideways where the gait had it
+                    o = "r" if s == "l" else "l"
+                    hp_h = R_h @ self.hip_point[s]
+                    lat_h = float((R_h @ np.array([x_f + gx, dy, -h]))[1])
+                    com_x = float((R_h @ np.array([0.0, 0.0, COM_ABOVE_HIP]))[0])
+                    x_h = com_x + self.catch_gain * float(v_b[0]) * T_c - float(hp_h[0])
+                    z_h = (float(data.xpos[self.foot_body[o]][2]) - self.catch_down) - (float(data.xpos[self.hip_id][2]) + float(hp_h[2]))
+                    d_b = R_h.T @ np.array([x_h, lat_h, z_h])
+                    gx, dy, h = float(d_b[0]) - x_f, float(d_b[1]), max(0.02, -float(d_b[2]))
+                else:
+                    h = max(0.02, h - self.crouch_now)
+                    b = self.x_bias[s]
+                    if b != 0.0:
+                        step = self.x_bias_rate[s] * CONTROL_DT
+                        self.x_bias[s] = 0.0 if abs(b) <= step else b - math.copysign(step, b)
+                    gx += self.x_bias[s]
+                self._gx_last[s] = gx
             # the roll that puts the ankle dy to the left and h below the leg's hip point: with
             # the pivot roll_arm inboard of that point (pantograph body) the leg point itself
             # swings, so the roll is the target's angle about the pivot less the leg's own, and

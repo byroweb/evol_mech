@@ -63,9 +63,9 @@ at this writing.
 
 ## Recommended next steps, in order
 
-0. Cobbles: a catch-step reflex behind a task key (when the body pitches back after a touchdown, drive the
-   swing foot down and back instead of finishing its swing), tested on phase1j before any GA round. The
-   diagnosis is in the plan under phase 1.
+0. Cobbles: the catch-step reflex (task key catch_step, off) was built and saves nothing; the plan under
+   phase 1 says why (leg targets in the tilted hip frame; no reach to spare). Next candidates: pitch-levelled
+   leg targets, LIDAR-informed foot placement (the user plans a downward LIDAR on the core), phase 2 reach.
 1. Draw the robustness starts fresh each generation (seed the tasks by generation in
    `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
    round so far memorised its starts. Run the next round as 48 x 80 with `clear_min 0.03`.

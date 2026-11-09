@@ -444,6 +444,23 @@ servo), scored against round 9 on the same four tilted starts.
    7 of 8, so it is not the shoves. The capture point and the contact gait,
    untuned, make cobbles and flat worse. Next: a catch step (swing foot
    driven down and back when the body pitches back) behind a task key.
+   Catch step (2026-11-08, task keys `catch_step`, `catch_pitch`,
+   `catch_rate`, `catch_gain`, `catch_down`, `catch_crouch`,
+   `catch_timeout`; off by default): when the pitch is past a threshold and
+   still growing with a foot off the floor, that foot is placed level on the
+   ground at the capture point, the walk clock is frozen until it lands, and
+   then re-phased with it at touchdown. On phase1j it saves no cobble fall
+   (bare 7-8/8, perturbed 7-8/8 against 7/8 and 8/8 off) at any trigger from
+   9 to 14 deg, placement 0.5-1.5 x the capture point, crouch 0-6 cm. Below
+   about 12 deg it fires on the flat walk (the gait pitches to 8 deg and
+   1.7 rad/s) and costs flat falls. Without a crouch the catch foot cannot
+   reach the ground behind (34 cm hip, 31 cm reach: the clamp holds it 2 cm
+   up); with one the catches land, but the pitch keeps growing with both feet
+   loaded: every leg target lives in the tilted hip frame, so past about
+   15 deg the whole leg pattern tips with the body, both feet end up ahead
+   of the centre of mass and the robot rotates over its heels as one piece.
+   Not a reflex problem: the legs need pitch-levelled targets (or a body
+   with reach to spare), which is a larger controller change or phase 2.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
