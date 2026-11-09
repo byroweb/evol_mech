@@ -118,6 +118,7 @@ SEARCH_MAX_M = 0.03
 SWING_MIN_FRAC = 0.4        # a landing counts only after this much of the swing (the lift-off debounce)
 CATCH_ARM_S = 0.5           # the catch step is armed only after the start's settling (the first steps rock the body)
 CROUCH_RATE = 0.3           # m/s the hip drops during a catch (task key catch_crouch)
+LEVEL_FADE = 0.3            # level_swing: the levelling fades out over this fraction of the stance after touchdown
 START_RAMP_S = 0.4
 START_LOAD_BW = 0.6
 START_TIMEOUT_S = 0.8
@@ -303,6 +304,15 @@ class SkaterController:
         # of reach: during a catch the stance leg bends catch_crouch (m), lowering the hip so the catch can land
         self.catch_crouch = float(task.get("catch_crouch", 0.0))
         self.crouch_now = 0.0
+        # task key level_legs k (0 = off): the foot pattern is laid out in a frame levelled in pitch (k = 1 fully) and
+        # turned into the tilted hip frame each step, so a body that pitches does not carry the whole leg pattern with
+        # it (on cobbles the walkers tipped past ~15 deg, both feet ended ahead of the centre of mass in the world and
+        # the robot rotated over its heels as one piece, catch step or not). Roll is left to the hip roll servos.
+        self.level_legs = float(task.get("level_legs", 0.0))
+        # task key level_swing k: the same levelling for the swing foot only, fading out over the first LEVEL_FADE of its
+        # stance (levelling the stance leg frees the torso in pitch: a pendulum 8 cm tall, too quick for the servos)
+        self.level_swing = float(task.get("level_swing", 0.0))
+        self.u_phase = {"l": 0.0, "r": 0.0}
 
     # ---- 1. planner ------------------------------------------------------------
     def plan(self, pos: np.ndarray, yaw: float) -> tuple[np.ndarray, float]:
@@ -435,6 +445,7 @@ class SkaterController:
             self.cycles = p["step_hz"] * t + p["step_duty"] + self.clock_off
             for s, ph in (("l", 0.0), ("r", 0.5)):
                 u = (self.cycles + ph) % 1.0
+                self.u_phase[s] = u
                 self.swing_w[s] = 0.0 if u < p["step_duty"] else (u - p["step_duty"]) / (1.0 - p["step_duty"])
             return {s: (*self._walk_leg((self.cycles + ph) % 1.0), True) for s, ph in (("l", 0.0), ("r", 0.5))}
         if self.objective == "run":
@@ -780,6 +791,10 @@ class SkaterController:
             rate = CROUCH_RATE if self.catch_side else self.catch_crouch / max(CONTROL_DT, 0.5 * p["step_duty"] / p["step_hz"])
             target = self.catch_crouch if self.catch_side else 0.0
             self.crouch_now += max(-rate * CONTROL_DT, min(rate * CONTROL_DT, target - self.crouch_now))
+        if (self.level_legs or self.level_swing) and self.legged:
+            # the body's pitch about the heading frame's y axis, from its x axis: Ry(th) takes x to (cos th, 0, -sin th)
+            R_hl = np.array([[cy, sy, 0.0], [-sy, cy, 0.0], [0.0, 0.0, 1.0]]) @ data.xmat[self.hip_id].reshape(3, 3)
+            th_body = math.atan2(-float(R_hl[2, 0]), float(R_hl[0, 0]))
         gait = self.gait_offsets(t_g)
         hfb_scale = 1.0 - self.blend if self.objective == "course" else 1.0   # the run sets its own height
         stance_w = self.stance_w
@@ -813,6 +828,18 @@ class SkaterController:
                         self.x_bias[s] = 0.0 if abs(b) <= step else b - math.copysign(step, b)
                     gx += self.x_bias[s]
                 self._gx_last[s] = gx
+            if (self.level_legs or self.level_swing) and self.legged:
+                # the target (x_f + gx, dy, -h) read in the pitch-levelled frame, turned into the hip frame: Ry(th)^T
+                k = self.level_legs
+                if self.level_swing and self.objective == "walk":
+                    u, duty = self.u_phase[s], p["step_duty"]
+                    w_lv = 1.0 if u >= duty else max(0.0, 1.0 - (u / duty) / LEVEL_FADE)
+                    k = max(k, self.level_swing * w_lv)
+                th = k * th_body
+                c_th, s_th = math.cos(th), math.sin(th)
+                xv, zv = x_f + gx, -h
+                xb, zb = c_th * xv - s_th * zv, s_th * xv + c_th * zv
+                gx, h = xb - x_f, max(0.02, -zb)
             # the roll that puts the ankle dy to the left and h below the leg's hip point: with
             # the pivot roll_arm inboard of that point (pantograph body) the leg point itself
             # swings, so the roll is the target's angle about the pivot less the leg's own, and

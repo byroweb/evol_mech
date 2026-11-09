@@ -461,6 +461,27 @@ servo), scored against round 9 on the same four tilted starts.
    of the centre of mass and the robot rotates over its heels as one piece.
    Not a reflex problem: the legs need pitch-levelled targets (or a body
    with reach to spare), which is a larger controller change or phase 2.
+   Pitch-levelled leg targets (task keys `level_legs` k, `level_swing` k;
+   off by default): the foot pattern laid out in a frame levelled in pitch
+   and turned into the hip frame each step. Levelling all legs makes it
+   worse at every k >= 0.5 and with foot-placement gains up to 0.5 m/rad
+   (everything falls in about 1.2 s): with the stance leg levelled the
+   torso is free in pitch, an upturned pendulum 8 cm tall, too quick for
+   the servos; the rigid pattern was what made the robot one tall, slow
+   pendulum. Levelling the swing foot only (fading out over the first 30 %
+   of stance) is harmless at 0.5 and saves no cobble fall.
+   The foot is the cobble fix (2026-11-08, phase1j untuned, linkage on):
+   sole length x tread width, falls on bare / perturbed cobbles / flat:
+   16 x 3 cm (today) 7/8, 8/8, 0/8; 20 x 3: 7/8, 6/8, 0/8 (falls turn
+   sideways); 20 x 7: 0/8, 3/8, 0/8; 24 x 5: 0/8, 2/8, 0/8; 24 x 7: 0/8,
+   0/8, 0/8 with 12.6 cm strides on flat (16 x 3: 11.2). Shorter soles are
+   worse on everything. The cost: the derived foot mass goes from 92 to
+   233 g each, the legs from 15 to 19 % of the mass, the leg-mass penalty
+   from 0.28 to 0.71, and servo saturation from 10 to 20 %, so the score
+   rates the big-foot walk lower (-0.65 vs -0.14 on a flat start) although
+   it walks further and falls nowhere. Cobbles are a foot question: the
+   phase-2 round should free sole_len and tread_w (group foot) with a
+   realistic printed-foot mass.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

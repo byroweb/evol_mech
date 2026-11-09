@@ -63,9 +63,10 @@ at this writing.
 
 ## Recommended next steps, in order
 
-0. Cobbles: the catch-step reflex (task key catch_step, off) was built and saves nothing; the plan under
-   phase 1 says why (leg targets in the tilted hip frame; no reach to spare). Next candidates: pitch-levelled
-   leg targets, LIDAR-informed foot placement (the user plans a downward LIDAR on the core), phase 2 reach.
+0. Cobbles are a foot question: on phase1j a 24 x 7 cm foot (sole_len 0.24, tread_w 0.07; today 16 x 3) walks
+   every cobble start untuned, but costs foot mass (92 -> 233 g derived) and doubles servo saturation. The catch
+   step and pitch levelling (task keys, off) saved nothing; the plan under phase 1 says why. Next: a body round
+   with the foot group free and an honest printed-foot mass. LIDAR foot placement later (user plans it).
 1. Draw the robustness starts fresh each generation (seed the tasks by generation in
    `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
    round so far memorised its starts. Run the next round as 48 x 80 with `clear_min 0.03`.

@@ -619,3 +619,15 @@ for; a velocity integral in the controller is the alternative.
   starts to tip back, the next foot is already lifting and rises with the
   body instead of coming down, and the robot rotates over its heel. The
   fix is a reflex, not a gain: step down and back when pitching back.
+
+  Cobbles turned out not to be a controller problem at all. A catch step,
+  levelled legs and a levelled swing foot each failed for a physical
+  reason: the leg has no reach to spare, and freeing the torso in pitch
+  makes a pendulum faster than the servos. The traces had kept showing the
+  robot pivoting over the heel edge of a short, narrow foot, so the foot
+  was tried last, and it was the answer: a 24 x 7 cm foot instead of
+  16 x 3 cm walks every cobble start, bare and shoved, untuned, and takes
+  longer strides on the flat. The price is foot mass, which the score
+  charges heavily, and twice the servo saturation. A printed foot can be
+  far lighter than the solid one the model derives, so the next body round
+  should price the foot honestly and let the GA choose its size.
