@@ -482,6 +482,13 @@ servo), scored against round 9 on the same four tilted starts.
    it walks further and falls nowhere. Cobbles are a foot question: the
    phase-2 round should free sole_len and tread_w (group foot) with a
    realistic printed-foot mass.
+   The user then capped the foot at 12 x 4 cm for looks and weight (a
+   light RC-tank-style track unit; the derived mass is 86 g at the cap, 92 g
+   at 16 x 3, so the mass model needed no change inside it), enforced by the
+   GA config option `gene_bounds`. That rules the big-foot cobble fix out,
+   and cobbles are set aside until the downward LIDAR is simulated: not a
+   phase-1 exit criterion for now. Round 1k re-tunes the gains on the
+   capped foot (phase1j untuned on 12 x 4: flat 4/8 falls).
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

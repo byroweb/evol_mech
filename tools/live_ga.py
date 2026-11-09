@@ -57,9 +57,12 @@ def _champion_clips(run_root: Path, stop: threading.Event) -> None:
                     z = np.load(f)
                     i = int(np.argmax(z["fitness"]))
                     # an elite carried over is the same genome: point at the clip already made instead of a new file
-                    same = [j for j in sorted(out.glob("gen_*.json")) if np.array_equal(np.load(j.with_suffix(".npy")), z["genomes"][i])] if any(out.glob("*.npy")) else []
+                    # (only filmed generations have a .npy: a carried-over one has a .json pointing at its clip_gen and no
+                    # genome file, so compare against the .npy files, not every .json, or the worker stalls on the gap)
+                    same = [n for n in sorted(out.glob("gen_*.npy"))
+                            if n.with_suffix(".json").exists() and np.array_equal(np.load(n), z["genomes"][i])]
                     if same:
-                        m = json.load(open(same[-1]))
+                        m = json.load(open(same[-1].with_suffix(".json")))
                         m.update({"gen": int(f.stem[4:]), "i": i, "ga_fitness": float(z["fitness"][i]), "clip_gen": m.get("clip_gen", m["gen"])})
                         json.dump(m, open(out / (f.stem + ".json"), "w"))
                         continue

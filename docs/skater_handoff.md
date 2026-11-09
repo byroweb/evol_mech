@@ -63,10 +63,11 @@ at this writing.
 
 ## Recommended next steps, in order
 
-0. Cobbles are a foot question: on phase1j a 24 x 7 cm foot (sole_len 0.24, tread_w 0.07; today 16 x 3) walks
-   every cobble start untuned, but costs foot mass (92 -> 233 g derived) and doubles servo saturation. The catch
-   step and pitch levelling (task keys, off) saved nothing; the plan under phase 1 says why. Next: a body round
-   with the foot group free and an honest printed-foot mass. LIDAR foot placement later (user plans it).
+0. Cobbles are set aside until the downward LIDAR is simulated (user's decision, 2026-11-08): under the user's foot
+   cap (12 x 4 cm, GA config gene_bounds) the big-foot fix (24 x 7 cm walks every cobble start) is out, and the
+   catch step and pitch levelling (task keys, off) saved nothing. The cobble task stays in the robustness score
+   at its weight so rounds stay comparable, but it is not a phase-1 exit criterion now. Round 1k re-tunes the
+   gains on the capped foot.
 1. Draw the robustness starts fresh each generation (seed the tasks by generation in
    `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
    round so far memorised its starts. Run the next round as 48 x 80 with `clear_min 0.03`.
