@@ -505,6 +505,12 @@ servo), scored against round 9 on the same four tilted starts.
    deadband is within noise of off. As a fixed reflex it rescues no shove
    (the planted foot moves too slowly for a tip that takes ~0.3 s); if it
    is worth more it is as genes the GA co-tunes with the gait.
+   Correction to rounds 1e-1h's notes: the GA draws fresh starts every
+   generation (a new gen_seed each); its best overstates the unseen score
+   because best.json keeps the luckiest evaluation (a winner's curse), not
+   because it memorised eight starts. Config `patience` / `min_delta`
+   (default off) stops a round on a plateau: round 1k's best last rose by
+   more than 0.005 at generation 11 of 80.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

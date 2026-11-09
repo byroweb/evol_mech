@@ -73,6 +73,11 @@ def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, 
     parents = np.full((n, 2), -1, dtype=int)
     kinds = np.full(n, KIND_RANDOM, dtype=int)
     best_genome, best_result, best_fit = None, None, -np.inf
+    # cfg 'patience' (generations, default off): stop once the best has not risen by more than cfg 'min_delta'
+    # (default 0.005) for that long. The best is the luckiest evaluation so far (every generation draws its own
+    # starts), so it plateaus; round 1k last gained at generation 11 of 80
+    patience, min_delta = int(cfg.get("patience", 0)), float(cfg.get("min_delta", 0.005))
+    last_gain_gen, gain_ref = 0, -np.inf
 
     with Pool(processes=cfg["workers"]) as pool:
         for gen in range(cfg["generations"]):
@@ -90,6 +95,11 @@ def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, 
             row = store.log_generation(gen, pop, results, wall, parents=parents, kinds=kinds, gen_seed=gen_seed)
             if on_generation:
                 on_generation(row, pop[i_best], results[i_best])
+            if fit[i_best] > gain_ref + min_delta:
+                gain_ref, last_gain_gen = fit[i_best], gen
+            if patience and gen - last_gain_gen >= patience:
+                print(f"stopping at generation {gen}: no gain above {min_delta} since generation {last_gain_gen}", flush=True)
+                break
 
             # --- next generation --------------------------------------------
             order = np.argsort(-fit)

@@ -68,9 +68,11 @@ at this writing.
    catch step and pitch levelling (task keys, off) saved nothing. The cobble task stays in the robustness score
    at its weight so rounds stay comparable, but it is not a phase-1 exit criterion now. Round 1k re-tunes the
    gains on the capped foot.
-1. Draw the robustness starts fresh each generation (seed the tasks by generation in
-   `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
-   round so far memorised its starts. Run the next round as 48 x 80 with `clear_min 0.03`.
+1. Correction (2026-11-08): the GA already draws fresh robustness starts every generation (ga.run_ga passes a new
+   gen_seed each generation; all individuals of a generation share it). The GA best overstates the unseen score
+   because best.json keeps the luckiest evaluation of any generation (a winner's curse), not because the starts are
+   memorised. A round can now stop on a plateau (config `patience`, `min_delta`); a final re-evaluation of the top
+   few on fresh seeds would pick a sturdier winner than the luckiest one.
 2. Item 6, CMA-ES over the gain genes on the fixed body with the robustness score.
 3. Phase 2 body round from phase1h, carrying: the roll-lever range (`structure.roll_lever_range`),
    the 2.3 cm extension headroom, the tread box on the shin's outer face, a mass rule with
