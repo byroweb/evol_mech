@@ -88,6 +88,10 @@ at this writing.
   robot's 19.4 N, 2.2 x weight, about 700 W each, 88 g each). Two thrusts plus the two fan pitch servos make a
   bicopter / tiltrotor: roll by differential thrust, pitch by common tilt, yaw by differential tilt, all three
   already in the controller. Battery life at full throttle would be minutes on the 2200 mAh pack.
+  The use the user has in mind: point-to-point flights. Pick a spot; the Raspberry Pi plans takeoff, a short
+  efficient trajectory and landing, seconds long, energy-hungry but brief. A leg hop gives the initial vertical
+  speed (the most expensive part for the fans), the legs take the landing. Rough scale from the fan model: hover
+  near 450 W (46 % thrust), so 5 s of flight is about 2 kJ, a few percent of a 3S 2200 mAh pack (voltage assumed).
 
 ## How the work is done (the rules that bit)
 
