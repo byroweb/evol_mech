@@ -42,14 +42,31 @@ def _lock_mask(cfg: dict, body=None) -> np.ndarray:
     return mask
 
 
+def _bounds(cfg: dict, body=None) -> tuple[np.ndarray, np.ndarray]:
+    """cfg['gene_bounds'] {gene: [min, max]} in physical units narrows a gene's range for one round (e.g. a foot no
+    longer than 12 cm) without changing the genome's encoding; returned as normalized lower and upper limits."""
+    body = body or get_body(cfg.get("body", "biped"))
+    lo, hi = np.zeros(body.N_PARAMS), np.ones(body.N_PARAMS)
+    for name, (a, b) in cfg.get("gene_bounds", {}).items():
+        if name not in body.INDEX:
+            raise ValueError(f"bounded gene {name!r} is not in the {body.name} genome")
+        i = body.INDEX[name]
+        q = body.PARAMS[i]
+        lo[i], hi[i] = (max(0.0, (a - q.lo) / (q.hi - q.lo)), min(1.0, (b - q.lo) / (q.hi - q.lo)))
+    return lo, hi
+
+
 def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, dict]:
     rng = np.random.default_rng(cfg["seed"])
     n = cfg["population"]
     body = get_body(cfg.get("body", "biped"))
     center = body.archetype_center(cfg.get("archetype"))
     locked = _lock_mask(cfg, body)
+    b_lo, b_hi = _bounds(cfg, body)
+    center = np.clip(center, b_lo, b_hi)
     pop = np.stack([body.random_genome(rng, cfg.get("init_spread", 0.25), center=center,
                                        waist_yaw=cfg.get("waist_yaw", False), locked=locked) for _ in range(n)])
+    pop = np.clip(pop, b_lo, b_hi)
     pop[0] = center   # keep the archetype itself in generation 0
     # lineage of the current population: parent indices into the previous
     # generation (-1 = none) and how each individual was made
@@ -89,6 +106,7 @@ def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, 
                     child, par, kind = a.copy(), (ia, -1), KIND_MUTANT
                 child = body.mutate(child, rng, cfg["mutation_sigma"], cfg["mutation_rate"])
                 child[locked] = center[locked]
+                child = np.clip(child, b_lo, b_hi)
                 next_pop.append(child)
                 next_parents.append(par)
                 next_kinds.append(kind)
