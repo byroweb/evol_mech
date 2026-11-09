@@ -1,6 +1,6 @@
 {
  "name": "skater_walker_phase1m_seed",
- "note": "phase1j's gains on a 14 x 3 cm foot (the user's revised cap 14 x 4 cm); untuned it stays up on 22/24 shoved flat starts. Walk it with waist_link 1.0.",
+ "note": "CURRENT BEST WALKER (user's choice, 2026-11-08): phase1j's gains on a 14 x 3 cm foot (cap 14 x 4). 22/24 shoved flat starts upright, 10.9 cm strides, 3.3 cm clearance, core roll 2.8 deg, fans 0.6 %. Walk it with waist_link 1.0 (roll_score core, fall_pitch_deg 20).",
  "phys": {
   "hip_width": 0.1,
   "core_height": 0.14,

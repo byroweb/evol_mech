@@ -31,6 +31,7 @@ overstated every round.
 | phase1k | round 1k: 12 x 4 cm foot cap | -0.41 (20 deg rule) | 12 x 3 foot; falls to the half shove on 16/24 flat starts |
 | phase1l | round 1l: + heel-toe genes (GA set them ~off) | -0.375 | 11 x 3 foot; 13/24 shove falls |
 | phase1m | round 1m: cap relaxed to 14 x 4 cm, averaged pick | -0.205 (seed -0.249) | 14 x 3 foot, 12.7 cm strides, 3.1 cm clear, core 3.3 deg, fans 1.2 %; 18/24 shoved flat starts (seed 22/24) |
+| **phase1m_seed** | **current best (user's pick)**: phase1j's gains on a 14 x 3 cm foot | -0.249 | 22/24 shoved flat starts, 10.9 cm strides, 3.3 cm clear, core 2.8 deg, fans 0.6 %; preferred over phase1m for shove resistance |
 
 Every one falls on cobbles inside 3 s. Roll is 5-7 deg RMS on all of them against the plan's
 4: the only lateral tool is the hip roll servos, which roll the body as much as they move it.
