@@ -80,6 +80,15 @@ at this writing.
    or stiffer ankle roll, wider sole, or a translating hip). That is where single support,
    the 4 deg roll target and cobbles get solved.
 
+## Parked ideas (the user's, for later)
+
+- After LIDAR is simulated: cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads
+  should help the skate balance), and alternate gaits (low walk on smooth ground, high steps where the map says).
+- A flying variant: 6 inch props on 28 x 10 mm motors (the fan model: 21 N each, 42 N for the pair against the
+  robot's 19.4 N, 2.2 x weight, about 700 W each, 88 g each). Two thrusts plus the two fan pitch servos make a
+  bicopter / tiltrotor: roll by differential thrust, pitch by common tilt, yaw by differential tilt, all three
+  already in the controller. Battery life at full throttle would be minutes on the 2200 mAh pack.
+
 ## How the work is done (the rules that bit)
 
 - The user's standing priorities: grace, stability and few fans over speed; long strides over
