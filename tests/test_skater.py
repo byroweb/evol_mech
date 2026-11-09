@@ -904,3 +904,15 @@ def test_waist_linkage_slaved_to_the_hip_roll_servos_levels_the_core_and_keeps_t
     assert r1["time_upright"] >= 12.0
     assert c1 < 0.75 * c0
     assert r1["swing_clear_m"] >= r0["swing_clear_m"] - 0.002
+
+
+def test_roll_score_core_reads_the_core_and_changes_nothing_on_a_rigid_core():
+    """task key roll_score 'core': the ride-quality roll is the core's; with a rigid core it equals the hip box's."""
+    walker = json.load(open("configs/archetypes/skater_walker_shape_long.json"))["phys"]
+    task = {"name": "w", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 6.0, "pose_noise_deg": 2.0,
+            "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp", "stride_min": 0.1}
+    a, b = rollout(encode(walker), task, 0), rollout(encode(walker), {**task, "roll_score": "core"}, 0)
+    assert abs(a["roll_rms"] - b["roll_rms"]) < 1e-3 and abs(a["fitness"] - b["fitness"]) < 1e-3   # two roll conventions under pitch
+    link = {**task, "waist_link": 1.0}
+    c, d = rollout(encode(walker), link, 0), rollout(encode(walker), {**link, "roll_score": "core"}, 0)
+    assert d["roll_rms"] < 0.8 * c["roll_rms"]

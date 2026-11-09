@@ -419,6 +419,16 @@ servo), scored against round 9 on the same four tilted starts.
    stall). r 2 and above overdrives the core and falls; a pivot at the
    core's top drops the clearance. Unlike the spring, the linkage gains
    clearance: it is the waist to carry into the next round.
+   Round 1i (half shift, cheap fans): nothing kept. The GA best (-0.56,
+   generation 72) stands still: on unseen seeds 0.1 cm strides, never a
+   fall, -0.58 against the seed's -1.14, fans at 1.2 % although they cost a
+   quarter. The score lets standing still beat a poor walk (the speed gate
+   bottoms out while uprightness and grace keep paying); a future round at
+   reduced shift needs a progress floor. Round 1j
+   (`configs/skater_walk_phase1j.json`): gains on the waist linkage
+   (waist_link 1.0, pivot at the core's base), task key `roll_score core`
+   (the ride-quality roll read on the core; falls stay on the hip box),
+   clear_min 0.03, from shape_long, 48 x 80, normal fan costs.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

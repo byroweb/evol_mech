@@ -253,7 +253,10 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     # and shoves of a seed are what they were before the sensors existed
     ctrl = SkaterController(model, p, task, fans_enabled, sensor_rng=np.random.default_rng(seed + 7919))
     hip_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hip")
-    foot_bodies = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in ("l", "r")]
+    # task key roll_score 'core': the ride-quality roll (roll_rms, grace) is the core's roll in the world, not the hip
+    # box's (with a waist the two differ, and the core is what carries the electronics and fans); falls stay on the hip box
+    core_roll_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "core") if task.get("roll_score") == "core" else -1
+    foot_bodies =[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in ("l", "r")]
     total_mass = float(model.body_subtreemass[hip_id])
     h_nom = nominal_height(p)
     # the robustness score's model errors (task mass_error / friction_error, fractions of the nominal, one
@@ -429,6 +432,9 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         z = float(data.qpos[2])
         roll, pitch = quat_to_roll_pitch(data.qpos[3:7])
         pitch_hist[k], roll_hist[k], z_hist[k], vx_hist[k], y_hist[k] = pitch, roll, z, float(v[0]), float(data.qpos[1])
+        if core_roll_id >= 0:
+            Rc = data.xmat[core_roll_id]
+            roll_hist[k] = math.atan2(Rc[7], Rc[8])
         if _fallen(z, roll, pitch, h_nom) or _body_touching_floor(data, body_geoms, floor_geom):
             if not fell:
                 fall_roll, fall_pitch = roll, pitch
