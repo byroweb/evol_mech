@@ -525,6 +525,14 @@ servo), scored against round 9 on the same four tilted starts.
    from their pivots (the right one pointing inboard so both move the same
    way), a 2.4 cm rocker, and a 3.8 cm crank on the core give core roll =
    the mean of the two leg rolls, 1:1, with every link vertical.
+   Picking the winner by its average (GA config `final_candidates` K,
+   `final_evals` R; default off): the GA records every score of every
+   genome (elites are re-scored on each generation's fresh draw) and at the
+   end re-scores the top K by mean, plus the last generation's top K, until
+   each has R scores, then saves the best mean. Prompted by round 1l: its
+   generation-20 champion scored -0.181, then -0.327, -0.326, -0.164, -0.161
+   as an elite on the next four draws (the generation-22 clip shows it
+   rolling over sideways); best.json had kept the -0.181.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
