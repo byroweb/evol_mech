@@ -533,6 +533,16 @@ servo), scored against round 9 on the same four tilted starts.
    generation-20 champion scored -0.181, then -0.327, -0.326, -0.164, -0.161
    as an elite on the next four draws (the generation-22 clip shows it
    rolling over sideways); best.json had kept the -0.181.
+   Round 1l (stopped itself at generation 49, no gain since 29; GA best
+   -0.11, the luckiest draw): kept as `skater_walker_phase1l.json`. The GA
+   turned the heel-toe feedback off (cop_gain 0.0002) and shrank the foot
+   to 11.0 x 3.0 cm. Unseen seeds, 20 deg rule: -0.375 vs phase1k's -0.405.
+   On 24 unseen perturbed flat starts: phase1j (16 x 3 foot) upright 23/24,
+   phase1k 8/24 (all forward), phase1l 11/24; the same starts without the
+   shove: all three 24/24 (phase1l 12.0 cm strides, 3.7 cm clearance, core
+   4.3 deg). So the capped foot walks fine and loses shove resistance: the
+   half shove is 4 N for 0.1 s (0.2 m/s on 2 kg), and the eight-start
+   flat task had understated it (phase1k 6/8 there).
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
