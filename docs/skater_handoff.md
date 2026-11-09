@@ -27,6 +27,7 @@ overstated every round.
 | phase1f | round 1f: + capture point | -0.58 (its score) | 7/8, roll 5.3 deg (lowest), but 1.0 cm clearance: seed only |
 | phase1h | round 1h: + contact gait (strider form) + 3 cm clearance floor | -0.91 (its score, seed -1.10) | the item-1 walker; 10.5 cm strides sit on the floor |
 | shape_long | round-1e setup as 48 x 80 | -0.71 (GA best -0.25) | steadiest walk (roll 5.1 deg, 5 % servo saturation), 2.1 cm clearance, 3/4 stands: seed only |
+| phase1j | round 1j: waist linkage 1:1 (task keys waist_link 1.0, roll_score core), 3 cm floor | -0.27 (its score, seed -0.47) | the best walker: 8/8 flat, 4/4 stands, core roll 2.4 deg, 3.3 cm clearance, 11.4 cm strides, fans 0.6 %; cobbles 0/4 |
 
 Every one falls on cobbles inside 3 s. Roll is 5-7 deg RMS on all of them against the plan's
 4: the only lateral tool is the hip roll servos, which roll the body as much as they move it.
@@ -62,8 +63,9 @@ at this writing.
 
 ## Recommended next steps, in order
 
-0. A gains round with `waist_link` (ratio free or 1.0), scoring the core's roll (the score's roll term reads the
-   pelvis): the cheapest route to the 4 deg target found so far.
+0. Cobbles: a catch-step reflex behind a task key (when the body pitches back after a touchdown, drive the
+   swing foot down and back instead of finishing its swing), tested on phase1j before any GA round. The
+   diagnosis is in the plan under phase 1.
 1. Draw the robustness starts fresh each generation (seed the tasks by generation in
    `evol_mech/evolve/ga.py` / `rollout.evaluate`) before any further gains round: every
    round so far memorised its starts. Run the next round as 48 x 80 with `clear_min 0.03`.
@@ -93,7 +95,7 @@ at this writing.
   curve, scoreboard, ancestry, the champion of each generation filmed into `runs/<run>/live/`,
   about 250 KB a clip).
 - Score a round: `tools\score_round.py <round> <seed archetype>`; it also saves the archetype.
-- Tests: `.venv\Scripts\python -m pytest tests\ -q` (54 pass). Commits go to main with
+- Tests: `.venv\Scripts\python -m pytest tests\ -q` (55 pass). Commits go to main with
   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` (or the model doing the work);
   `.claude/` and the two "leg layout sketch" PNGs stay untracked; `runs/` is gitignored.
 - Memory file for the project: `project-skater-legged-gaits.md` in the Claude memory

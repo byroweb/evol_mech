@@ -608,3 +608,14 @@ for; a velocity integral in the controller is the alternative.
   walkers, untuned, and the feet lift slightly higher rather than lower.
   The roll servos do no extra work. It beats the spring on every count the
   user cares about, and it is a rocker and two pushrods.
+
+  Round 1j put the linkage under a gains round with the score reading the
+  core, and it is the best walker yet: on starts it never saw it walked
+  every perturbed flat start upright, the first to do so, with the core
+  rolling 2.4 deg and the feet clearing 3.3 cm, both inside the plan's
+  targets for the first time, and the fans nearly off. Strides came down a
+  little, to 11.4 cm, under the plan's 12. What it still cannot do is
+  cobbles, and the traces say why: after a touchdown on a stone the body
+  starts to tip back, the next foot is already lifting and rises with the
+  body instead of coming down, and the robot rotates over its heel. The
+  fix is a reflex, not a gain: step down and back when pitching back.

@@ -429,6 +429,21 @@ servo), scored against round 9 on the same four tilted starts.
    (waist_link 1.0, pivot at the core's base), task key `roll_score core`
    (the ride-quality roll read on the core; falls stay on the hip box),
    clear_min 0.03, from shape_long, 48 x 80, normal fan costs.
+   Round 1j result: GA best -0.17 at generation 63; on unseen seeds -0.27
+   against the seed's -0.47 under the same linkage score. Kept as
+   `skater_walker_phase1j.json` (walk it with waist_link 1.0). Perturbed flat
+   walks 8 of 8 upright, the first walker with no flat fall; stands 4 of 4;
+   plain tilted starts 12 s x 4 with the core rolling 2.4 deg RMS (seed 3.3,
+   rigid 5.0), 3.3 cm clearance (seed 2.4), 11.4 cm strides (seed 13.1), fans
+   0.6 %. The GA dropped the swing-side fan feedforward (step_fan 0) and the
+   roll foot gain (kp_roll_y 0). Cobbles still fall 4 of 4 (back, forward,
+   left, forward). Cobble diagnosis (shape_long with the linkage): a falling
+   step starts at a touchdown, the body pitches back about 1 rad/s, the next
+   swing foot rises with the body and never lands to catch it, and the
+   stance foot's centre of pressure pins at its heel edge; bare cobbles fall
+   7 of 8, so it is not the shoves. The capture point and the contact gait,
+   untuned, make cobbles and flat worse. Next: a catch step (swing foot
+   driven down and back when the body pitches back) behind a task key.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
