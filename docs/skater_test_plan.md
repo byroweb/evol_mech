@@ -489,6 +489,11 @@ servo), scored against round 9 on the same four tilted starts.
    and cobbles are set aside until the downward LIDAR is simulated: not a
    phase-1 exit criterion for now. Round 1k re-tunes the gains on the
    capped foot (phase1j untuned on 12 x 4: flat 4/8 falls).
+   Task key `fall_pitch_deg` (default off = 1 rad): the user counts a core
+   pitched 20 deg as an imminent fall, forward or back (no traced walker came
+   back from past ~15 deg). On phase1j at 20 deg: flat 0/8 and stands 0/8 as
+   before (the gait peaks near 10 deg), cobble falls register earlier. From
+   round 1l on, rounds use fall_pitch_deg 20.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.

@@ -220,8 +220,10 @@ def make_data(model: mujoco.MjModel, p: dict[str, float]) -> mujoco.MjData:
     return data
 
 
-def _fallen(z: float, roll: float, pitch: float, h_nom: float) -> bool:
-    return z < 0.45 * h_nom or abs(roll) > 1.0 or abs(pitch) > 1.0
+def _fallen(z: float, roll: float, pitch: float, h_nom: float, pitch_max: float = 1.0) -> bool:
+    """pitch_max (rad): task key fall_pitch_deg sets it (the user: a core pitched 20 deg is an imminent fall, and no
+    traced walker came back from past ~15 deg, forward or back); 1 rad by default, every old score."""
+    return z < 0.45 * h_nom or abs(roll) > 1.0 or abs(pitch) > pitch_max
 
 
 def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
@@ -256,6 +258,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
     # task key roll_score 'core': the ride-quality roll (roll_rms, grace) is the core's roll in the world, not the hip
     # box's (with a waist the two differ, and the core is what carries the electronics and fans); falls stay on the hip box
     core_roll_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "core") if task.get("roll_score") == "core" else -1
+    pitch_max = math.radians(float(task["fall_pitch_deg"])) if task.get("fall_pitch_deg") else 1.0
     foot_bodies =[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"foot_{s}") for s in ("l", "r")]
     total_mass = float(model.body_subtreemass[hip_id])
     h_nom = nominal_height(p)
@@ -435,7 +438,7 @@ def rollout(genome: np.ndarray, task: dict, seed: int = 0, *,
         if core_roll_id >= 0:
             Rc = data.xmat[core_roll_id]
             roll_hist[k] = math.atan2(Rc[7], Rc[8])
-        if _fallen(z, roll, pitch, h_nom) or _body_touching_floor(data, body_geoms, floor_geom):
+        if _fallen(z, roll, pitch, h_nom, pitch_max) or _body_touching_floor(data, body_geoms, floor_geom):
             if not fell:
                 fall_roll, fall_pitch = roll, pitch
             fell = True

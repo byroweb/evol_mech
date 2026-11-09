@@ -26,7 +26,7 @@ A = "configs/archetypes/"
 cfg = json.load(open(f"configs/skater_walk_{ROUND}.json"))
 TASKS = {t["name"]: t for t in cfg["tasks"]}
 WALK0 = next(t for t in cfg["tasks"] if t["objective"] == "walk")
-GAIT_KEYS = ("gait_phase", "foot_placement", "contact_start", "contact_anchor", "clear_min", "stride_min",
+GAIT_KEYS = ("gait_phase", "foot_placement", "contact_start", "contact_anchor", "clear_min", "stride_min", "fall_pitch_deg",
              "waist_link", "waist_pivot", "waist_stiffness", "waist_damping", "roll_score")
 PLAIN = {"name": "plain", "terrain": "flat", "objective": "walk", "speed": 0.4, "step_hz_max": 2.5, "duration": 12.0, "pose_noise_deg": 2.0,
          "servo_model": "real", "servo_lead": "auto", "leg_reach": "clamp", **{k: WALK0[k] for k in GAIT_KEYS if k in WALK0}}
