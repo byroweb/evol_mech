@@ -28,6 +28,9 @@ overstated every round.
 | phase1h | round 1h: + contact gait (strider form) + 3 cm clearance floor | -0.91 (its score, seed -1.10) | the item-1 walker; 10.5 cm strides sit on the floor |
 | shape_long | round-1e setup as 48 x 80 | -0.71 (GA best -0.25) | steadiest walk (roll 5.1 deg, 5 % servo saturation), 2.1 cm clearance, 3/4 stands: seed only |
 | phase1j | round 1j: waist linkage 1:1 (task keys waist_link 1.0, roll_score core), 3 cm floor | -0.27 (its score, seed -0.47) | the best walker: 8/8 flat, 4/4 stands, core roll 2.4 deg, 3.3 cm clearance, 11.4 cm strides, fans 0.6 %; cobbles 0/4 |
+| phase1k | round 1k: 12 x 4 cm foot cap | -0.41 (20 deg rule) | 12 x 3 foot; falls to the half shove on 16/24 flat starts |
+| phase1l | round 1l: + heel-toe genes (GA set them ~off) | -0.375 | 11 x 3 foot; 13/24 shove falls |
+| phase1m | round 1m: cap relaxed to 14 x 4 cm, averaged pick | -0.205 (seed -0.249) | 14 x 3 foot, 12.7 cm strides, 3.1 cm clear, core 3.3 deg, fans 1.2 %; 18/24 shoved flat starts (seed 22/24) |
 
 Every one falls on cobbles inside 3 s. Roll is 5-7 deg RMS on all of them against the plan's
 4: the only lateral tool is the hip roll servos, which roll the body as much as they move it.

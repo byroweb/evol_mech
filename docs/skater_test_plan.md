@@ -543,6 +543,18 @@ servo), scored against round 9 on the same four tilted starts.
    4.3 deg). So the capped foot walks fine and loses shove resistance: the
    half shove is 4 N for 0.1 s (0.2 m/s on 2 kg), and the eight-start
    flat task had understated it (phase1k 6/8 there).
+   The user relaxed the cap to 14 x 4 cm. Round 1m (seed phase1j's gains
+   on a 14 x 3 foot; stopped itself at generation 30, no gain since 10;
+   the first winner picked by the mean of 6 draws, -0.201, against the
+   luckiest single score -0.156): unseen seeds -0.205 vs the seed's -0.249,
+   the GA's estimate and the unseen score agreeing for the first time. It
+   kept the 14 x 3 cm foot and left the heel-toe gain near zero (0.005).
+   Plain starts 12 s x 4 with 12.7 cm strides (seed 10.9), 3.1 cm
+   clearance, core 3.3 deg, fans 1.2 %: the phase-1 targets for stride,
+   clearance, roll and fans all met. On 24 unseen shoved flat starts it
+   stays up 18/24 against the seed's 22/24 and phase1j's 23/24: it bought
+   stride with shove resistance. Cobbles are set aside; stance timing is
+   still the clock.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
