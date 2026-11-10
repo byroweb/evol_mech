@@ -339,3 +339,25 @@ gives the foot less lever on the body. phase1m_seed has ankle_stiffness 18.4 Nm/
 - 12 suits uphill, 8-9 suits cross-slopes. The slope placement gains were tuned at 18.4, so a GA round with
   ankle_stiffness free (and the slope genes) is the next step.
 - Video: runs/slope_video/6_across6_k8_seed101.mp4 (the start that fell at 18.4 walks through).
+
+### GA round s2 with the spring free (user's pick): it picked ~9 Nm/rad, but its retuned gains don't carry over
+
+`configs/skater_slope_s2.json`: start at phase1m_seed with the spring at 10, ankle_stiffness and ankle_rest free
+with the 17 s1 genes; sharp starts 6 across L/R, 6 up, 6 down, 10 up at 4 repeats, shoved flat walk and perturbed
+stand as guards. 42 generations, training fitness -0.95 -> -0.66. The spring settled at 9.19, ankle_rest 0.027; it
+also halved slope_ky (0.3 -> 0.15), cut ki_foot_leg (0.079 -> 0.012), raised slope_confirm to 2 deg and slope_kxc
+to 0.17. Fresh starts (seeds 300-331, upright of 32, `runs/score_s2.log`):
+
+| walker | shoved flat | 6 up | 6 dn | 6 across L | 6 across R | 10 up | 10 across | 3 across |
+|---|---|---|---|---|---|---|---|---|
+| seed (18.4) | 22 | 26 | 16 | 18 | 8 | 7 | 0 | 28 |
+| seed, spring 12 | 24 | 30 | 26 | 17 | 18 | 17 | 0 | 32 |
+| **seed, spring 9** | 24 | 29 | 24 | **30** | **31** | 15 | 2 | 31 |
+| s2 winner | **29** | 25 | **30** | 12 | 8 | 0 | 0 | 32 |
+| s2 winner, slope_ky back to 0.3 | 26 | 17 | 12 | 2 | 5 | 0 | 0 | 27 |
+| s2 balance gains + hand slope gains | 23 | 0 | 4 | 0 | 1 | 0 | 0 | 27 |
+
+Flat is 32/32 for all; 10 down 0-2 for all. The winner's genes only work together and only on its training
+starts, the same story as s1: 2-4 repeats per slope task is too few to stop it fitting particular starts.
+Adopted: `configs/archetypes/skater_walker_phase1m_k9.json` = phase1m_seed with the spring at 9 and the hand
+slope gains (the gene defaults). phase1m_seed stays the flat walker the tests use.
