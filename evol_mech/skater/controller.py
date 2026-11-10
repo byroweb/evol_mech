@@ -217,6 +217,8 @@ class SkaterController:
         self.slope_ky = float(task.get("slope_ky", p["slope_ky"]))
         self.slope_kxc = float(task.get("slope_kxc", p["slope_kxc"]))
         self.slope_kyc = float(task.get("slope_kyc", p["slope_kyc"]))
+        self.knee_boost = float(task.get("knee_boost", 0.0))
+        self.knee_ref = math.radians(float(task.get("knee_ref_deg", 3.0)))
         self.knee_ahead = tuple(float(v) for v in task.get("knee_ahead", (0.15, 0.35)))  # the "ahead" window for the knee terms
         self.slope_follow = float(task.get("slope_follow", p["slope_follow"]))
         self.slope_follow_y = float(task.get("slope_follow_y", task.get("slope_follow", p["slope_follow_y"])))   # the across share, if set apart
@@ -733,7 +735,7 @@ class SkaterController:
                 a = CONTROL_DT / max(CONTROL_DT, self.slope_tau_lidar)
                 self._g_lidar += a * (np.asarray(m) - self._g_lidar)
             self.grade[:] = self._g_lidar
-            if self.slope_kxc or self.slope_kyc:                 # the knee coming: the grade ahead less the grade here
+            if self.slope_kxc or self.slope_kyc or self.knee_boost:   # the knee coming: the grade ahead less the grade here
                 ma = self._grade_from_map(pos, cy, sy, self.knee_ahead)
                 if ma is not None and m is not None:
                     a = CONTROL_DT / max(CONTROL_DT, self.slope_tau_lidar)
@@ -806,6 +808,13 @@ class SkaterController:
         self._map.append((self.lidar.frame_t, P))
         while self._map and self._map[0][0] < self.lidar.frame_t - self.map_s:
             self._map.popleft()
+
+    def _boost(self) -> float:
+        """The placement gains' multiplier while the grade is changing: 1 + knee_boost at a grade change ahead of
+        knee_ref_deg or more (the map's grade 15-35 cm ahead less the grade at the hip), 1 on a steady grade."""
+        if not self.knee_boost:
+            return 1.0
+        return 1.0 + self.knee_boost * min(1.0, float(np.hypot(*self._knee)) / self.knee_ref)
 
     def _map_height(self, pos, cy, sy, x_h: float, y_h: float):
         """The ground's height in the lidar map at (x_h ahead, y_h left) of the hip, in the heading frame: the
@@ -1066,7 +1075,7 @@ class SkaterController:
                     x_f += self.cop_gain * e
                     self.cop_e = e
             if self.slope_est:
-                x_f -= self.slope_kx * float(self.grade[0]) + self.slope_kxc * float(self._knee[0])
+                x_f -= (self.slope_kx * self._boost() * float(self.grade[0]) + self.slope_kxc * float(self._knee[0]))
         else:
             x_f = (self.x_nom - d_feet
                    + p["kp_foot_x"] * (pitch - pitch_ref) + p["kd_foot_x"] * pitch_rate)
@@ -1076,7 +1085,7 @@ class SkaterController:
         dy_f = (-self.body_shift(t_g) - p["kp_roll_y"] * roll - p["kd_roll_y"] * roll_rate
                 + (0.0 if self.capture else p["kv_foot_y"]) * float(v_b[1]))
         if self.slope_est and self.legged:
-            dy_f -= self.slope_ky * float(self.grade[1]) + self.slope_kyc * float(self._knee[1])
+            dy_f -= self.slope_ky * self._boost() * float(self.grade[1]) + self.slope_kyc * float(self._knee[1])
         # the swing foot's landing at the capture point: hip velocity x the pendulum time, in x and y
         T_c = math.sqrt(max(0.05, h_com) / G)
         cap_x, cap_y = (float(v_b[0]) * T_c, float(v_b[1]) * T_c) if self.capture else (0.0, 0.0)

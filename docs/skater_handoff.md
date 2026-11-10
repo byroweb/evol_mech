@@ -258,6 +258,23 @@ The genes barely moved (slope_ky 0.30 -> 0.25, slope_confirm 1.0 -> 0.8, the kne
 draws per slope and mutation sigma 0.05 the round was mostly noise; the downhill gain is real, the cross-slope and
 10 deg uphill are not improved. Not adopted.
 
+### Transition fixes tried by hand (2026-11-09), none works yet
+
+`tools/slope_video.py` films a walker through a slope's start (side and rear chase views, half speed, a readout of
+pitch, roll, heading, both feet's centre of pressure heel to toe, the grade estimate against the true grade).
+Every sharp-start fall filmed has the same look: the stance foot's pressure runs to its heel and stays there
+while the body tips back, through two or three stances.
+
+Lidar map, the 0.4 m knee, 16 tilted starts each (upright of 16), against the map with the gene defaults
+(6 across L 7, R 6, 6 dn 12, 6 up 14, 10 up 3, 3 across 14):
+- Heel-toe feedback on (cop_gain 0.01-0.04, deadband 0.4-0.7): worse everywhere; 0.02 and up drops flat walking.
+- Ablations: without the sideways shift cross-slopes are 0/16; without the lean 6 dn 3/16; without the
+  fore-aft shift 6 dn 2/16, 10 up 0/16; without the across height-follow 6 across 10 and 9/16 but 6 dn 8/16.
+- Fore-aft shift doubled (slope_kx 0.3): 10 up 3 -> 11/16, 6 across L 10/16, but 6 up 14 -> 6/16 and 6 across R
+  3/16. The shift wanted grows faster than the grade (about 1.6 cm at 6 deg, 5 cm at 10): a steady-grade matter.
+- `knee_boost` (placement gains x (1 + boost) while the map sees the grade changing by knee_ref_deg ahead):
+  worse at 1, much worse at 2.
+
 ## Parked ideas (the user's, for later)
 
 - After LIDAR is simulated (the module is, 2026-11-09; the fused height map is next): cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads
