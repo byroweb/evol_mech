@@ -570,6 +570,22 @@ servo), scored against round 9 on the same four tilted starts.
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
 
+   *Item 6 run 2026-11-10 (evolve/cmaes.py, config `optimizer: cmaes`), from
+   phase1m_k9 (the user's pick), the 35 walk/stand gains free, round 1m's
+   score.* The start is already the best walker on that score: unseen seeds
+   -0.122 (round 1m -0.205), plain starts 12 s x 8, 11.7 cm strides, 3.2 cm
+   clearance, fans 0.6 %, shoved flat 24/32. Run a (sigma 0.05): samples
+   averaged -1.1, stopped at 25 on a patience bug (fixed), winner -0.164.
+   Run b (sigma 0.015, 32 samples, 120 generations; sigma shrank to 0.004):
+   winner -0.108 unseen, shoved flat 25/32, clearance 3.8 cm, fans 0.1 %, but
+   grace 0.235 (0.260), core roll 3.8 deg (3.1), and the slopes collapse
+   (6 deg across 30/31 -> 2/3 of 32, 6 up 29 -> 0): it cut ki_foot_leg
+   0.079 -> 0.009, as GA round s2 did, and the slope lean works through that
+   term. Not adopted; phase1m_k9 stays the best walker. Lessons: the hand
+   gains on this body sit at a flat-ground local optimum (CMA-ES finds ~0.01);
+   a flat-only score trades away what the slopes need, so a future gains
+   round carries slope tasks with many repeats.
+
 Done when: the round-9 body walks the robustness score upright, with
 sensor-driven stance, picking its feet up (clearance at or above 3 cm,
 strides at or above 12 cm), roll under 4 deg RMS, fans under 2 %, and the
