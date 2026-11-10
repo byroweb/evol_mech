@@ -315,3 +315,27 @@ Lidar map, the 0.4 m knee, 16 tilted starts each (upright of 16), against the ma
   `.claude/` and the two "leg layout sketch" PNGs stay untracked; `runs/` is gitignored.
 - Memory file for the project: `project-skater-legged-gaits.md` in the Claude memory
   directory, kept current with every round.
+
+### A softer ankle spring (the user's idea): the biggest slope gain so far
+
+The parallelogram keeps the sole parallel to the body, so on a grade the planted sole bends the ankle spring by
+the grade and the spring torques the body (pitched back on an uphill, rolled on a cross-slope). A softer spring
+gives the foot less lever on the body. phase1m_seed has ankle_stiffness 18.4 Nm/rad; the roll spring is 0.5x that
+(structure.ANKLE_ROLL_STIFF). Sharp 0.4 m starts, lidar map + footfall check, gene defaults, 32 unseen starts
+(seeds 200-231), upright of 32:
+
+| ankle_stiffness | 6 up | 6 dn | 10 up | 10 dn | 6 across L | 6 across R | 10 across L |
+|---|---|---|---|---|---|---|---|
+| 18.4 (seed) | 31 | 22 | 10 | 0 | 13 | 9 | 1 |
+| 12 | 29 | 24 | **25** | 2 | 23 | 14 | 0 |
+| 9 | 27 | 21 | 10 | 0 | 28 | 28 | 3 |
+| 8 | 22 | 21 | 8 | 0 | **31** | **30** | 7 |
+
+- Below ~7 Nm/rad (m g h) the walker collapses even on flat (5: 3/16 flat, 3: 0/16).
+- Flat with shoves (walk_flat, 24 starts): 17 at 18.4, 15-16 at 8-12, inside the noise; stand_perturbed 23-24/24
+  everywhere.
+- Cross-slopes need both springs soft: pitch 8 with the seed's roll 9.2, or roll 4 with pitch 18.4, each did little
+  on 16 starts; pitch 8 with roll 4 (the gene's coupling) went to 15-16/16.
+- 12 suits uphill, 8-9 suits cross-slopes. The slope placement gains were tuned at 18.4, so a GA round with
+  ankle_stiffness free (and the slope genes) is the next step.
+- Video: runs/slope_video/6_across6_k8_seed101.mp4 (the start that fell at 18.4 walks through).
