@@ -586,6 +586,24 @@ servo), scored against round 9 on the same four tilted starts.
    a flat-only score trades away what the slopes need, so a future gains
    round carries slope tasks with many repeats.
 
+   *Item 6 run c 2026-11-10 (the user: one walking gait for flat ground and
+   small slopes; steeper than ~10 deg is a different regime, later).*
+   `configs/skater_walk_item6c.json`: CMA-ES from phase1m_k9, sigma 0.015,
+   32 samples, 120 generations (~150 s each, 5 h: the lidar map in every
+   task is the cost), round 1m's score with the slope logic on everywhere
+   plus sharp-start 3 across, 6 up, 6 down, 6 across L/R (4 repeats, weight
+   0.25 each); free the 35 gains and the 9 slope genes. KEPT as
+   `skater_walker_item6c.json`, the best walker for flat + small slopes.
+   Unseen seeds on the round's tasks -0.414 vs phase1m_k9's -0.750: every
+   slope start upright (k9 lost 4 of 20), slope clearance 3.1-3.3 cm (k9
+   1.5-2.6). 32 fresh starts each, upright: shoved flat 27 (k9 24), flat
+   32 (32), 6 up 32 (29), 6 down 30 (24), 6 across L/R 30/29 (30/31),
+   3 across 32 (31), 10 up 0 (15; out of scope), plain flat core roll
+   3.0 deg, 11.7 cm strides, fans 0.2 %. It cut ki_foot_leg (0.079 ->
+   0.017) and slope_ky (0.3 -> 0.19) like the overfit rounds, but with the
+   slope tasks in the score the rest of the genes moved to keep the slopes.
+   Cobbles still fall 4/4. Clip: runs/slope_video/7_item6c_across6R_seed105.mp4.
+
 Done when: the round-9 body walks the robustness score upright, with
 sensor-driven stance, picking its feet up (clearance at or above 3 cm,
 strides at or above 12 cm), roll under 4 deg RMS, fans under 2 %, and the
