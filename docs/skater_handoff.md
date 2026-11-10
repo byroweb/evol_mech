@@ -237,6 +237,27 @@ full grade, default 0.4 m). Lidar map + footfall check, 16 tilted starts each, u
 - `slope_oracle_noise_deg` / `slope_oracle_bias_deg`: cross-slope walking takes 1 deg of noise or 0.5 deg of
   bias on the true grade with no loss.
 
+### GA round s1 on sharp slope starts (user's pick, 2026-11-09): only the downhill gained
+
+The slope gains are genes now (group `slope`, appended: slope_kx, slope_ky, slope_follow, slope_follow_y,
+slope_lean, slope_confirm, slope_tau_lidar, and two knee terms slope_kxc / slope_kyc: feet moved by the map's
+grade 15-35 cm ahead less the grade at the hip). Task keys still override them; inert without slope_est.
+`configs/skater_slope_s1.json`: seed phase1m_seed + the hand gains, tasks the shoved flat walk (slope logic on),
+6 across L/R, 6 down, 10 up (all 0.4 m knee, lidar map + footfall check, 2 draws each) and the perturbed stand;
+17 genes free (slope + 8 balance/placement gains), 32 x 40, stopped at gen 24 (patience 10). Picked by the mean of
+5 draws: -0.729 (seed about -0.85).
+
+Unseen starts (seeds 100-123), upright of 24:
+
+| walker | shoved flat | flat | 3 across | 6 up | 6 down | 6 across L | 6 across R | 10 up | 10 down | 10 across |
+|---|---|---|---|---|---|---|---|---|---|---|
+| seed + hand gains | 19 | 24 | 19 | 22 | 11 | 6 | 8 | 11 | 0 | 1 |
+| s1 winner | 18 | 24 | 20 | 22 | 20 | 4 | 7 | 8 | 0 | 0 |
+
+The genes barely moved (slope_ky 0.30 -> 0.25, slope_confirm 1.0 -> 0.8, the knee terms 0 -> 0.015): with 2
+draws per slope and mutation sigma 0.05 the round was mostly noise; the downhill gain is real, the cross-slope and
+10 deg uphill are not improved. Not adopted.
+
 ## Parked ideas (the user's, for later)
 
 - After LIDAR is simulated (the module is, 2026-11-09; the fused height map is next): cobbles via terrain-aware foot placement, then skating and slalom (the heel-toe pads

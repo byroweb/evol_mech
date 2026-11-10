@@ -122,6 +122,16 @@ PARAMS: list[Param] = [
     # ---- heel-toe pressure feedback (controller.act; appended last so older 88-gene genomes decode with it off) ----
     Param("cop_gain",        -0.04, 0.04, 0.0,  "gait"),        # walk: fore-aft foot shift (m) per unit of planted-feet centre of pressure past the deadband (+ = toward the pressure); 0 = off
     Param("cop_dead",         0.0,  0.95, 0.4,  "gait"),        # walk: the heel-toe deadband, fraction of the pad spacing
+    # ---- slope-aware foot placement (controller, task key slope_est; inert without it; appended last) ----
+    Param("slope_kx",        -0.2,  0.5,  0.15, "slope"),       # feet back per rad of grade along (uphill), m/rad
+    Param("slope_ky",        -0.2,  0.8,  0.3,  "slope"),       # feet toward the downhill side per rad of grade across, m/rad
+    Param("slope_follow",     0.0,  1.0,  0.5,  "slope"),       # share of the along grade the foot targets follow
+    Param("slope_follow_y",   0.0,  1.0,  0.5,  "slope"),       # share of the across grade the foot targets follow
+    Param("slope_lean",       0.0,  1.0,  0.3,  "slope"),       # body pitch held per rad of grade along
+    Param("slope_confirm",    0.2,  4.0,  1.0,  "slope"),       # map mode: the across grade held within this of the two current footfalls (deg)
+    Param("slope_tau_lidar",  0.05, 0.6,  0.2,  "slope"),       # map mode: the grade's low-pass (s)
+    Param("slope_kxc",       -0.5,  0.5,  0.0,  "slope"),       # map mode: feet back per rad of grade change ahead along (the knee coming), m/rad
+    Param("slope_kyc",       -0.5,  0.5,  0.0,  "slope"),       # map mode: feet toward the downhill side per rad of grade change ahead across, m/rad
 ]
 
 NAMES = [p.name for p in PARAMS]

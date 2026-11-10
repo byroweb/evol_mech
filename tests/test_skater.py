@@ -341,7 +341,7 @@ def test_hip_roll_places_the_feet():
 def test_walker_archetype_walks_and_walk_fitness_counts_the_feet():
     from evol_mech.skater.spec import encode, N_PARAMS
     from evol_mech.skater.rollout import FALL_COST
-    assert N_PARAMS == 90 and FALL_COST == {"walk": 0.3, "run": 0.1, "course": 0.1}
+    assert N_PARAMS == 99 and FALL_COST == {"walk": 0.3, "run": 0.1, "course": 0.1}
     phys = json.load(open("configs/archetypes/skater_walker_evolved6.json"))["phys"]     # levelled sole, 2.5 Hz cap
     task = {"name": "walk_flat", "terrain": "flat", "objective": "walk", "speed": 0.4, "duration": 8.0, "step_hz_max": 2.5}
     kw = dict(motor_energy_cost=0.0005)                 # as configs/skater_walk*.json price it
