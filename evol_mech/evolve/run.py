@@ -53,7 +53,11 @@ def main():
               f"{row['gen_wall_s']:5.1f}s  {row['steps_per_wall_s']/1e3:7.0f}k steps/s  "
               f"eff {row['parallel_efficiency']:4.1f}x")
 
-    best_genome, best_result = run_ga(cfg, store, report)
+    if cfg.get("optimizer", "ga") == "cmaes":
+        from .cmaes import run_cmaes
+        best_genome, best_result = run_cmaes(cfg, store, report)
+    else:
+        best_genome, best_result = run_ga(cfg, store, report)
     store.close()
 
     if cfg.get("record_elite_video") and best_genome is not None:

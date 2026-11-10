@@ -132,27 +132,35 @@ def run_ga(cfg: dict, store: RunStore, on_generation=None) -> tuple[np.ndarray, 
             parents = np.array(next_parents, dtype=int)
             kinds = np.array(next_kinds, dtype=int)
 
-        # final pick (cfg 'final_candidates' K, default off; 'final_evals' R, default 6): the GA's best is its luckiest
-        # single score, so the top K genomes by mean score so far (plus the last generation's top K) are re-scored on
-        # fresh draws until each has R scores, and the best mean is saved as best.json
-        k_cand, r_evals = int(cfg.get("final_candidates", 0)), int(cfg.get("final_evals", 6))
-        if k_cand > 0 and history:
-            means = sorted(history, key=lambda key: -np.mean(history[key]))
-            last = [last_pop[i].tobytes() for i in np.argsort(-last_fit)[:k_cand]]
-            cands = list(dict.fromkeys(means[:k_cand] + last))
-            jobs = [(key, int(rng.integers(0, 2**31 - 1))) for key in cands for _ in range(max(0, r_evals - len(history[key])))]
-            extra = pool.map(_eval_one, [(genome_of[key], cfg, s) for key, s in jobs], chunksize=1) if jobs else []
-            for (key, _), r in zip(jobs, extra):
-                history[key].append(float(r["fitness"]))
-            pick = max(cands, key=lambda key: np.mean(history[key]))
-            scores = history[pick]
-            best_genome = genome_of[pick].copy()
-            best_result = {**(best_result or {}), "fitness": float(np.mean(scores)), "fitness_scores": scores,
-                           "fitness_sd": float(np.std(scores)), "picked_by": f"mean of {len(scores)} draws, best of {len(cands)} candidates"}
-            store.save_best(gen, best_genome, best_result)
-            print(f"final pick: mean {np.mean(scores):+.3f} over {len(scores)} draws (sd {np.std(scores):.3f}) from {len(cands)} "
-                  f"candidates; luckiest single score was {best_fit:+.3f}", flush=True)
-            for key in cands:
-                print(f"   candidate mean {np.mean(history[key]):+.3f} sd {np.std(history[key]):.3f} n {len(history[key])}", flush=True)
+        last = [last_pop[i].tobytes() for i in np.argsort(-last_fit)[:int(cfg.get("final_candidates", 0))]]
+        best_genome, best_result = final_pick(cfg, store, pool, rng, history, genome_of, last, gen,
+                                              best_genome, best_result, best_fit)
 
+    return best_genome, best_result
+
+
+def final_pick(cfg: dict, store: RunStore, pool, rng: np.random.Generator, history: dict, genome_of: dict,
+               extra: list[bytes], gen: int, best_genome, best_result, best_fit: float):
+    """cfg 'final_candidates' K (default off) and 'final_evals' R (default 6): a round's best is its luckiest single
+    score, so the top K genomes by mean score so far (plus the keys in `extra`, e.g. the last generation's top K) are
+    re-scored on fresh draws until each has R scores, and the best mean is saved as best.json."""
+    k_cand, r_evals = int(cfg.get("final_candidates", 0)), int(cfg.get("final_evals", 6))
+    if k_cand <= 0 or not history:
+        return best_genome, best_result
+    means = sorted(history, key=lambda key: -np.mean(history[key]))
+    cands = list(dict.fromkeys(means[:k_cand] + list(extra)))
+    jobs = [(key, int(rng.integers(0, 2**31 - 1))) for key in cands for _ in range(max(0, r_evals - len(history[key])))]
+    more = pool.map(_eval_one, [(genome_of[key], cfg, s) for key, s in jobs], chunksize=1) if jobs else []
+    for (key, _), r in zip(jobs, more):
+        history[key].append(float(r["fitness"]))
+    pick = max(cands, key=lambda key: np.mean(history[key]))
+    scores = history[pick]
+    best_genome = genome_of[pick].copy()
+    best_result = {**(best_result or {}), "fitness": float(np.mean(scores)), "fitness_scores": scores,
+                   "fitness_sd": float(np.std(scores)), "picked_by": f"mean of {len(scores)} draws, best of {len(cands)} candidates"}
+    store.save_best(gen, best_genome, best_result)
+    print(f"final pick: mean {np.mean(scores):+.3f} over {len(scores)} draws (sd {np.std(scores):.3f}) from {len(cands)} "
+          f"candidates; luckiest single score was {best_fit:+.3f}", flush=True)
+    for key in cands:
+        print(f"   candidate mean {np.mean(history[key]):+.3f} sd {np.std(history[key]):.3f} n {len(history[key])}", flush=True)
     return best_genome, best_result
