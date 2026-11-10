@@ -555,6 +555,17 @@ servo), scored against round 9 on the same four tilted starts.
    stays up 18/24 against the seed's 22/24 and phase1j's 23/24: it bought
    stride with shove resistance. Cobbles are set aside; stance timing is
    still the clock.
+   Side track, parked 2026-11-10 (the user's call; details in
+   skater_handoff.md under the lidar and slope sections): the downward lidar
+   map with a footfall check walks sharp 6 deg slope starts, and a softer
+   ankle spring was the biggest gain there: phase1m_seed with the spring at
+   9 Nm/rad instead of 18.4 (`skater_walker_phase1m_k9.json`) stays up on
+   30-31/32 sharp 6 deg cross-slope starts (18.4: 18 and 8) and 24/32 shoved
+   flat starts (22/32); below ~7 it collapses. Two GA slope rounds overfit
+   their training starts. Carry into the main plan: ankle_stiffness is a
+   body gene worth freeing in phase 2 (range floor ~7), and the k9 walker
+   is a candidate seed for item 6. 10 deg slopes and steep downhills remain
+   open.
 6. **Gains by CMA-ES.** The remaining gain genes tuned on the fixed body by
    CMA-ES over the robustness score, which converges where the GA's best
    has wandered 0.1 between generations 20 and 40 in every round.
